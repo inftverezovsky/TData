@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { runHltvScript } from "@/lib/hltv/scraper";
-import { prisma } from "@/lib/db";
-import { classifyParserError, emptyValidIfNoItems } from "@/lib/parserErrors";
+import { prisma } from "@/lib/db/db";
+import { classifyParserError, emptyValidIfNoItems } from "@/lib/proxy/parserErrors";
 
 export const dynamic = "force-dynamic";
 

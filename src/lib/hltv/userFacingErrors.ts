@@ -2,7 +2,7 @@ import {
   classifyParserError,
   normalizeParserErrorClass,
   type ParserErrorClass,
-} from "@/lib/parserErrors";
+} from "@/lib/proxy/parserErrors";
 
 export function getHltvSearchErrorMessage(errorClass?: string | null, fallback?: string | null) {
   const normalized = normalizeHltvErrorClass(errorClass, fallback);

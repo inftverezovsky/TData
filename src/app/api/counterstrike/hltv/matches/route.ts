@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { prisma } from "@/lib/db/db";
 import { runHltvScript } from "@/lib/hltv/scraper";
-import { classifyParserError, emptyValidIfNoItems } from "@/lib/parserErrors";
+import { classifyParserError, emptyValidIfNoItems } from "@/lib/proxy/parserErrors";
 import { getTeamAliasKey, getTeamMappingLookupKeys } from "@/lib/teams/canonicalize";
-import { normalizeTeamName } from "@/lib/teams";
+import { normalizeTeamName } from "@/lib/teams/teams";
 
 export const dynamic = "force-dynamic";
 

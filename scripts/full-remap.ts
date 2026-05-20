@@ -1,5 +1,5 @@
-import { prisma } from '../src/lib/db';
-import { normalizeTeamName, isPlaceholderTeam } from '../src/lib/teams';
+import { prisma } from '../src/lib/db/db';
+import { normalizeTeamName, isPlaceholderTeam } from '../src/lib/teams/teams';
 import { runAutoMappingForDiscipline } from '../src/lib/teams/mapping';
 
 async function main() {
@@ -56,7 +56,7 @@ async function main() {
   
   if (result.newlyMappedNames && result.newlyMappedNames.length > 0) {
     console.log('\nNewly mapped teams:');
-    result.newlyMappedNames.forEach(n => console.log(`  - ${n}`));
+    result.newlyMappedNames.forEach((n: string) => console.log(`  - ${n}`));
   }
 }
 

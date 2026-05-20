@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
-import { getSearchCacheTtlMs } from "@/lib/env";
+import { prisma } from "@/lib/db/db";
+import { getSearchCacheTtlMs } from "@/lib/config/env";
 import { filterLiquipediaSearchResultsForQuery, searchTournamentPages } from "@/lib/liquipedia/client";
-import { classifyParserError, emptyValidIfNoItems } from "@/lib/parserErrors";
+import { classifyParserError, emptyValidIfNoItems } from "@/lib/proxy/parserErrors";
 import crypto from "crypto";
 
 type DisciplineLoader = () => Promise<{ id: string; baseApiUrl: string | null }>;

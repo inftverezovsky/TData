@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { runHltvScript } from "@/lib/hltv/scraper";
-import { emptyValidIfNoItems } from "@/lib/parserErrors";
+import { emptyValidIfNoItems } from "@/lib/proxy/parserErrors";
 import { getHltvSearchErrorMessage, normalizeHltvErrorClass } from "@/lib/hltv/userFacingErrors";
 
 export const dynamic = "force-dynamic";

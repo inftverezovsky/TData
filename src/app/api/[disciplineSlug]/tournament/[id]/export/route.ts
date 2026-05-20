@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { prisma } from "@/lib/db/db";
 import { buildFixtPayload } from "@/lib/adminUpload/buildFixtPayload";
 import { matchesToCsv, participantsToCsv, tournamentToMarkdown } from "@/lib/exporters/tournament";
 import { dedupeTournamentMatches } from "@/lib/matches/dedupe";

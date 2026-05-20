@@ -474,8 +474,11 @@ async function scrapeHltv() {
 
           const teamNames = el.querySelectorAll('.match-teamname, .matchTeamName, .team-name, .team-1 .team-name, .team-2 .team-name');
           if (teamNames.length >= 2) {
-            team1 = cleanTeamName(teamNames[0].textContent);
-            team2 = cleanTeamName(teamNames[1].textContent);
+            team1 = cleanTeamName(teamNames[0].textContent) || "TBD";
+            team2 = cleanTeamName(teamNames[1].textContent) || "TBD";
+          } else {
+            team1 = teamNames[0] ? (cleanTeamName(teamNames[0].textContent) || "TBD") : "TBD";
+            team2 = teamNames[1] ? (cleanTeamName(teamNames[1].textContent) || "TBD") : "TBD";
           }
           
           const eventEl = el.querySelector('.match-event, .matchEventName, .event-headline, .event, [class*="event-name"]');
@@ -497,7 +500,7 @@ async function scrapeHltv() {
             id = parts[parts.length - 2] || parts[2];
           }
 
-          if (team1 && team2 && team1 !== 'TBD' && team2 !== 'TBD') {
+          if (team1 && team2) {
             results.push({
               id: id || Math.random().toString(36).substr(2, 9),
               tournament,

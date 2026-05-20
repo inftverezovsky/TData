@@ -1,5 +1,5 @@
 import { buildFixtPayload } from "@/lib/adminUpload/buildFixtPayload";
-import { prisma } from "@/lib/db";
+import { prisma } from "@/lib/db/db";
 
 export const dynamic = "force-dynamic";
 

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { APP_BUILD_INFO } from "@/lib/buildInfo";
+import { APP_BUILD_INFO } from "@/lib/config/buildInfo";
 
 export async function GET() {
   return NextResponse.json({

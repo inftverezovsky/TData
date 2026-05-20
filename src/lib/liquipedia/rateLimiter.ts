@@ -1,20 +1,35 @@
-import { getGenericMinIntervalMs, getParseMinIntervalMs } from "@/lib/env";
+import { getGenericMinIntervalMs, getParseMinIntervalMs } from "@/lib/config/env";
 
-let genericChain: Promise<void> = Promise.resolve();
-let parseChain: Promise<void> = Promise.resolve();
-let lastGenericRequestAt = 0;
-let lastParseRequestAt = 0;
+type RateLimitChannel = {
+  chain: Promise<void>;
+  lastRequestAt: number;
+};
 
-export function withGenericRateLimit<T>(work: () => Promise<T>) {
-  const next = genericChain.then(async () => {
+// Per-proxy rate limit pools keyed by proxy identifier ("direct" for no proxy)
+const genericChannels = new Map<string, RateLimitChannel>();
+const parseChannels = new Map<string, RateLimitChannel>();
+
+function getChannel(pool: Map<string, RateLimitChannel>, key: string): RateLimitChannel {
+  let channel = pool.get(key);
+  if (!channel) {
+    channel = { chain: Promise.resolve(), lastRequestAt: 0 };
+    pool.set(key, channel);
+  }
+  return channel;
+}
+
+export function withGenericRateLimit<T>(work: () => Promise<T>, proxyKey = "direct") {
+  const channel = getChannel(genericChannels, proxyKey);
+
+  const next = channel.chain.then(async () => {
     const now = Date.now();
-    const waitMs = Math.max(0, getGenericMinIntervalMs() - (now - lastGenericRequestAt));
+    const waitMs = Math.max(0, getGenericMinIntervalMs() - (now - channel.lastRequestAt));
     if (waitMs > 0) await sleep(waitMs);
-    lastGenericRequestAt = Date.now();
+    channel.lastRequestAt = Date.now();
     return work();
   });
 
-  genericChain = next.then(
+  channel.chain = next.then(
     () => undefined,
     () => undefined
   );
@@ -22,16 +37,18 @@ export function withGenericRateLimit<T>(work: () => Promise<T>) {
   return next;
 }
 
-export function withParseRateLimit<T>(work: () => Promise<T>) {
-  const next = parseChain.then(async () => {
+export function withParseRateLimit<T>(work: () => Promise<T>, proxyKey = "direct") {
+  const channel = getChannel(parseChannels, proxyKey);
+
+  const next = channel.chain.then(async () => {
     const now = Date.now();
-    const waitMs = Math.max(0, getParseMinIntervalMs() - (now - lastParseRequestAt));
+    const waitMs = Math.max(0, getParseMinIntervalMs() - (now - channel.lastRequestAt));
     if (waitMs > 0) await sleep(waitMs);
-    lastParseRequestAt = Date.now();
+    channel.lastRequestAt = Date.now();
     return work();
   });
 
-  parseChain = next.then(
+  channel.chain = next.then(
     () => undefined,
     () => undefined
   );

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
-import { normalizeTeamName } from "@/lib/teams";
+import { prisma } from "@/lib/db/db";
+import { normalizeTeamName } from "@/lib/teams/teams";
 import { runAutoMappingForDiscipline } from "@/lib/teams/mapping";
-import { queueIdentitySync } from "@/lib/identitySync";
+import { queueIdentitySync } from "@/lib/sync/identitySync";
 import levenshtein from "fast-levenshtein";
 
 export const dynamic = "force-dynamic";

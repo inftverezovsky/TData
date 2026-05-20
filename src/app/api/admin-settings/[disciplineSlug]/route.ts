@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { prisma } from '@/lib/db/db';
 import { getAdminAuthConfigStatus } from '@/lib/adminUpload/adminHttpClient';
 import { resolveAdminSettings } from '@/lib/adminUpload/resolveAdminSettings';
-import { requireAdmin } from '@/lib/adminAuth';
-import { queueIdentitySync } from '@/lib/identitySync';
+import { requireAdmin } from '@/lib/auth/adminAuth';
+import { queueIdentitySync } from '@/lib/sync/identitySync';
 
 export const dynamic = "force-dynamic";
 

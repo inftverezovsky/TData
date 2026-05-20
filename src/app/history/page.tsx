@@ -1,7 +1,7 @@
 import Link from "next/link";
-import StatusBadge from "@/components/StatusBadge";
-import { prisma } from "@/lib/db";
-import { formatDateTime } from "@/lib/format";
+import StatusBadge from "@/components/ui/StatusBadge";
+import { prisma } from "@/lib/db/db";
+import { formatDateTime } from "@/lib/utils/format";
 
 export const dynamic = "force-dynamic";
 

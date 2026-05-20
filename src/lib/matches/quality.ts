@@ -1,4 +1,4 @@
-import { isPlaceholderTeam } from "@/lib/teams";
+import { isPlaceholderTeam } from "@/lib/teams/teams";
 
 export type ParsedMatchCandidate = {
   source: string;

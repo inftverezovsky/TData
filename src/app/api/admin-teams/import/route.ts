@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { readSheet } from "read-excel-file/node";
-import { prisma } from "@/lib/db";
-import { normalizeTeamName } from "@/lib/teams";
+import { prisma } from "@/lib/db/db";
+import { normalizeTeamName } from "@/lib/teams/teams";
 import levenshtein from "fast-levenshtein";
-import { requireAdmin } from "@/lib/adminAuth";
-import { queueIdentitySync } from "@/lib/identitySync";
+import { requireAdmin } from "@/lib/auth/adminAuth";
+import { queueIdentitySync } from "@/lib/sync/identitySync";
 
 const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
 const REMOTE_FETCH_TIMEOUT_MS = 15000;

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
+import { prisma } from '@/lib/db/db';
 import { buildFixtPayload } from '@/lib/adminUpload/buildFixtPayload';
 import { phpSerialize } from '@/lib/adminUpload/phpSerialize';
 import { resolveAdminSettings } from '@/lib/adminUpload/resolveAdminSettings';
@@ -15,6 +15,7 @@ export async function POST(
     const body = await request.json();
     const disciplineSlug = body.disciplineSlug || routeDisciplineSlug;
     const selectedMatchIds = body.selectedMatchIds;
+    const force = body.force || false;
     
     // 1. Get settings
     const settings = await resolveAdminSettings(disciplineSlug);
@@ -37,23 +38,25 @@ export async function POST(
 
     const serialized = phpSerialize(buildResult.payload);
 
-    const existingSuccessfulSend = await prisma.adminUploadLog.findFirst({
-      where: {
-        disciplineSlug,
-        tournamentId: id,
-        serializedFixt: serialized,
-        status: { in: ['success', 'success_like'] },
-      },
-      orderBy: { createdAt: 'desc' },
-      select: { id: true, createdAt: true, status: true },
-    });
+    if (!force) {
+      const existingSuccessfulSend = await prisma.adminUploadLog.findFirst({
+        where: {
+          disciplineSlug,
+          tournamentId: id,
+          serializedFixt: serialized,
+          status: { in: ['success', 'success_like'] },
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, createdAt: true, status: true },
+      });
 
-    if (existingSuccessfulSend) {
-      return NextResponse.json({
-        ok: false,
-        error: "This payload was already sent successfully.",
-        previousSend: existingSuccessfulSend,
-      }, { status: 409 });
+      if (existingSuccessfulSend) {
+        return NextResponse.json({
+          ok: false,
+          error: "This payload was already sent successfully. Use force option to override.",
+          previousSend: existingSuccessfulSend,
+        }, { status: 409 });
+      }
     }
 
     // 3. Send payload

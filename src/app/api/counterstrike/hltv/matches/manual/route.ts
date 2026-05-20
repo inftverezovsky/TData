@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { prisma } from "@/lib/db/db";
 import { getTeamAliasKey, getTeamMappingLookupKeys } from "@/lib/teams/canonicalize";
-import { normalizeTeamName } from "@/lib/teams";
+import { normalizeTeamName } from "@/lib/teams/teams";
 
 export async function POST(req: Request) {
   try {

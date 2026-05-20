@@ -1,4 +1,4 @@
-import { generateInternalTeamId, isPlaceholderTeam, normalizeTeamName } from "@/lib/teams";
+import { generateInternalTeamId, isPlaceholderTeam, normalizeTeamName } from "@/lib/teams/teams";
 
 export type TeamNameSource = {
   name?: string | null;

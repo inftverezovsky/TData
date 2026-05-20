@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { buildFixtPayload } from '@/lib/adminUpload/buildFixtPayload';
 import { phpSerialize } from '@/lib/adminUpload/phpSerialize';
-import { prisma } from '@/lib/db';
+import { prisma } from '@/lib/db/db';
 
 export async function POST(
   request: Request,

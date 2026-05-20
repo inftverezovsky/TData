@@ -1,6 +1,6 @@
 import * as cheerio from "cheerio";
-import { getLiquipediaUserAgent } from "../env";
-import { getPortalCache } from "../db";
+import { getLiquipediaUserAgent } from "../config/env";
+import { getPortalCache } from "../db/db";
 import { fetchHtml } from "./client";
 
 export type PortalTournament = {
@@ -31,7 +31,7 @@ export async function fetchDisciplinePortal(slug: string, force = false): Promis
     }
   } else {
     // If force, clear proxy cooldowns AND clear this portal's cache
-    const { resetProxyCooldowns } = await import("../proxySelector");
+    const { resetProxyCooldowns } = await import("../proxy/proxySelector");
     await resetProxyCooldowns();
     portalCache.delete(cacheKey);
     console.log(`[Portal Lib] Force refresh: cleared proxy cooldowns and portal cache for ${slug}`);

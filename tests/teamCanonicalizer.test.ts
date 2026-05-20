@@ -8,7 +8,7 @@ import {
 } from "../src/lib/teams/canonicalize";
 import { collectTournamentTeamNames } from "../src/lib/teams/tournamentTeamNames";
 import { buildTeamMappingLookup, findTeamMapping } from "../src/lib/teams/mappingLookup";
-import { isPlaceholderTeam } from "../src/lib/teams";
+import { isPlaceholderTeam } from "../src/lib/teams/teams";
 
 test("G2 is treated as a real team, not a bracket seed", () => {
   assert.equal(isPlaceholderTeam("G2"), false);

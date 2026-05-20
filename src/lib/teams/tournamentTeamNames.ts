@@ -1,4 +1,4 @@
-import { isPlaceholderTeam, normalizeTeamName } from "@/lib/teams";
+import { isPlaceholderTeam, normalizeTeamName } from "@/lib/teams/teams";
 import {
   buildTeamNameCanonicalizer,
   type TeamNameSource,

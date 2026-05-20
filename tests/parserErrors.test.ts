@@ -5,7 +5,7 @@ import {
   emptyValidIfNoItems,
   normalizeParserErrorClass,
   shouldCooldownProxyForError,
-} from "../src/lib/parserErrors";
+} from "../src/lib/proxy/parserErrors";
 import { getHltvSearchErrorMessage } from "../src/lib/hltv/userFacingErrors";
 
 test("classifyParserError maps proxy tunnel failures", () => {

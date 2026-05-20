@@ -1,5 +1,5 @@
-import { prisma } from "@/lib/db";
-import { normalizeTeamName, isPlaceholderTeam } from "@/lib/teams";
+import { prisma } from "@/lib/db/db";
+import { normalizeTeamName, isPlaceholderTeam } from "@/lib/teams/teams";
 import levenshtein from "fast-levenshtein";
 
 export async function ensureTeamMappingsForTournament(tournamentId: string, disciplineSlug: string = "dota2") {

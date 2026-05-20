@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { prisma } from "@/lib/db/db";
 import { dedupeTournamentMatches } from "@/lib/matches/dedupe";
 import { buildTeamMappingLookup, findTeamMapping } from "@/lib/teams/mappingLookup";
-import { isPlaceholderTeam } from "@/lib/teams";
+import { isPlaceholderTeam } from "@/lib/teams/teams";
 
 const SYNC_TIMEOUT_MS = 15000;
 const MAX_ERROR_BYTES = 4096;
@@ -71,15 +71,6 @@ export async function POST(request: Request) {
     const payload = matches.flatMap(m => {
       const teamAName = m.teamAName || "";
       const teamBName = m.teamBName || "";
-
-      if ((m as any).hasPlaceholderTeams || isPlaceholderTeam(teamAName) || isPlaceholderTeam(teamBName)) {
-        skippedMatches.push({
-          matchId: m.matchId,
-          reason: "Placeholder/TBD teams are not sync-ready",
-          teams: `${teamAName || "?"} vs ${teamBName || "?"}`,
-        });
-        return [];
-      }
 
       const teamA = findTeamMapping(mappingMap, m.teamAName);
       const teamB = findTeamMapping(mappingMap, m.teamBName);

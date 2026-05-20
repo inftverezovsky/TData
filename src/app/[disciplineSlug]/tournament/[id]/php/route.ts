@@ -1,6 +1,6 @@
 import { buildFixtPayload } from "@/lib/adminUpload/buildFixtPayload";
 import { toPhpString } from "@/lib/adminUpload/utils";
-import { prisma } from "@/lib/db";
+import { prisma } from "@/lib/db/db";
 
 export const dynamic = "force-dynamic";
 

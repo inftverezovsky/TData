@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildSourceFetchCacheKey } from "../src/lib/sourceFetchCache";
+import { buildSourceFetchCacheKey } from "../src/lib/utils/sourceFetchCache";
 import {
   computeMatchSetQuality,
   hasPlaceholderTeams,

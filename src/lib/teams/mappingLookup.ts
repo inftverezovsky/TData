@@ -1,4 +1,4 @@
-import { normalizeTeamName } from "@/lib/teams";
+import { normalizeTeamName } from "@/lib/teams/teams";
 import { getTeamAliasKey, getTeamMappingLookupKeys, type TeamNameSource } from "@/lib/teams/canonicalize";
 
 export type TeamMappingForLookup = TeamNameSource & {

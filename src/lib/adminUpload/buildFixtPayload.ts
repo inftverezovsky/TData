@@ -1,7 +1,7 @@
 import { DateTime } from 'luxon';
-import { prisma } from '@/lib/db';
+import { prisma } from '@/lib/db/db';
 import { dedupeTournamentMatches } from '@/lib/matches/dedupe';
-import { isPlaceholderTeam } from '@/lib/teams';
+import { isPlaceholderTeam } from '@/lib/teams/teams';
 import { buildTeamMappingLookup, findTeamMapping } from '@/lib/teams/mappingLookup';
 import { resolveAdminSettings } from './resolveAdminSettings';
 
@@ -43,9 +43,15 @@ export async function buildFixtPayload(
   // 1. Fetch settings from Prisma (discipline-specific or global)
   const settings = await resolveAdminSettings(disciplineSlug);
 
-  const mapping = await prisma.tournamentAdminMapping.findUnique({
-    where: { tournamentId },
-  });
+  const [mapping, tournament] = await Promise.all([
+    prisma.tournamentAdminMapping.findUnique({
+      where: { tournamentId },
+    }),
+    prisma.tournament.findUnique({
+      where: { id: tournamentId },
+      select: { startDate: true },
+    })
+  ]);
 
   const shapkaId = mapping?.adminShapkaId || settings.defaultShapkaId;
   const sportId = settings.adminSportId;
@@ -88,20 +94,39 @@ export async function buildFixtPayload(
       continue;
     }
 
-    if ((match as any).hasPlaceholderTeams || isPlaceholderTeam(teamAName) || isPlaceholderTeam(teamBName)) {
-      skippedMatches.push({
-        matchId: match.matchId,
-        reason: 'Placeholder/TBD teams are not upload-ready',
-        teams: `${teamAName} vs ${teamBName}`,
-      });
-      continue;
-    }
-
     const mappingA = findTeamMapping(mappingMap, teamAName);
     const mappingB = findTeamMapping(mappingMap, teamBName);
 
-    const platformIdA = mappingA?.platformId;
-    const platformIdB = mappingB?.platformId;
+    let platformIdA = mappingA?.platformId || null;
+    let platformIdB = mappingB?.platformId || null;
+
+    const isPlaceholderA = isPlaceholderTeam(teamAName);
+    const isPlaceholderB = isPlaceholderTeam(teamBName);
+
+    if ((isPlaceholderA && !platformIdA) || (isPlaceholderB && !platformIdB)) {
+      const placeholderMappings = teamMappings.filter(m => isPlaceholderTeam(m.liquipediaName) && m.platformId);
+      
+      if (placeholderMappings.length > 0) {
+        const usedIds = new Set<string>();
+        if (platformIdA) usedIds.add(String(platformIdA));
+        if (platformIdB) usedIds.add(String(platformIdB));
+
+        // Assign to A if placeholder and not mapped
+        if (isPlaceholderA && !platformIdA) {
+          const available = placeholderMappings.find(m => !usedIds.has(String(m.platformId)));
+          const chosen = available || placeholderMappings[0];
+          platformIdA = chosen.platformId;
+          usedIds.add(String(chosen.platformId));
+        }
+
+        // Assign to B if placeholder and not mapped
+        if (isPlaceholderB && !platformIdB) {
+          const available = placeholderMappings.find(m => !usedIds.has(String(m.platformId)));
+          const chosen = available || placeholderMappings[0];
+          platformIdB = chosen.platformId;
+        }
+      }
+    }
 
     const isMappedA = !!platformIdA;
     const isMappedB = !!platformIdB;
@@ -122,13 +147,10 @@ export async function buildFixtPayload(
     }
 
     if (!match.matchDate) {
-      skippedMatches.push({
-        matchId: match.matchId,
-        reason: 'Missing match date',
-        teams: `${teamAName} vs ${teamBName}`,
-      });
-      continue;
+      warnings.push(`Для матча ${teamAName} vs ${teamBName} отсутствует дата, использована дата начала турнира.`);
     }
+
+    const matchDate = match.matchDate || tournament?.startDate || new Date();
 
     // 2.3 Skip finished matches (with result)
     const hasScores = match.scoreA !== null || match.scoreB !== null;
@@ -144,7 +166,7 @@ export async function buildFixtPayload(
     }
 
     // Format date in Moscow
-    const moscowDate = DateTime.fromJSDate(match.matchDate)
+    const moscowDate = DateTime.fromJSDate(matchDate)
       .setZone('Europe/Moscow')
       .toFormat('dd.MM.yyyy HH:mm:ss');
 

@@ -4,9 +4,9 @@
 
 :root {
   --primary: 79, 70, 229;
-  --bg-color: #f6f7fb;
-  --card-bg: #ffffff;
-  --card-border: #e2e8f0;
+  --bg-color: transparent;
+  --card-bg: rgba(255, 255, 255, 0.72);
+  --card-border: rgba(226, 232, 240, 0.6);
   --text-main: #0f172a;
   --text-muted: #64748b;
   
@@ -20,7 +20,7 @@
 }
 
 body {
-  background-color: var(--bg-color);
+  background-color: transparent;
   color: var(--text-main);
   font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   min-height: 100vh;
@@ -29,20 +29,7 @@ body {
   overflow-x: hidden;
 }
 
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-image: 
-    linear-gradient(rgba(15, 23, 42, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(15, 23, 42, 0.035) 1px, transparent 1px);
-  background-size: 48px 48px;
-  z-index: -1;
-  pointer-events: none;
-}
+/* body::before removed — background handled by DynamicTechBackground SVG */
 
 /* Shimmer Animation */
 @keyframes shimmer {
@@ -63,9 +50,61 @@ body::before {
 
 /* Glassmorphism Panel */
 .glass-panel {
-  background: var(--card-bg);
-  border: 1px solid var(--card-border);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 14px 36px rgba(15, 23, 42, 0.06);
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(226, 232, 240, 0.55);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 14px 36px rgba(15, 23, 42, 0.07);
+}
+
+/* ===== GLOBAL GLASSMORPHISM OVERRIDE =====
+   All section/card containers become glass — background SVG shows through everywhere.
+   This overrides Tailwind's bg-white on all panel-style containers. */
+
+/* Settings & discipline page section blocks */
+section.rounded-3xl,
+section[class*="rounded-3xl"] {
+  background: rgba(255, 255, 255, 0.72) !important;
+  backdrop-filter: blur(14px) !important;
+  -webkit-backdrop-filter: blur(14px) !important;
+  border-color: rgba(226, 232, 240, 0.5) !important;
+}
+
+/* Discipline search + tournament list cards */
+section.premium-card,
+.premium-card {
+  background: rgba(255, 255, 255, 0.72) !important;
+  backdrop-filter: blur(14px) !important;
+  -webkit-backdrop-filter: blur(14px) !important;
+}
+
+/* Upcoming tournaments widget aside card — same glass as search */
+aside.premium-card {
+  background: rgba(255, 255, 255, 0.72) !important;
+  backdrop-filter: blur(14px) !important;
+  -webkit-backdrop-filter: blur(14px) !important;
+  border-color: rgba(226, 232, 240, 0.6) !important;
+}
+
+/* Individual match cards */
+.group.relative.flex.flex-col.overflow-hidden.rounded-lg {
+  background: rgba(255, 255, 255, 0.78) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+}
+
+/* Individual match cards — scoped to exact match-card pattern */
+div.group.relative.overflow-hidden.rounded-lg[class*="border"] {
+  background: rgba(255, 255, 255, 0.78) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+}
+
+/* Home page discipline portal cards */
+div.group.relative.flex.flex-col.overflow-hidden[class*="rounded-"] {
+  background: rgba(255, 255, 255, 0.74) !important;
+  backdrop-filter: blur(14px) !important;
+  -webkit-backdrop-filter: blur(14px) !important;
 }
 
 /* Gradient Text */
@@ -79,26 +118,71 @@ body::before {
 
 /* Premium Component Classes */
 .premium-card {
-  @apply glass-panel rounded-lg p-6 transition-colors duration-150;
+  @apply glass-panel rounded-3xl p-6;
+  transition: transform 400ms cubic-bezier(0.16, 1, 0.3, 1), 
+              box-shadow 400ms cubic-bezier(0.16, 1, 0.3, 1), 
+              border-color 400ms cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform, box-shadow, border-color;
 }
 
 .premium-card:hover {
-  border-color: rgba(99, 102, 241, 0.32);
+  border-color: rgba(99, 102, 241, 0.35);
+  transform: translateY(-4px);
+  box-shadow: 0 20px 40px -15px rgba(79, 70, 229, 0.08), 0 2px 8px rgba(15, 23, 42, 0.02);
+}
+
+/* Disable hover shifts/lifts on large form and widget container cards */
+section.premium-card:hover,
+aside.premium-card:hover {
+  transform: none !important;
+}
+
+.premium-card:active {
+  transform: translateY(0) scale(0.99);
+  transition-duration: 80ms;
+}
+
+section.premium-card:active,
+aside.premium-card:active {
+  transform: none !important;
 }
 
 .btn-primary {
-  @apply inline-flex items-center justify-center rounded-lg px-8 py-3 text-sm font-black transition-colors duration-150;
+  @apply inline-flex items-center justify-center rounded-lg px-8 py-3 text-sm font-black;
   background-color: rgb(var(--primary));
   color: #ffffff;
   box-shadow: 0 10px 20px -12px rgba(var(--primary), 0.65);
+  transition: transform 300ms cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 300ms cubic-bezier(0.16, 1, 0.3, 1),
+              background-color 200ms ease;
+  will-change: transform, box-shadow;
 }
 
 .btn-primary:hover {
   background-color: #4338ca;
+  transform: translateY(-1.5px);
+  box-shadow: 0 12px 24px -10px rgba(var(--primary), 0.85);
+}
+
+.btn-primary:active {
+  transform: translateY(0) scale(0.96);
+  transition-duration: 80ms;
 }
 
 .btn-secondary {
-  @apply inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white font-bold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50;
+  @apply inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white font-bold text-slate-700;
+  transition: all 300ms cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform;
+}
+
+.btn-secondary:hover {
+  @apply bg-slate-50 border-slate-300;
+  transform: translateY(-1px);
+}
+
+.btn-secondary:active {
+  transform: translateY(0) scale(0.96);
+  transition-duration: 80ms;
 }
 
 .shadow-soft {
@@ -106,21 +190,54 @@ body::before {
 }
 
 @keyframes enterFrame {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
 .animate-in {
-  animation: enterFrame 180ms ease-out both;
+  animation: enterFrame 350ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .fade-in {
-  animation-name: enterFrame;
+  animation: enterFrame 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .slide-in-from-top-2,
 .slide-in-from-top-4 {
-  animation-name: enterFrame;
+  animation: enterFrame 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Premium Collapsible dropdowns */
+details {
+  transition: all 300ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+details[open] summary ~ * {
+  animation: details-show 350ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes details-show {
+  0% { opacity: 0; transform: translateY(-10px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+summary {
+  transition: background-color 200ms ease, color 200ms ease;
+}
+
+summary:active {
+  transform: scale(0.992);
+  transition-duration: 80ms;
+}
+
+/* Interactive list & table rows */
+tr {
+  transition: background-color 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+tr:hover td {
+  background-color: rgba(79, 70, 229, 0.015) !important;
+  color: #0f172a !important;
 }
 
 .custom-scrollbar {
@@ -151,6 +268,43 @@ body::before {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(79, 70, 229, 0.3);
 }
+
+@keyframes slideIn {
+  from { transform: scaleX(0); opacity: 0; }
+  to { transform: scaleX(1); opacity: 1; }
+}
+
+.animate-slide-in {
+  animation: slideIn 250ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  transform-origin: center;
+}
+
+@keyframes pulseNode {
+  0% { transform: translate(-50%, -50%) scale(0.9); opacity: 0.8; box-shadow: 0 0 0 0 rgba(79, 70, 229, 0.4), 0 0 15px currentColor; }
+  50% { transform: translate(-50%, -50%) scale(1.05); opacity: 1; box-shadow: 0 0 0 8px rgba(79, 70, 229, 0), 0 0 25px currentColor; }
+  100% { transform: translate(-50%, -50%) scale(0.9); opacity: 0.8; box-shadow: 0 0 0 0 rgba(79, 70, 229, 0), 0 0 15px currentColor; }
+}
+
+.pulse-node {
+  animation: pulseNode 3s infinite ease-in-out;
+}
+
+.pulse-node-delayed {
+  animation: pulseNode 3s infinite ease-in-out;
+  animation-delay: 1.5s;
+}
+
+/* Background SVG node glow pulse */
+@keyframes pulseSlow {
+  0%, 100% { opacity: 0.18; }
+  50% { opacity: 0.38; }
+}
+@keyframes pulseFast {
+  0%, 100% { opacity: 0.28; }
+  50% { opacity: 0.55; }
+}
+.pulse-slow { animation: pulseSlow 3.5s ease-in-out infinite; }
+.pulse-fast { animation: pulseFast 2s ease-in-out infinite; }
 
 @media (prefers-reduced-motion: reduce) {
   *,

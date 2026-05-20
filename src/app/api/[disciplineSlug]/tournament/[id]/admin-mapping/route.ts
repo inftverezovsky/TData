@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { findTournamentAdminMapping, upsertTournamentAdminMapping } from '@/lib/adminUpload/adminMappingStore';
-import { queueIdentitySync } from '@/lib/identitySync';
+import { queueIdentitySync } from '@/lib/sync/identitySync';
 
 export async function GET(
   _request: Request,

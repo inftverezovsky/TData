@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/adminAuth";
+import { requireAdmin } from "@/lib/auth/adminAuth";
 import {
   exportIdentitySnapshot,
   importIdentitySnapshot,
   verifyIdentitySyncRequest,
-} from "@/lib/identitySync";
+} from "@/lib/sync/identitySync";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;

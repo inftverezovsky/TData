@@ -1,27 +1,190 @@
 "use client";
 
-import { SettingsPasswordGate } from "@/components/SettingsPasswordGate";
-
-import LiquipediaGlobalSettings from "@/components/LiquipediaGlobalSettings";
-import { AdminTeamImporter } from "@/components/AdminTeamImporter";
+import { useState } from "react";
+import { SettingsPasswordGate } from "@/components/settings/SettingsPasswordGate";
+import LiquipediaGlobalSettings from "@/components/settings/LiquipediaGlobalSettings";
+import { AdminTeamImporter } from "@/components/admin/AdminTeamImporter";
+import SystemHealthDashboard from "@/components/settings/SystemHealthDashboard";
+import ParserSandbox from "@/components/settings/ParserSandbox";
+import ProxyManager from "@/components/settings/ProxyManager";
+import { Sliders, Database, Network, Terminal, Activity, ChevronDown } from "lucide-react";
 
 export default function SettingsPage() {
+  const [openPanels, setOpenPanels] = useState<Record<string, boolean>>({
+    global: false,
+    importer: false,
+    proxy: false,
+    sandbox: false,
+    health: false,
+  });
+
+  const togglePanel = (panel: string) => {
+    setOpenPanels((prev) => ({ ...prev, [panel]: !prev[panel] }));
+  };
+
   return (
     <SettingsPasswordGate>
-      <div className="space-y-12">
+      <div className="space-y-10">
+        {/* Page Header */}
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-600">Engine Configuration</p>
           <h1 className="mt-4 text-5xl font-black tracking-tighter text-slate-950">
             Настройки <span className="text-slate-400">Системы.</span>
           </h1>
           <p className="mt-6 text-xl font-bold leading-relaxed text-slate-700 max-w-2xl">
-            Управление параметрами подключения к Liquipedia и внешним API.
+            Центральный пульт управления API-коннекторами, прокси-серверами, базами данных и отладкой парсинга.
           </p>
         </div>
 
-        <LiquipediaGlobalSettings />
+        {/* Accordion Panels Container */}
+        <div className="space-y-4">
+          
+          {/* 1. Глобальные Параметры API */}
+          <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-soft transition-all duration-300">
+            <button
+              onClick={() => togglePanel("global")}
+              className="flex w-full items-center justify-between p-6 text-left hover:bg-slate-50/50 transition-colors"
+            >
+              <div className="flex items-center gap-4">
+                <div className={`flex h-12 w-12 items-center justify-center rounded-2xl transition-all ${openPanels.global ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/10" : "bg-slate-100 text-slate-400"}`}>
+                  <Sliders className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-black text-slate-950 tracking-tight">Параметры API и Заливки</h2>
+                  <p className="mt-0.5 text-xs font-bold text-slate-500">Сетевые таймауты, лимиты, endpoints Liquipedia и Admin API</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="rounded-full bg-indigo-50 border border-indigo-100 px-3 py-1 text-[9px] font-black uppercase tracking-widest text-indigo-600">
+                  Конфигурация
+                </span>
+                <ChevronDown className={`h-5 w-5 text-slate-400 transition-transform duration-300 ${openPanels.global ? "rotate-180 text-indigo-600" : ""}`} />
+              </div>
+            </button>
+            <div className={`transition-all duration-300 ease-in-out ${openPanels.global ? "max-h-[2500px] border-t border-slate-100 opacity-100" : "max-h-0 opacity-0 overflow-hidden"}`}>
+              <div className="p-6 bg-white">
+                <LiquipediaGlobalSettings />
+              </div>
+            </div>
+          </div>
 
-        <AdminTeamImporter />
+          {/* 2. Импортер Команд в Базу */}
+          <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-soft transition-all duration-300">
+            <button
+              onClick={() => togglePanel("importer")}
+              className="flex w-full items-center justify-between p-6 text-left hover:bg-slate-50/50 transition-colors"
+            >
+              <div className="flex items-center gap-4">
+                <div className={`flex h-12 w-12 items-center justify-center rounded-2xl transition-all ${openPanels.importer ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/10" : "bg-slate-100 text-slate-400"}`}>
+                  <Database className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-black text-slate-950 tracking-tight">Импортер Команд (Admin)</h2>
+                  <p className="mt-0.5 text-xs font-bold text-slate-500">Синхронизация и загрузка ID команд во внутреннюю базу</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="rounded-full bg-amber-50 border border-amber-100 px-3 py-1 text-[9px] font-black uppercase tracking-widest text-amber-600">
+                  Импорт
+                </span>
+                <ChevronDown className={`h-5 w-5 text-slate-400 transition-transform duration-300 ${openPanels.importer ? "rotate-180 text-indigo-600" : ""}`} />
+              </div>
+            </button>
+            <div className={`transition-all duration-300 ease-in-out ${openPanels.importer ? "max-h-[1500px] border-t border-slate-100 opacity-100" : "max-h-0 opacity-0 overflow-hidden"}`}>
+              <div className="p-6 bg-white">
+                <AdminTeamImporter />
+              </div>
+            </div>
+          </div>
+
+          {/* 3. Менеджер Прокси-Пула */}
+          <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-soft transition-all duration-300">
+            <button
+              onClick={() => togglePanel("proxy")}
+              className="flex w-full items-center justify-between p-6 text-left hover:bg-slate-50/50 transition-colors"
+            >
+              <div className="flex items-center gap-4">
+                <div className={`flex h-12 w-12 items-center justify-center rounded-2xl transition-all ${openPanels.proxy ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/10" : "bg-slate-100 text-slate-400"}`}>
+                  <Network className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-black text-slate-950 tracking-tight">Менеджер Прокси-Пула</h2>
+                  <p className="mt-0.5 text-xs font-bold text-slate-500">Добавление, проверка пингов и статистика блокировок нод</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="rounded-full bg-emerald-50 border border-emerald-100 px-3 py-1 text-[9px] font-black uppercase tracking-widest text-emerald-600">
+                  Пул Прокси
+                </span>
+                <ChevronDown className={`h-5 w-5 text-slate-400 transition-transform duration-300 ${openPanels.proxy ? "rotate-180 text-indigo-600" : ""}`} />
+              </div>
+            </button>
+            <div className={`transition-all duration-300 ease-in-out ${openPanels.proxy ? "max-h-[2000px] border-t border-slate-100 opacity-100" : "max-h-0 opacity-0 overflow-hidden"}`}>
+              <div className="p-6 bg-white">
+                <ProxyManager />
+              </div>
+            </div>
+          </div>
+
+          {/* 4. Песочница Парсинга Wikitext */}
+          <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-soft transition-all duration-300">
+            <button
+              onClick={() => togglePanel("sandbox")}
+              className="flex w-full items-center justify-between p-6 text-left hover:bg-slate-50/50 transition-colors"
+            >
+              <div className="flex items-center gap-4">
+                <div className={`flex h-12 w-12 items-center justify-center rounded-2xl transition-all ${openPanels.sandbox ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/10" : "bg-slate-100 text-slate-400"}`}>
+                  <Terminal className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-black text-slate-950 tracking-tight">Песочница Wikitext</h2>
+                  <p className="mt-0.5 text-xs font-bold text-slate-500">Ручная отладка правил нормализации до сохранения в БД</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="rounded-full bg-sky-50 border border-sky-100 px-3 py-1 text-[9px] font-black uppercase tracking-widest text-sky-600">
+                  Песочница
+                </span>
+                <ChevronDown className={`h-5 w-5 text-slate-400 transition-transform duration-300 ${openPanels.sandbox ? "rotate-180 text-indigo-600" : ""}`} />
+              </div>
+            </button>
+            <div className={`transition-all duration-300 ease-in-out ${openPanels.sandbox ? "max-h-[2000px] border-t border-slate-100 opacity-100" : "max-h-0 opacity-0 overflow-hidden"}`}>
+              <div className="p-6 bg-white">
+                <ParserSandbox />
+              </div>
+            </div>
+          </div>
+
+          {/* 5. Панель Диагностики и Телеметрии */}
+          <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-soft transition-all duration-300">
+            <button
+              onClick={() => togglePanel("health")}
+              className="flex w-full items-center justify-between p-6 text-left hover:bg-slate-50/50 transition-colors"
+            >
+              <div className="flex items-center gap-4">
+                <div className={`flex h-12 w-12 items-center justify-center rounded-2xl transition-all ${openPanels.health ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/10" : "bg-slate-100 text-slate-400"}`}>
+                  <Activity className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-black text-slate-950 tracking-tight">Мониторинг Системы</h2>
+                  <p className="mt-0.5 text-xs font-bold text-slate-500">Задержка БД, активность парсинга и логи блокировок</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="rounded-full bg-rose-50 border border-rose-100 px-3 py-1 text-[9px] font-black uppercase tracking-widest text-rose-600">
+                  Телеметрия
+                </span>
+                <ChevronDown className={`h-5 w-5 text-slate-400 transition-transform duration-300 ${openPanels.health ? "rotate-180 text-indigo-600" : ""}`} />
+              </div>
+            </button>
+            <div className={`transition-all duration-300 ease-in-out ${openPanels.health ? "max-h-[2000px] border-t border-slate-100 opacity-100" : "max-h-0 opacity-0 overflow-hidden"}`}>
+              <div className="p-6 bg-white">
+                <SystemHealthDashboard />
+              </div>
+            </div>
+          </div>
+
+        </div>
       </div>
     </SettingsPasswordGate>
   );

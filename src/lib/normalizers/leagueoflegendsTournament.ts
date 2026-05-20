@@ -10,7 +10,8 @@ import {
   parseWikiDate
 } from "@/lib/normalizers/wikiText";
 import { createHash } from "crypto";
-import { generateInternalTeamId, isPlaceholderTeam } from "@/lib/teams";
+import { generateInternalTeamId, isPlaceholderTeam } from "@/lib/teams/teams";
+import { applyTbdPairCycling } from "@/lib/matches/tbdCycling";
 
 /* ───── Types ───── */
 
@@ -577,65 +578,7 @@ export function stringToNumericalId(str: string): bigint {
   return BigInt("0x" + hash);
 }
 
-function applyTbdPairCycling(matches: NormalizedMatch[], sourceTitle: string) {
-  const tbdMatches = matches.filter(m => 
-    (!m.teamAName || isPlaceholderTeam(m.teamAName)) && 
-    (!m.teamBName || isPlaceholderTeam(m.teamBName))
-  );
-
-  if (tbdMatches.length === 0) return;
-
-  tbdMatches.sort((a, b) => {
-    const tsA = a.matchDate?.getTime() || 0;
-    const tsB = b.matchDate?.getTime() || 0;
-    if (tsA !== tsB) return tsA - tsB;
-    return (a.stage || "").localeCompare(b.stage || "") || (a.round || "").localeCompare(b.round || "");
-  });
-
-  const pairLastUsed = new Array(9).fill(0); 
-  const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
-
-  tbdMatches.forEach((m, idx) => {
-    const matchTs = m.matchDate?.getTime() || 0;
-    
-    const cycle = Math.floor(idx / 8);
-    const subIdx = idx % 8;
-    
-    let tbdANum, tbdBNum;
-    
-    if (cycle % 2 === 0) {
-      tbdANum = (subIdx * 2) + 1;
-      tbdBNum = (subIdx * 2) + 2;
-    } else {
-      const group = Math.floor(subIdx / 2);
-      const offset = subIdx % 2;
-      tbdANum = (group * 4) + offset + 1;
-      tbdBNum = (group * 4) + offset + 3;
-    }
-
-    const tbdA = `TBD${tbdANum}`;
-    const tbdB = `TBD${tbdBNum}`;
-    
-    m.teamAName = tbdA;
-    m.teamBName = tbdB;
-    m.teamAId = `tbd_${tbdA.toLowerCase()}`;
-    m.teamBId = `tbd_${tbdB.toLowerCase()}`;
-    
-    pairLastUsed[cycle % 8] = matchTs;
-
-    m.matchId = createStableMatchId({
-      sourceTitle,
-      matchDate: m.matchDate,
-      matchDateTime: m.matchDateTime,
-      teamAId: m.teamAId,
-      teamBId: m.teamBId,
-      stage: m.stage,
-      round: m.round,
-      extraHint: String(idx)
-    });
-    m.lpNumericalId = stringToNumericalId(m.matchId);
-  });
-}
+// applyTbdPairCycling is now imported from @/lib/matches/tbdCycling
 
 /* ───── Deduplication ───── */
 

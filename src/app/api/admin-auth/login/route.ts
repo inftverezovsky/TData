@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createAdminSessionResponse, verifyAdminPassword } from "@/lib/adminAuth";
+import { createAdminSessionResponse, verifyAdminPassword } from "@/lib/auth/adminAuth";
 
 export const dynamic = "force-dynamic";
 

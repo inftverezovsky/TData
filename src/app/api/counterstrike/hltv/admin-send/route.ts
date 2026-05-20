@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { phpSerialize } from '@/lib/adminUpload/phpSerialize';
 import { resolveAdminSettings } from '@/lib/adminUpload/resolveAdminSettings';
 import { sendFixtPayload } from '@/lib/adminUpload/sendFixtPayload';
-import { prisma } from '@/lib/db';
+import { prisma } from '@/lib/db/db';
 
 export async function POST(request: Request) {
   try {

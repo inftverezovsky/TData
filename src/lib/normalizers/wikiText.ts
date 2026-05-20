@@ -113,7 +113,6 @@ export function parseWikiDate(value?: string | null) {
     if (timezoneDate) return timezoneDate;
 
     const date = new Date(`${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}T${hour.padStart(2, "0")}:${min.padStart(2, "0")}:${(sec || "00").padStart(2, "0")}Z`);
-    date.setUTCHours(date.getUTCHours() + 3);
     return date;
   }
 
@@ -137,7 +136,6 @@ export function parseWikiDate(value?: string | null) {
 
     const date = new Date(`${monthStr} ${day}, ${year} ${hour}:${min}:00 UTC`);
     if (!isNaN(date.getTime())) {
-      date.setUTCHours(date.getUTCHours() + 3);
       return date;
     }
   }
@@ -147,15 +145,12 @@ export function parseWikiDate(value?: string | null) {
   if (iso) {
     const [, year, month, day] = iso;
     const date = new Date(`${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}T00:00:00.000Z`);
-    date.setUTCHours(date.getUTCHours() + 3);
     return date;
   }
 
   const parsed = Date.parse(cleaned);
   if (!Number.isNaN(parsed)) {
     const date = new Date(parsed);
-    // Even for standard parsed dates, we force the +3h shift to treat them as MSK in our UI
-    date.setUTCHours(date.getUTCHours() + 3);
     return date;
   }
 

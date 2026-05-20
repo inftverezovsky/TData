@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
-import { queueIdentitySync } from "@/lib/identitySync";
+import { prisma } from "@/lib/db/db";
+import { queueIdentitySync } from "@/lib/sync/identitySync";
 
 export const dynamic = "force-dynamic";
 

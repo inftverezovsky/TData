@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { fetchDisciplinePortal } from "@/lib/liquipedia/portal";
-import { prisma } from "@/lib/db";
-import { isPlaceholderTeam } from "@/lib/teams";
+import { prisma } from "@/lib/db/db";
+import { isPlaceholderTeam } from "@/lib/teams/teams";
 
 export const dynamic = "force-dynamic";
 
@@ -53,6 +53,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ disc
         where: {
           tournamentId: { in: dbIds },
           OR: [
+            { hasPlaceholderTeams: true },
             { teamAName: null },
             { teamAName: { contains: "TBD" } },
             { teamAName: { contains: "TBA" } },
@@ -96,5 +97,3 @@ export async function GET(request: Request, { params }: { params: Promise<{ disc
     return NextResponse.json({ error: "Failed to fetch portal data", details: err.message }, { status: 500 });
   }
 }
-
-

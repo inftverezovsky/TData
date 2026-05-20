@@ -1,4 +1,4 @@
-import { createAdminLogoutResponse } from "@/lib/adminAuth";
+import { createAdminLogoutResponse } from "@/lib/auth/adminAuth";
 
 export const dynamic = "force-dynamic";
 

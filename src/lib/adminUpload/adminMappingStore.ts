@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/db";
+import { prisma } from "@/lib/db/db";
 
 type UpsertAdminMappingInput = {
   tournamentId: string;
