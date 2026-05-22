@@ -3,6 +3,7 @@ import Link from "next/link";
 import "./globals.css";
 import Navbar from "@/components/layout/Navbar";
 import DynamicTechBackground from "@/components/ui/DynamicTechBackground";
+import { ClientErrorBoundary } from "@/components/ui/ClientErrorBoundary";
 import { Plus_Jakarta_Sans } from "next/font/google";
 
 const plusJakartaSans = Plus_Jakarta_Sans({
@@ -22,7 +23,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={`${plusJakartaSans.className} text-slate-900 selection:bg-indigo-100`}>
         <div className="flex min-h-screen flex-col relative z-0">
           {/* Dynamic dynamic circuit grid background */}
-          <DynamicTechBackground />
+          <ClientErrorBoundary
+            title="Фоновая анимация отключена"
+            className="hidden"
+          >
+            <DynamicTechBackground />
+          </ClientErrorBoundary>
 
           <header className="sticky top-0 z-50 border-b border-white/30 bg-white/60 backdrop-blur-xl">
             <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between md:px-6">

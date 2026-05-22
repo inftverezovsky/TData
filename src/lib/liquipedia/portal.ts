@@ -212,50 +212,11 @@ async function internalFetchDisciplinePortal(slug: string, force = false): Promi
     const uniqueTournaments = Array.from(new Map(tournaments.map(t => [t.url, t])).values());
 
     const now = new Date();
-    const months: Record<string, number> = {
-      jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11
-    };
 
     const enriched = uniqueTournaments.map(t => {
-      let startDate: Date | null = null;
-      let endDate: Date | null = null;
-      try {
-        const dateLower = t.dates.toLowerCase();
-        const foundMonths: { month: number, index: number }[] = [];
-        for (const [m, i] of Object.entries(months)) {
-          let idx = dateLower.indexOf(m);
-          while (idx !== -1) {
-            foundMonths.push({ month: i, index: idx });
-            idx = dateLower.indexOf(m, idx + 1);
-          }
-        }
-        foundMonths.sort((a, b) => a.index - b.index);
-
-        const days = dateLower.match(/\d+/g);
-        if (foundMonths.length > 0 && days && days.length > 0) {
-          const startMonth = foundMonths[0].month;
-          const startDay = parseInt(days[0]);
-          startDate = new Date(now.getFullYear(), startMonth, startDay);
-          
-          if (startDate.getTime() < now.getTime() - 1000 * 60 * 60 * 24 * 30) {
-             if (startMonth < now.getMonth()) {
-               startDate.setFullYear(now.getFullYear() + 1);
-             }
-          }
-
-          if (days.length > 1) {
-            const endMonth = foundMonths.length > 1 ? foundMonths[foundMonths.length - 1].month : startMonth;
-            const endDay = parseInt(days[days.length - 1]);
-            endDate = new Date(startDate.getFullYear(), endMonth, endDay);
-            
-            if (endDate.getTime() < startDate.getTime()) {
-               endDate.setFullYear(endDate.getFullYear() + 1);
-            }
-          } else {
-            endDate = new Date(startDate.getTime());
-          }
-        }
-      } catch (e) {}
+      const parsedDates = parsePortalDateRange(t.dates, now);
+      const startDate = parsedDates?.startDate ?? null;
+      const endDate = parsedDates?.endDate ?? null;
 
       // Re-calculate status based on parsed dates for better accuracy
       let status = t.status;
@@ -332,6 +293,63 @@ async function internalFetchDisciplinePortal(slug: string, force = false): Promi
     if (cached) return cached.data;
     return { slug, name: slug, tournaments: [] };
   }
+}
+
+function parsePortalDateRange(dates: string, now: Date) {
+  const dateText = dates.toLowerCase().replace(/\s+/g, " ").trim();
+  const monthPattern = "(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*";
+  const dayPattern = "(\\d{1,2})(?:st|nd|rd|th)?";
+  const yearPattern = "((?:19|20)\\d{2})";
+
+  const range = dateText.match(new RegExp(`\\b${monthPattern}\\s+${dayPattern}\\s*[-–—]\\s*(?:${monthPattern}\\s+)?${dayPattern}(?:,?\\s*${yearPattern})?`, "i"));
+  const single = dateText.match(new RegExp(`\\b${monthPattern}\\s+${dayPattern}(?:,?\\s*${yearPattern})?`, "i"));
+
+  if (range) {
+    const startMonth = parsePortalMonth(range[1]);
+    const startDay = Number(range[2]);
+    const endMonth = parsePortalMonth(range[3] || range[1]);
+    const endDay = Number(range[4]);
+    const explicitYear = range[5] ? Number(range[5]) : null;
+    if (startMonth === null || endMonth === null || !isValidPortalDay(startDay) || !isValidPortalDay(endDay)) {
+      return null;
+    }
+
+    const year = explicitYear || inferPortalYear(startMonth, startDay, now);
+    const startDate = new Date(year, startMonth, startDay);
+    const endDate = new Date(year, endMonth, endDay);
+    if (endDate < startDate) endDate.setFullYear(endDate.getFullYear() + 1);
+    return { startDate, endDate };
+  }
+
+  if (single) {
+    const month = parsePortalMonth(single[1]);
+    const day = Number(single[2]);
+    if (month === null || !isValidPortalDay(day)) return null;
+    const year = single[3] ? Number(single[3]) : inferPortalYear(month, day, now);
+    const date = new Date(year, month, day);
+    return { startDate: date, endDate: new Date(date.getTime()) };
+  }
+
+  return null;
+}
+
+function parsePortalMonth(value: string) {
+  const normalized = value.trim().toLowerCase().slice(0, 3);
+  const months = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+  const index = months.indexOf(normalized);
+  return index >= 0 ? index : null;
+}
+
+function inferPortalYear(month: number, day: number, now: Date) {
+  const candidate = new Date(now.getFullYear(), month, day);
+  if (candidate.getTime() < now.getTime() - 1000 * 60 * 60 * 24 * 30 && month < now.getMonth()) {
+    return now.getFullYear() + 1;
+  }
+  return now.getFullYear();
+}
+
+function isValidPortalDay(day: number) {
+  return Number.isInteger(day) && day >= 1 && day <= 31;
 }
 
 

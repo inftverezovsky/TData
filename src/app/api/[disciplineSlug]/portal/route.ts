@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { fetchDisciplinePortal } from "@/lib/liquipedia/portal";
 import { prisma } from "@/lib/db/db";
 import { isPlaceholderTeam } from "@/lib/teams/teams";
+import { requireAdmin } from "@/lib/auth/adminAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ disc
   try {
     const { searchParams } = new URL(request.url);
     const force = searchParams.has("t");
+    if (force) {
+      const unauthorized = await requireAdmin(request);
+      if (unauthorized) return unauthorized;
+    }
     
     const data = await fetchDisciplinePortal(slug, force);
     const fetchDone = Date.now();

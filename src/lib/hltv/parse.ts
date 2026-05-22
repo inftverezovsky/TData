@@ -18,21 +18,33 @@ export function parseHltvDate(dateStr: string, today = new Date()) {
     if (!month || !day || !year) return null;
 
     const date = new Date(`${month} ${day}, ${year}`);
-    return Number.isNaN(date.getTime()) ? null : date;
+    return Number.isNaN(date.getTime())
+      ? null
+      : {
+          date,
+          month,
+          hasExplicitMonth: Boolean(match[1]),
+          hasExplicitYear: Boolean(match[3]),
+        };
   };
 
   if (d.includes(" - ")) {
     const [startPart, endPart] = d.split(" - ").map((part) => part.trim());
-    const end = parsePart(endPart);
-    const startMonth = endPart.match(/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)/i)?.[1] || "";
-    const start = parsePart(startPart, startMonth);
-    if (start && end) return { start, end };
+    const startSeed = parsePart(startPart);
+    const end = parsePart(endPart, startSeed?.month || "");
+    const start = startSeed ?? parsePart(startPart, end?.month || "");
+    if (start && end) {
+      if (start.date > end.date && !start.hasExplicitYear) {
+        start.date.setFullYear(start.date.getFullYear() - 1);
+      }
+      return { start: start.date, end: end.date };
+    }
   }
 
   const singleMatch = d.match(/((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+(?:19\d{2}|20\d{2}))?)/i);
   if (singleMatch) {
-    const date = parsePart(singleMatch[1]);
-    if (date) return { start: date, end: date };
+    const parsed = parsePart(singleMatch[1]);
+    if (parsed) return { start: parsed.date, end: parsed.date };
   }
 
   const fallbackDate = new Date(d);

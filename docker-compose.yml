@@ -6,13 +6,18 @@ services:
     container_name: tcyber-postgres
     restart: always
     environment:
-      POSTGRES_USER: tcyber
-      POSTGRES_PASSWORD: tcyber
-      POSTGRES_DB: tcyber
+      POSTGRES_USER: ${POSTGRES_USER:-tcyber}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-tcyber}
     ports:
-      - "5434:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5434}:5432"
     volumes:
       - tcyber_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   web:
     build: .
@@ -21,11 +26,11 @@ services:
     ports:
       - "3010:3010"
     environment:
-      DATABASE_URL: postgresql://tcyber:tcyber@postgres:5432/tcyber?schema=public
+      DATABASE_URL: postgresql://${POSTGRES_USER:-tcyber}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-tcyber}?schema=public
       LIQUIPEDIA_USER_AGENT: "tcyber-local-docker/0.1 (local development; contact@example.com)"
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-63016}
-      ADMIN_SESSION_SECRET: ${ADMIN_SESSION_SECRET:-tcyber-admin-session-secret}
-      ADMIN_COOKIE_SECURE: ${ADMIN_COOKIE_SECURE:-false}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
+      ADMIN_SESSION_SECRET: ${ADMIN_SESSION_SECRET:?ADMIN_SESSION_SECRET is required}
+      ADMIN_COOKIE_SECURE: ${ADMIN_COOKIE_SECURE:-true}
       TCYBER_INSTANCE_ID: ${TCYBER_INSTANCE_ID:-docker-local}
       TCYBER_SYNC_PEER_URL: ${TCYBER_SYNC_PEER_URL:-}
       TCYBER_SYNC_TOKEN: ${TCYBER_SYNC_TOKEN:-}
@@ -42,12 +47,17 @@ services:
       HLTV_SEARCH_RESULT_WAIT_MS: ${HLTV_SEARCH_RESULT_WAIT_MS:-12000}
       HLTV_SEARCH_MAX_ATTEMPTS: ${HLTV_SEARCH_MAX_ATTEMPTS:-1}
       HLTV_ALLOW_DIRECT_FALLBACK: ${HLTV_ALLOW_DIRECT_FALLBACK:-1}
+      PROXY_AUTO_SEED_URLS: ${PROXY_AUTO_SEED_URLS:-}
       PORT: 3010
+      ADMIN_UPLOAD_ALLOWED_HOSTS: ${ADMIN_UPLOAD_ALLOWED_HOSTS:?ADMIN_UPLOAD_ALLOWED_HOSTS is required}
+      ADMIN_AUTH_ALLOW_NONE: ${ADMIN_AUTH_ALLOW_NONE:-}
+      CRON_PROXY_CHECK_SECRET: ${CRON_PROXY_CHECK_SECRET:-}
     volumes:
       - ./certs:/app/certs:ro
       - tcyber_cache:/app/cache
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:' + (process.env.PORT || 3010) + '/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))\""]
       interval: 30s

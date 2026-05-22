@@ -61,7 +61,7 @@ export default function HltvMatchesWidget() {
             : error}
         </p>
         <Link 
-          href="/counterstrike/hltv"
+          href="/counterstrike?tab=hltv"
           className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-colors"
         >
           Перейти к ручному импорту
@@ -80,7 +80,7 @@ export default function HltvMatchesWidget() {
           <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest">Ближайшие матчи из HLTV</p>
         </div>
         <Link 
-          href="/counterstrike/hltv"
+          href="/counterstrike?tab=hltv"
           className="rounded-full border border-indigo-100 bg-indigo-50 px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-indigo-600 hover:bg-indigo-100 transition-colors"
           title="Открыть полный список"
         >
@@ -157,7 +157,7 @@ export default function HltvMatchesWidget() {
         )}
       </div>
       <Link 
-        href="/counterstrike/hltv"
+        href="/counterstrike?tab=hltv"
         className="p-4 border-t border-slate-100 text-center hover:bg-indigo-500/[0.04] transition-colors"
       >
         <span className="text-[9px] font-black text-indigo-600 uppercase tracking-widest">Перейти к полному списку</span>

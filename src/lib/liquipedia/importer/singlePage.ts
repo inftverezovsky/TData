@@ -63,6 +63,7 @@ export async function processSinglePage(params: {
     let rawJson: any = {};
     let parsedHtml: string | undefined;
     let currentPageId: number | undefined = pageId;
+    let currentPageUrl = pageUrl;
     let rawSnapshot: any | null = null;
     let cacheHit = false;
     let cacheLayer: string | null = null;
@@ -160,6 +161,7 @@ export async function processSinglePage(params: {
       rawJson = rawSnapshot.rawJson;
       parsedHtml = rawSnapshot.rawHtml || undefined;
       currentPageId = rawSnapshot.pageId ?? pageId;
+      currentPageUrl = getSnapshotPageUrl(rawSnapshot) || currentPageUrl;
     } else {
       console.log(`[Importer] Fetching data for ${title}`);
       await markSourceFetchAttempt(cacheInput);
@@ -171,6 +173,7 @@ export async function processSinglePage(params: {
         pageTitle = page.title;
         rawJson = page.raw;
         currentPageId = page.pageId;
+        currentPageUrl = page.fullUrl || currentPageUrl;
 
         if (!getSkipParsedHtml()) {
           try {
@@ -206,6 +209,7 @@ export async function processSinglePage(params: {
             metadata: {
               resourceType: "page",
               resourceKey: titleKey(pageTitle),
+              pageUrl: currentPageUrl,
               mode: "cache-first",
             } as Prisma.InputJsonValue,
           }
@@ -221,7 +225,7 @@ export async function processSinglePage(params: {
           metadata: {
             title: pageTitle,
             pageId: currentPageId ?? null,
-            pageUrl,
+            pageUrl: currentPageUrl,
           },
         });
       } catch (fetchError) {
@@ -240,6 +244,7 @@ export async function processSinglePage(params: {
             rawJson = staleSnapshot.rawJson;
             parsedHtml = staleSnapshot.rawHtml || undefined;
             currentPageId = staleSnapshot.pageId ?? pageId;
+            currentPageUrl = getSnapshotPageUrl(staleSnapshot) || currentPageUrl;
             cacheHit = true;
             cacheLayer = "stale-if-error";
             stale = true;
@@ -267,6 +272,7 @@ export async function processSinglePage(params: {
             rawJson = fallbackSnapshot.rawJson;
             parsedHtml = fallbackSnapshot.rawHtml || undefined;
             currentPageId = fallbackSnapshot.pageId ?? pageId;
+            currentPageUrl = getSnapshotPageUrl(fallbackSnapshot) || currentPageUrl;
             cacheHit = true;
             cacheLayer = "raw-snapshot-stale-if-error";
             stale = true;
@@ -281,7 +287,7 @@ export async function processSinglePage(params: {
     const normalized = normalizer({
       pageId: currentPageId,
       title: pageTitle,
-      pageUrl: pageUrl,
+      pageUrl: currentPageUrl,
       wikitext,
       parsedHtml
     });
@@ -530,6 +536,7 @@ export async function processSinglePage(params: {
             resourceType: "page",
             resourceKey: titleKey(pageTitle),
             mode: "cache-first",
+            pageUrl: currentPageUrl,
             cacheHit,
             cacheLayer,
             stale,
@@ -551,6 +558,7 @@ export async function processSinglePage(params: {
         metadata: {
           title: pageTitle,
           pageId: currentPageId ?? null,
+          pageUrl: currentPageUrl,
           matchesCount: matchesToInsert.length,
           placeholdersCount: matchesToInsert.filter((match) => hasPlaceholderTeams(match)).length,
           stale,
@@ -575,4 +583,13 @@ export async function processSinglePage(params: {
     console.error(`[Importer] Error processing page ${title}:`, error);
     throw error;
   }
+}
+
+function getSnapshotPageUrl(snapshot: { metadata?: unknown }) {
+  const metadata = snapshot.metadata;
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return null;
+  const record = metadata as Record<string, unknown>;
+  if (typeof record.pageUrl === "string") return record.pageUrl;
+  if (typeof record.fullUrl === "string") return record.fullUrl;
+  return null;
 }

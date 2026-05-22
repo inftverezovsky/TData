@@ -24,6 +24,7 @@ export default function UpcomingTournamentsWidget({ disciplineSlug }: { discipli
   const [data, setData] = useState<PortalData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [adminAuthenticated, setAdminAuthenticated] = useState(false);
 
   const fetchTournaments = useCallback(async (forceRefresh = false) => {
     setLoading(true);
@@ -52,6 +53,13 @@ export default function UpcomingTournamentsWidget({ disciplineSlug }: { discipli
     fetchTournaments(false);
   }, [fetchTournaments]);
 
+  useEffect(() => {
+    fetch("/api/admin-auth/session", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((session) => setAdminAuthenticated(Boolean(session.authenticated)))
+      .catch(() => setAdminAuthenticated(false));
+  }, []);
+
   const [showUpcoming, setShowUpcoming] = useState(false);
 
   const ongoing = data?.tournaments.filter(t => t.status === "ongoing") || [];
@@ -65,7 +73,7 @@ export default function UpcomingTournamentsWidget({ disciplineSlug }: { discipli
           <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest">Текущие и ближайшие (до 7 дней)</p>
         </div>
         <button
-          onClick={() => fetchTournaments(true)}
+          onClick={() => fetchTournaments(adminAuthenticated)}
           disabled={loading}
           className="rounded-full border border-indigo-100 bg-indigo-50 px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-indigo-600 hover:bg-indigo-100 transition-colors disabled:opacity-50"
           title="Обновить список"

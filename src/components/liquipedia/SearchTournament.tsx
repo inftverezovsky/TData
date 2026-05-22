@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import LoadTournamentButton from "@/components/ui/LoadTournamentButton";
 import UpcomingTournamentsWidget from "@/components/liquipedia/UpcomingTournamentsWidget";
 import { Loader2, Calendar, Trash2 } from "lucide-react";
@@ -32,8 +32,21 @@ export default function SearchTournament({ disciplineSlug, hideSidebar = false }
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [adminAuthenticated, setAdminAuthenticated] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/admin-auth/session", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data) => setAdminAuthenticated(Boolean(data.authenticated)))
+      .catch(() => setAdminAuthenticated(false));
+  }, []);
 
   async function runSearch(force = false) {
+    if (force && !adminAuthenticated) {
+      setError("Принудительное обновление доступно после входа в админ-раздел.");
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setResults([]);
@@ -113,33 +126,41 @@ export default function SearchTournament({ disciplineSlug, hideSidebar = false }
                 Results: {results.length}
               </span>
             )}
-            <button
-              type="button"
-              onClick={() => runSearch(true)}
-              disabled={loading || query.trim().length < 2}
-              className="flex h-8 items-center gap-1.5 rounded-lg border border-indigo-100 bg-indigo-50 px-3 text-[10px] font-black uppercase tracking-widest text-indigo-600 transition-colors hover:bg-indigo-100 disabled:opacity-40"
-              title="Обновить принудительно, минуя кеш"
-            >
-              <Loader2 className={`w-3 h-3 ${loading ? "animate-spin" : "hidden"}`} />
-              Обновить
-            </button>
-            <button
-              onClick={async () => {
-                if (confirm('Очистить кэш поиска? Это не затронет привязки команд.')) {
-                  const res = await fetch('/api/settings/clear-search-cache', { method: 'POST' });
-                  const data = await res.json();
-                  if (data.ok) {
-                    setResults([]);
-                    alert(`Кэш очищен (${data.deletedCount} файлов)`);
-                  }
-                }
-              }}
-              className="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 text-[10px] font-black uppercase tracking-widest text-slate-500 transition-colors hover:border-red-100 hover:bg-red-50 hover:text-red-600"
-              title="Очистить временный кэш поиска"
-            >
-              <Trash2 className="w-3 h-3" />
-              Очистить кеш поиска
-            </button>
+            {adminAuthenticated && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => runSearch(true)}
+                  disabled={loading || query.trim().length < 2}
+                  className="flex h-8 items-center gap-1.5 rounded-lg border border-indigo-100 bg-indigo-50 px-3 text-[10px] font-black uppercase tracking-widest text-indigo-600 transition-colors hover:bg-indigo-100 disabled:opacity-40"
+                  title="Обновить принудительно, минуя кеш"
+                >
+                  <Loader2 className={`w-3 h-3 ${loading ? "animate-spin" : "hidden"}`} />
+                  Обновить
+                </button>
+                <button
+                  onClick={async () => {
+                    if (confirm('Очистить кэш поиска? Это не затронет привязки команд.')) {
+                      const res = await fetch('/api/settings/clear-search-cache', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ source: 'liquipedia', disciplineSlug }),
+                      });
+                      const data = await res.json();
+                      if (data.ok) {
+                        setResults([]);
+                        alert(`Кэш очищен (${data.deletedCount} файлов)`);
+                      }
+                    }
+                  }}
+                  className="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 text-[10px] font-black uppercase tracking-widest text-slate-500 transition-colors hover:border-red-100 hover:bg-red-50 hover:text-red-600"
+                  title="Очистить временный кэш поиска"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  Очистить кеш поиска
+                </button>
+              </>
+            )}
           </div>
           {results.length > 0 && (
             <span className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-indigo-600">

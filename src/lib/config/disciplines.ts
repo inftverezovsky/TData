@@ -1,6 +1,26 @@
 import { prisma } from "@/lib/db/db";
 import { getLiquipediaDota2ApiUrl, getLiquipediaCounterStrikeApiUrl, getLiquipediaLolApiUrl, getLiquipediaValorantApiUrl } from "@/lib/config/env";
 
+export const KNOWN_DISCIPLINE_SLUGS = ["dota2", "counterstrike", "leagueoflegends", "valorant"] as const;
+export type KnownDisciplineSlug = (typeof KNOWN_DISCIPLINE_SLUGS)[number];
+
+export function isKnownDisciplineSlug(slug: string): slug is KnownDisciplineSlug {
+  return (KNOWN_DISCIPLINE_SLUGS as readonly string[]).includes(slug);
+}
+
+export function getKnownDisciplineApiUrl(slug: KnownDisciplineSlug) {
+  switch (slug) {
+    case "dota2":
+      return getLiquipediaDota2ApiUrl();
+    case "counterstrike":
+      return getLiquipediaCounterStrikeApiUrl();
+    case "leagueoflegends":
+      return getLiquipediaLolApiUrl();
+    case "valorant":
+      return getLiquipediaValorantApiUrl();
+  }
+}
+
 export async function getOrCreateDiscipline(slug: string) {
   const normalizedSlug = slug.trim().toLowerCase();
   

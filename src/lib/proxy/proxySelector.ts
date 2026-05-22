@@ -106,7 +106,7 @@ async function getActiveProxyPool() {
   try {
     const totalCount = await prisma.proxyPool.count();
     if (totalCount < 10) {
-      console.log("[Proxy Selector] Proxy pool has depleted or is empty. Auto-seeding 50 residential Spanish proxies...");
+      console.log("[Proxy Selector] Proxy pool has depleted or is empty. Checking configured auto-seed URLs...");
       await autoSeedSpanishProxies();
     }
   } catch (err) {
@@ -231,74 +231,54 @@ function buildProxyUrl(protocol: string, host: string, port: number, username: s
 }
 
 async function autoSeedSpanishProxies() {
-  const proxiesList = [
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-jrbyd8po-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-yjypfj5p-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-oq783r0o-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-c8jk7jw2-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-z7t4z19t-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-sprn5myu-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-on5z73h6-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-3zc8wrff-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-8h54s4up-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-0kcq1jkd-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-c2uk1njk-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-qum5nncj-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-x25979nz-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-4yvnwbhq-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-rxz77eym-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-6b14rene-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-qgv8kj7u-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-gea4wjnd-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-5ydubvv1-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-w044yhod-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-68gdhm3o-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-uex0ojfd-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-dweypk86-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-c2d4r6b1-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-71ouq3hs-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-e7ad5rac-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-egs01op9-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-gftx583q-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-5wlgl241-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-yls2jo92-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-s10w6n41-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-mqzyjnux-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-n7povuub-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-9pmyoo7z-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-31fjoswd-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-ijacfqhi-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-d9x24she-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-qbt91zpq-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-btqbmjki-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-v2gp9qx4-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-itf9iv9v-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-9pvepw7i-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-2mlpzho7-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-ue4hmg6q-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-igzz74dk-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-crdhb9vm-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-t528l19d-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-bn5wg315-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-4opmqwh6-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080",
-    "http://user-8j4eVPxWX4ouug9d-type-residential-session-w8vzu3h8-country-es-rotation-5:TcUvtlQJpZxFpxxz@geo.g-w.info:10080"
-  ];
+  const seedUrls = getAutoSeedProxyUrls();
+  if (seedUrls.length === 0) {
+    warnMissingAutoSeedConfigOnce();
+    return;
+  }
 
-  const data = proxiesList.map(line => {
-    const u = new URL(line);
-    return {
-      url: line,
-      protocol: u.protocol.replace(':', ''),
-      host: u.hostname,
-      port: parseInt(u.port),
-      username: u.username,
-      password: u.password,
-      isActive: true
-    };
+  const data = seedUrls.flatMap((line) => {
+    try {
+      const u = new URL(line);
+      const port = parseInt(u.port, 10);
+      if (!u.hostname || !Number.isInteger(port) || port <= 0 || port > 65535) {
+        throw new Error("Invalid proxy host or port");
+      }
+      return [{
+        url: u.toString(),
+        protocol: u.protocol.replace(":", ""),
+        host: u.hostname,
+        port,
+        username: u.username ? decodeURIComponent(u.username) : null,
+        password: u.password ? decodeURIComponent(u.password) : null,
+        isActive: true,
+      }];
+    } catch {
+      console.warn("[Proxy Selector] Ignoring invalid PROXY_AUTO_SEED_URLS entry.");
+      return [];
+    }
   });
+
+  if (data.length === 0) return;
 
   await prisma.proxyPool.createMany({
     data,
-    skipDuplicates: true
+    skipDuplicates: true,
   });
+}
+
+let warnedMissingAutoSeedConfig = false;
+
+function warnMissingAutoSeedConfigOnce() {
+  if (warnedMissingAutoSeedConfig) return;
+  warnedMissingAutoSeedConfig = true;
+  console.warn("[Proxy Selector] Proxy pool is empty and PROXY_AUTO_SEED_URLS is not configured.");
+}
+
+function getAutoSeedProxyUrls() {
+  const raw = process.env.PROXY_AUTO_SEED_URLS || process.env.GW_PROXY_AUTO_SEED_URLS || "";
+  return raw
+    .split(/[\r\n,;]+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
 }

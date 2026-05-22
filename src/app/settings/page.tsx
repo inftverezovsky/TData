@@ -7,6 +7,7 @@ import { AdminTeamImporter } from "@/components/admin/AdminTeamImporter";
 import SystemHealthDashboard from "@/components/settings/SystemHealthDashboard";
 import ParserSandbox from "@/components/settings/ParserSandbox";
 import ProxyManager from "@/components/settings/ProxyManager";
+import { ClientErrorBoundary } from "@/components/ui/ClientErrorBoundary";
 import { Sliders, Database, Network, Terminal, Activity, ChevronDown } from "lucide-react";
 
 export default function SettingsPage() {
@@ -62,9 +63,13 @@ export default function SettingsPage() {
               </div>
             </button>
             <div className={`transition-all duration-300 ease-in-out ${openPanels.global ? "max-h-[2500px] border-t border-slate-100 opacity-100" : "max-h-0 opacity-0 overflow-hidden"}`}>
-              <div className="p-6 bg-white">
-                <LiquipediaGlobalSettings />
-              </div>
+              {openPanels.global && (
+                <div className="p-6 bg-white">
+                  <ClientErrorBoundary title="Параметры API недоступны">
+                    <LiquipediaGlobalSettings />
+                  </ClientErrorBoundary>
+                </div>
+              )}
             </div>
           </div>
 
@@ -91,9 +96,13 @@ export default function SettingsPage() {
               </div>
             </button>
             <div className={`transition-all duration-300 ease-in-out ${openPanels.importer ? "max-h-[1500px] border-t border-slate-100 opacity-100" : "max-h-0 opacity-0 overflow-hidden"}`}>
-              <div className="p-6 bg-white">
-                <AdminTeamImporter />
-              </div>
+              {openPanels.importer && (
+                <div className="p-6 bg-white">
+                  <ClientErrorBoundary title="Импорт команд недоступен">
+                    <AdminTeamImporter />
+                  </ClientErrorBoundary>
+                </div>
+              )}
             </div>
           </div>
 
@@ -120,9 +129,13 @@ export default function SettingsPage() {
               </div>
             </button>
             <div className={`transition-all duration-300 ease-in-out ${openPanels.proxy ? "max-h-[2000px] border-t border-slate-100 opacity-100" : "max-h-0 opacity-0 overflow-hidden"}`}>
-              <div className="p-6 bg-white">
-                <ProxyManager />
-              </div>
+              {openPanels.proxy && (
+                <div className="p-6 bg-white">
+                  <ClientErrorBoundary title="Менеджер прокси недоступен">
+                    <ProxyManager />
+                  </ClientErrorBoundary>
+                </div>
+              )}
             </div>
           </div>
 
@@ -149,9 +162,13 @@ export default function SettingsPage() {
               </div>
             </button>
             <div className={`transition-all duration-300 ease-in-out ${openPanels.sandbox ? "max-h-[2000px] border-t border-slate-100 opacity-100" : "max-h-0 opacity-0 overflow-hidden"}`}>
-              <div className="p-6 bg-white">
-                <ParserSandbox />
-              </div>
+              {openPanels.sandbox && (
+                <div className="p-6 bg-white">
+                  <ClientErrorBoundary title="Песочница парсинга недоступна">
+                    <ParserSandbox />
+                  </ClientErrorBoundary>
+                </div>
+              )}
             </div>
           </div>
 
@@ -178,9 +195,13 @@ export default function SettingsPage() {
               </div>
             </button>
             <div className={`transition-all duration-300 ease-in-out ${openPanels.health ? "max-h-[2000px] border-t border-slate-100 opacity-100" : "max-h-0 opacity-0 overflow-hidden"}`}>
-              <div className="p-6 bg-white">
-                <SystemHealthDashboard />
-              </div>
+              {openPanels.health && (
+                <div className="p-6 bg-white">
+                  <ClientErrorBoundary title="Мониторинг системы недоступен">
+                    <SystemHealthDashboard />
+                  </ClientErrorBoundary>
+                </div>
+              )}
             </div>
           </div>
 

@@ -8,10 +8,12 @@ import { queueIdentitySync } from '@/lib/sync/identitySync';
 export const dynamic = "force-dynamic";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ disciplineSlug: string }> }
 ) {
   const { disciplineSlug } = await params;
+  const unauthorized = await requireAdmin(request);
+  if (unauthorized) return unauthorized;
 
   try {
     const settings = await resolveAdminSettings(disciplineSlug);

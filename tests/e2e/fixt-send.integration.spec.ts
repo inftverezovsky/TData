@@ -88,7 +88,7 @@ test.describe("FIxt upload integration", () => {
       expect(duplicate.status()).toBe(409);
       await expect(await duplicate.json()).toMatchObject({
         ok: false,
-        error: "This payload was already sent successfully.",
+        error: "This payload was already sent successfully. Use force option to override.",
       });
       expect(mock.requests).toHaveLength(1);
 

@@ -19,9 +19,14 @@ export async function createAdminSessionResponse(payload: Record<string, unknown
     return NextResponse.json({ error: "Admin password is not configured." }, { status: 503 });
   }
 
+  const sessionSecret = getSessionSecret(configuredPassword);
+  if (!sessionSecret) {
+    return NextResponse.json({ error: "ADMIN_SESSION_SECRET is required in production." }, { status: 503 });
+  }
+
   const response = NextResponse.json(payload);
   const issuedAt = Date.now();
-  const token = `${issuedAt}.${signSession(issuedAt, configuredPassword)}`;
+  const token = `${issuedAt}.${signSession(issuedAt, sessionSecret)}`;
 
   response.cookies.set(ADMIN_SESSION_COOKIE, token, {
     httpOnly: true,
@@ -54,7 +59,10 @@ export async function hasValidAdminSession(request: Request) {
   const configuredPassword = await getConfiguredAdminPassword();
   if (!configuredPassword) return false;
 
-  return safeEqual(signature, signSession(issuedAt, configuredPassword));
+  const sessionSecret = getSessionSecret(configuredPassword);
+  if (!sessionSecret) return false;
+
+  return safeEqual(signature, signSession(issuedAt, sessionSecret));
 }
 
 export function createAdminLogoutResponse() {
@@ -82,13 +90,7 @@ async function getConfiguredAdminPassword() {
   return process.env.NODE_ENV === "production" ? null : "63016";
 }
 
-function signSession(issuedAt: number, configuredPassword: string) {
-  const secret =
-    process.env.ADMIN_SESSION_SECRET ||
-    process.env.NEXTAUTH_SECRET ||
-    process.env.AUTH_SECRET ||
-    configuredPassword;
-
+function signSession(issuedAt: number, secret: string) {
   return createHmac("sha256", secret).update(`${SESSION_SIGNATURE_VERSION}:${issuedAt}`).digest("hex");
 }
 
@@ -100,7 +102,9 @@ function safeEqual(a: string, b: string) {
 }
 
 function shouldUseSecureAdminCookie() {
-  return process.env.ADMIN_COOKIE_SECURE === "true";
+  if (process.env.ADMIN_COOKIE_SECURE === "true") return true;
+  if (process.env.ADMIN_COOKIE_SECURE === "false") return false;
+  return process.env.NODE_ENV === "production";
 }
 
 function getCookie(cookieHeader: string, name: string) {
@@ -109,4 +113,16 @@ function getCookie(cookieHeader: string, name: string) {
     .map((part) => part.trim())
     .find((part) => part.startsWith(`${name}=`))
     ?.slice(name.length + 1);
+}
+
+function getSessionSecret(configuredPassword: string) {
+  const explicitSecret =
+    process.env.ADMIN_SESSION_SECRET ||
+    process.env.NEXTAUTH_SECRET ||
+    process.env.AUTH_SECRET;
+
+  if (explicitSecret) return explicitSecret;
+  if (process.env.NODE_ENV === "production") return null;
+
+  return configuredPassword;
 }

@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/db";
+import { requireAdmin } from "@/lib/auth/adminAuth";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const unauthorized = await requireAdmin(request);
+  if (unauthorized) return unauthorized;
+
   const start = Date.now();
   try {
     // 1. Compute DB Latency

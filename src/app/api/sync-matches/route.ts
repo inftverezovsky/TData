@@ -2,12 +2,16 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/db";
 import { dedupeTournamentMatches } from "@/lib/matches/dedupe";
 import { buildTeamMappingLookup, findTeamMapping } from "@/lib/teams/mappingLookup";
-import { isPlaceholderTeam } from "@/lib/teams/teams";
+import { requireAdmin } from "@/lib/auth/adminAuth";
+import { validateOutboundUrl } from "@/lib/http/outboundPolicy";
 
 const SYNC_TIMEOUT_MS = 15000;
 const MAX_ERROR_BYTES = 4096;
 
 export async function POST(request: Request) {
+  const unauthorized = await requireAdmin(request);
+  if (unauthorized) return unauthorized;
+
   try {
     const { matchIds, disciplineSlug } = await request.json();
 
@@ -61,7 +65,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "External Platform URL not configured in settings" }, { status: 400 });
     }
 
-    if (!isAllowedExternalUrl(targetUrlSetting.value)) {
+    if (!(await isAllowedExternalUrl(targetUrlSetting.value))) {
       return NextResponse.json({ error: "External Platform URL is not allowed" }, { status: 400 });
     }
 
@@ -150,34 +154,18 @@ export async function POST(request: Request) {
   }
 }
 
-function isAllowedExternalUrl(rawUrl: string) {
+async function isAllowedExternalUrl(rawUrl: string) {
   try {
-    const url = new URL(rawUrl);
-    if (!["https:", "http:"].includes(url.protocol)) return false;
-
-    const allowedHosts = (process.env.EXTERNAL_PLATFORM_ALLOWED_HOSTS || "")
-      .split(",")
-      .map((host) => host.trim().toLowerCase())
-      .filter(Boolean);
-
-    if (allowedHosts.length > 0) {
-      return allowedHosts.includes(url.hostname.toLowerCase());
-    }
-
-    return !isPrivateHost(url.hostname);
+    await validateOutboundUrl(rawUrl, {
+      policyName: "External Platform",
+      allowedHostsEnv: [process.env.EXTERNAL_PLATFORM_ALLOWED_HOSTS],
+      allowInsecureHttpEnv: process.env.EXTERNAL_PLATFORM_ALLOW_INSECURE_HTTP,
+      allowPrivateHostsEnv: process.env.EXTERNAL_PLATFORM_ALLOW_PRIVATE_HOSTS,
+      allowAnyPublicHostEnv: process.env.EXTERNAL_PLATFORM_ALLOW_ANY_PUBLIC_HOST,
+      requireAllowedHostsInProduction: false,
+    });
+    return true;
   } catch {
     return false;
   }
-}
-
-function isPrivateHost(hostname: string) {
-  const host = hostname.toLowerCase();
-  return (
-    host === "localhost" ||
-    host === "127.0.0.1" ||
-    host === "::1" ||
-    host.startsWith("10.") ||
-    host.startsWith("192.168.") ||
-    /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)
-  );
 }

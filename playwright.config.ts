@@ -2,6 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 const port = Number(process.env.PLAYWRIGHT_PORT ?? process.env.PORT ?? 3010);
 const baseURL = `http://127.0.0.1:${port}`;
+const useProductionServer = process.env.PLAYWRIGHT_PROD_SERVER === "1";
 const webServerEnv: Record<string, string> = {
   NODE_OPTIONS: "--openssl-legacy-provider",
   ADMIN_PASSWORD: "63016",
@@ -29,9 +30,11 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   webServer: {
-    command: `npx next dev -p ${port} -H 127.0.0.1`,
+    command: useProductionServer
+      ? `npx next start -p ${port} -H 127.0.0.1`
+      : `npx next dev -p ${port} -H 127.0.0.1`,
     url: baseURL,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: !process.env.CI && !useProductionServer,
     timeout: 120_000,
     env: webServerEnv,
   },
@@ -39,6 +42,11 @@ export default defineConfig({
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "mobile-smoke",
+      testMatch: /app-smoke\.spec\.ts/,
+      use: { ...devices["Pixel 5"] },
     },
   ],
 });

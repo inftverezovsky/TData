@@ -739,37 +739,81 @@ function isLikelyTeamName(name: string) {
   return true;
 }
 
+const EVENT_SUBPAGE_ALLOWLIST = [
+  "Group_Stage",
+  "Groups",
+  "Swiss_Stage",
+  "Playoffs",
+  "Bracket",
+  "Main_Event",
+  "Regular_Season",
+  "Finals",
+  "Knockout_Stage",
+  "Play-In",
+  "Play-In_Stage"
+];
+
+const EVENT_SUBPAGE_BLOCKLIST = [
+  "Teams",
+  "Participants",
+  "Results",
+  "Statistics",
+  "North_America",
+  "South_America",
+  "Western_Europe",
+  "Eastern_Europe",
+  "Southeast_Asia",
+  "China",
+  "Europe",
+  "Americas",
+  "Asia",
+  "Oceania",
+  "MENA"
+];
+
 function extractSubPages(wikitext: string, html: string, pageUrl: string): string[] {
   const subPages: string[] = [];
+  const baseUrl = pageUrl.replace(/\/+$/, "");
+  const basePath = new URL(baseUrl).pathname.replace(/\/+$/, "");
+
+  const pushIfRelevant = (href: string | undefined | null) => {
+    if (!href || href.startsWith("#") || href.includes("action=edit")) return;
+
+    const fullUrl = href.startsWith("http") ? href : `https://liquipedia.net${href.startsWith("/") ? href : `/${href}`}`;
+    let parsed: URL;
+    try {
+      parsed = new URL(fullUrl);
+    } catch {
+      return;
+    }
+
+    const path = parsed.pathname.replace(/\/+$/, "");
+    if (!path.startsWith(`${basePath}/`)) return;
+
+    const suffix = decodeURIComponent(path.slice(basePath.length + 1)).replace(/ /g, "_");
+    if (!suffix || suffix.includes("/") || suffix.includes("Qualifier")) return;
+    if (EVENT_SUBPAGE_BLOCKLIST.includes(suffix)) return;
+    if (!EVENT_SUBPAGE_ALLOWLIST.includes(suffix)) return;
+
+    subPages.push(`${parsed.origin}${path}`);
+  };
   
   // 1. HTML Tabs
   if (html) {
     const $ = cheerio.load(html);
     $(".tabs-static a, .nav-tabs a").each((_, el) => {
-      const href = $(el).attr("href");
-      if (href && !href.startsWith("#") && !href.includes("action=edit")) {
-        const fullUrl = href.startsWith("http") ? href : `https://liquipedia.net${href}`;
-        if (fullUrl.startsWith(pageUrl) && fullUrl !== pageUrl && !fullUrl.includes("/Qualifier")) {
-          subPages.push(fullUrl);
-        }
-      }
+      pushIfRelevant($(el).attr("href"));
     });
   }
 
   // 2. Wikitext Links (Aggressive discovery for stages/weeks)
-  const urlParts = pageUrl.split("/leagueoflegends/");
-  const titlePart = urlParts.length > 1 ? decodeURIComponent(urlParts[1]).replace(/_/g, " ") : "";
-  
-  // Pattern: [[PageTitle/Subpage|...]]
-  const subLinkRegex = /\[\[([^|\]]+\/[^|\]]+)(?:\|[^\]]*)?\]\]/g;
-  let match;
-  while ((match = subLinkRegex.exec(wikitext))) {
-    const subPath = match[1].replace(/_/g, " ");
-    if (subPath.startsWith(titlePart) && subPath !== titlePart) {
-      const fullUrl = `https://liquipedia.net/leagueoflegends/${subPath.replace(/ /g, "_")}`;
-      if (!fullUrl.includes("/Qualifier")) {
-        subPages.push(fullUrl);
-      }
+  const wikiLinkRegex = /\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]*)?\]\]/g;
+  let match: RegExpExecArray | null;
+  while ((match = wikiLinkRegex.exec(wikitext))) {
+    const rawTitle = match[1].trim().replace(/ /g, "_");
+    const rawBase = decodeURIComponent(basePath.split("/").slice(2).join("/")).replace(/ /g, "_");
+    if (rawTitle.startsWith(`${rawBase}/`)) {
+      pushIfRelevant(`/leagueoflegends/${rawTitle}`);
     }
   }
 

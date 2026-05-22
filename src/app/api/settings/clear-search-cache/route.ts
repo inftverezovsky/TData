@@ -1,39 +1,25 @@
 import { NextResponse } from "next/server";
-import fs from "fs";
-import path from "path";
+import { requireAdmin } from "@/lib/auth/adminAuth";
+import { clearCacheFiles, type CacheSource } from "@/lib/cache/cacheMaintenance";
 
-export async function POST() {
+const CACHE_SOURCES = new Set<CacheSource>(["hltv", "liquipedia", "all"]);
+
+export async function POST(request: Request) {
+  const unauthorized = await requireAdmin(request);
+  if (unauthorized) return unauthorized;
+
   try {
-    const hltvCache = path.join(process.cwd(), "cache", "hltv");
-    const liquipediaCache = path.join(process.cwd(), "cache", "liquipedia");
+    const body = await request.json().catch(() => ({}));
+    const source = typeof body.source === "string" && CACHE_SOURCES.has(body.source as CacheSource)
+      ? body.source as CacheSource
+      : "all";
+    const disciplineSlug = typeof body.disciplineSlug === "string" && body.disciplineSlug.trim()
+      ? body.disciplineSlug.trim().toLowerCase()
+      : undefined;
 
-    let deletedCount = 0;
-
-    deletedCount += deleteCacheFiles(hltvCache);
-    deletedCount += deleteCacheFiles(liquipediaCache);
-
-    return NextResponse.json({ ok: true, deletedCount });
+    const deletedCount = clearCacheFiles({ source, disciplineSlug });
+    return NextResponse.json({ ok: true, deletedCount, source, disciplineSlug });
   } catch (error: any) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
-}
-
-function deleteCacheFiles(cacheDir: string): number {
-  if (!fs.existsSync(cacheDir)) return 0;
-  let deletedCount = 0;
-
-  for (const file of fs.readdirSync(cacheDir, { withFileTypes: true })) {
-    const fullPath = path.join(cacheDir, file.name);
-    if (file.isDirectory()) {
-      deletedCount += deleteCacheFiles(fullPath);
-      continue;
-    }
-
-    if (file.isFile() && (file.name.endsWith(".json") || file.name.endsWith(".png"))) {
-      fs.unlinkSync(fullPath);
-      deletedCount++;
-    }
-  }
-
-  return deletedCount;
 }

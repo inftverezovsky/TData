@@ -5,6 +5,7 @@ import { emptyValidIfNoItems } from "@/lib/proxy/parserErrors";
 import { HltvMode } from "../scraper";
 
 export const HLTV_CACHE_DIR = path.join(process.cwd(), "cache", "hltv");
+const HLTV_RELATED_CACHE_TTL_MS = Number(process.env.HLTV_RELATED_CACHE_TTL_MS || 6 * 60 * 60 * 1000);
 
 export function classifyHltvEmptyResult(mode: HltvMode, data: any, matchesCount: number | null, eventsCount: number | null) {
   if (data.cacheKind === "negative") return "empty_valid";
@@ -35,6 +36,9 @@ export function readRelatedHltvSearchCache(query?: string) {
     try {
       const cachePath = path.join(HLTV_CACHE_DIR, entry);
       const data = JSON.parse(fs.readFileSync(cachePath, "utf8"));
+      const timestamp = Number(data.timestamp || 0);
+      if (!timestamp || Date.now() - timestamp > HLTV_RELATED_CACHE_TTL_MS) continue;
+
       const events = Array.isArray(data?.result?.events) ? data.result.events : [];
       if (events.length === 0) continue;
 
@@ -48,7 +52,7 @@ export function readRelatedHltvSearchCache(query?: string) {
         scored.push({
           events: matchingEvents,
           score: getSearchMatchScore(query, matchingEvents.map((event: any) => `${event.title || ""} ${event.url || ""}`).join(" ")),
-          timestamp: Number(data.timestamp || 0),
+          timestamp,
         });
       }
     } catch {}

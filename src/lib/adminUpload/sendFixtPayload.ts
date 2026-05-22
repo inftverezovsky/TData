@@ -1,6 +1,8 @@
 import https from 'https';
+import http from 'http';
 import { URL } from 'url';
 import { getAdminHttpClientOptions } from './adminHttpClient';
+import { validateOutboundUrl } from '@/lib/http/outboundPolicy';
 
 const ADMIN_REQUEST_TIMEOUT_MS = 15000;
 const MAX_ADMIN_RESPONSE_BYTES = 1024 * 1024;
@@ -17,9 +19,30 @@ export async function sendFixtPayload(
   mode: string = 'legacy_raw',
   sslVerify: boolean = true
 ): Promise<SendResult> {
+  let url: URL;
+  try {
+    url = new URL(apiUrl);
+    await validateOutboundUrl(url, {
+      policyName: 'Admin API',
+      allowedHostsEnv: [
+        process.env.ADMIN_UPLOAD_ALLOWED_HOSTS,
+        process.env.EXTERNAL_PLATFORM_ALLOWED_HOSTS,
+      ],
+      allowInsecureHttpEnv: process.env.ADMIN_UPLOAD_ALLOW_INSECURE_HTTP,
+      allowPrivateHostsEnv: process.env.ADMIN_UPLOAD_ALLOW_PRIVATE_HOSTS,
+      allowAnyPublicHostEnv: process.env.ADMIN_UPLOAD_ALLOW_ANY_PUBLIC_HOST,
+      requireAllowedHostsInProduction: true,
+    });
+  } catch (error: any) {
+    return {
+      rawResponse: '',
+      status: 'failed',
+      errorMessage: error.message,
+    };
+  }
+
   return new Promise((resolve) => {
     try {
-      const url = new URL(apiUrl);
       const isHttps = url.protocol === 'https:';
 
       let body: Buffer | string;
@@ -59,7 +82,8 @@ export async function sendFixtPayload(
         rejectUnauthorized: sslVerify,
       };
 
-      const req = (isHttps ? https : require('http')).request(options, (res: any) => {
+      const transport = isHttps ? https : http;
+      const req = transport.request(options, (res: any) => {
         let data = '';
         res.on('data', (chunk: any) => {
           if (Buffer.byteLength(data) + Buffer.byteLength(chunk) > MAX_ADMIN_RESPONSE_BYTES) {

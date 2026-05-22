@@ -24,6 +24,7 @@ WORKDIR /app
 
 ENV NODE_ENV production
 ENV NEXT_TELEMETRY_DISABLED 1
+ENV PORT 3010
 
 # Copy necessary files from builder
 COPY --from=builder /app/next.config.mjs ./

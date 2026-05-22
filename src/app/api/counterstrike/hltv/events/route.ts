@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { runHltvScript } from "@/lib/hltv/scraper";
 import { prisma } from "@/lib/db/db";
 import { classifyParserError, emptyValidIfNoItems } from "@/lib/proxy/parserErrors";
+import { requireAdmin } from "@/lib/auth/adminAuth";
 
 export const dynamic = "force-dynamic";
 
@@ -9,6 +10,11 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const force = searchParams.get("force") === "true";
+    if (force) {
+      const unauthorized = await requireAdmin(request);
+      if (unauthorized) return unauthorized;
+    }
+
     const data = await runHltvScript('events', undefined, { noCache: force });
     const hltvEvents = Array.isArray(data.events) ? data.events : [];
 

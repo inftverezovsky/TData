@@ -3,6 +3,8 @@ import LoadTournamentButton from "@/components/ui/LoadTournamentButton";
 import StatusBadge from "@/components/ui/StatusBadge";
 import TeamMappingPanel from "@/components/tournament/TeamMappingPanel";
 import TournamentAdminView from "@/components/tournament/TournamentAdminView";
+import { SettingsPasswordGate } from "@/components/settings/SettingsPasswordGate";
+import { ClientErrorBoundary } from "@/components/ui/ClientErrorBoundary";
 import { prisma } from "@/lib/db/db";
 
 import { formatDateTime } from "@/lib/utils/format";
@@ -125,7 +127,11 @@ export default async function TournamentPage({
             </div>
           </summary>
           <div className="mt-8 border-t border-slate-100 pt-8">
-            <TeamMappingPanel teamNames={teamNames} initialMappings={mappings} disciplineSlug={slug} />
+            <SettingsPasswordGate>
+              <ClientErrorBoundary title="Маппинг команд временно недоступен">
+                <TeamMappingPanel teamNames={teamNames} initialMappings={mappings} disciplineSlug={slug} />
+              </ClientErrorBoundary>
+            </SettingsPasswordGate>
           </div>
         </details>
       </section>

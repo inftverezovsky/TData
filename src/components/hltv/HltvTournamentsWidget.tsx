@@ -21,12 +21,14 @@ type HltvTournament = {
 
 export default function HltvTournamentsWidget({ disciplineSlug }: { disciplineSlug: string }) {
   const router = useRouter();
+  const providerSlug = "counterstrike";
   const [tournaments, setTournaments] = useState<HltvTournament[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [health, setHealth] = useState<{ status: 'online' | 'error' | 'loading', isCloudflare?: boolean }>({ status: 'loading' });
   const [hasLoaded, setHasLoaded] = useState(false);
   const [showUpcoming, setShowUpcoming] = useState(false);
+  const [adminAuthenticated, setAdminAuthenticated] = useState(false);
 
   const ongoing = tournaments.filter(t => t.status === "ongoing") || [];
   const upcoming = tournaments.filter(t => t.status === "upcoming") || [];
@@ -41,7 +43,7 @@ export default function HltvTournamentsWidget({ disciplineSlug }: { disciplineSl
       if (force) {
         queryParams.set("force", "true");
       }
-      const res = await fetch(`/api/${disciplineSlug}/hltv/events?${queryParams.toString()}`);
+      const res = await fetch(`/api/${providerSlug}/hltv/events?${queryParams.toString()}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to fetch");
       
@@ -56,11 +58,18 @@ export default function HltvTournamentsWidget({ disciplineSlug }: { disciplineSl
       setLoading(false);
       setHasLoaded(true);
     }
-  }, [disciplineSlug]);
+  }, []);
 
   useEffect(() => {
     fetchHltvTournaments(false);
   }, [fetchHltvTournaments]);
+
+  useEffect(() => {
+    fetch("/api/admin-auth/session", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data) => setAdminAuthenticated(Boolean(data.authenticated)))
+      .catch(() => setAdminAuthenticated(false));
+  }, []);
 
   return (
     <aside className="premium-card h-fit flex flex-col border-slate-200 shadow-sm overflow-hidden">
@@ -87,7 +96,7 @@ export default function HltvTournamentsWidget({ disciplineSlug }: { disciplineSl
           </div>
         </div>
         <button 
-          onClick={() => fetchHltvTournaments(true)}
+          onClick={() => fetchHltvTournaments(adminAuthenticated)}
           disabled={loading}
           className="p-2 rounded-xl bg-slate-50 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all disabled:opacity-50"
         >
@@ -158,7 +167,7 @@ export default function HltvTournamentsWidget({ disciplineSlug }: { disciplineSl
 
       <div className="p-6 border-t border-slate-100">
         <Link 
-          href={`/${disciplineSlug}/hltv`}
+          href={`/${disciplineSlug}?tab=hltv`}
           className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-indigo-200 bg-indigo-50/50 px-4 py-3.5 text-[10px] font-black uppercase tracking-widest text-indigo-600 hover:border-indigo-300 hover:bg-indigo-50 transition-all group shadow-sm"
         >
           <svg className="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -240,7 +249,7 @@ function TournamentRow({
         <LoadTournamentButton
           title={t.title}
           pageUrl={t.url}
-          disciplineSlug={disciplineSlug}
+          disciplineSlug="counterstrike"
           initialTournamentId={t.dbId || undefined}
           source="hltv"
           size="sm"

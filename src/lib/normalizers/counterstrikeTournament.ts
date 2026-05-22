@@ -765,21 +765,69 @@ function isLikelyTeamName(name: string) {
   return true;
 }
 
+const EVENT_SUBPAGE_ALLOWLIST = [
+  "Group_Stage",
+  "Groups",
+  "Swiss_Stage",
+  "Playoffs",
+  "Bracket",
+  "Main_Event",
+  "Regular_Season",
+  "Finals",
+  "Knockout_Stage",
+  "Play-In",
+  "Play-In_Stage"
+];
+
+const EVENT_SUBPAGE_BLOCKLIST = [
+  "Teams",
+  "Participants",
+  "Results",
+  "Statistics",
+  "North_America",
+  "South_America",
+  "Western_Europe",
+  "Eastern_Europe",
+  "Southeast_Asia",
+  "China",
+  "Europe",
+  "Americas",
+  "Asia",
+  "Oceania",
+  "MENA"
+];
+
 function extractSubPages(html: string, pageUrl: string): string[] {
   const $ = cheerio.load(html);
   const subPages: string[] = [];
+  const baseUrl = pageUrl.replace(/\/+$/, "");
+  const basePath = new URL(baseUrl).pathname.replace(/\/+$/, "");
+
+  const pushIfRelevant = (href: string | undefined | null) => {
+    if (!href || href.startsWith("#") || href.includes("action=edit")) return;
+
+    const fullUrl = href.startsWith("http") ? href : `https://liquipedia.net${href.startsWith("/") ? href : `/${href}`}`;
+    let parsed: URL;
+    try {
+      parsed = new URL(fullUrl);
+    } catch {
+      return;
+    }
+
+    const path = parsed.pathname.replace(/\/+$/, "");
+    if (!path.startsWith(`${basePath}/`)) return;
+
+    const suffix = decodeURIComponent(path.slice(basePath.length + 1)).replace(/ /g, "_");
+    if (!suffix || suffix.includes("/") || suffix.includes("Qualifier")) return;
+    if (EVENT_SUBPAGE_BLOCKLIST.includes(suffix)) return;
+    if (!EVENT_SUBPAGE_ALLOWLIST.includes(suffix)) return;
+
+    subPages.push(`${parsed.origin}${path}`);
+  };
   
   // Look for Tabs (standard Liquipedia structure for multi-page tournaments)
   $(".tabs-static a, .nav-tabs a").each((_, el) => {
-    const href = $(el).attr("href");
-    const text = $(el).text().trim();
-    if (href && !href.startsWith("#") && !href.includes("action=edit")) {
-      // Only include links that look like sub-pages of the current tournament
-      const fullUrl = href.startsWith("http") ? href : `https://liquipedia.net${href}`;
-      if (fullUrl.startsWith(pageUrl) && fullUrl !== pageUrl && !fullUrl.includes("/Qualifier")) {
-        subPages.push(fullUrl);
-      }
-    }
+    pushIfRelevant($(el).attr("href"));
   });
 
   return Array.from(new Set(subPages));

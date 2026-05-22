@@ -6,7 +6,7 @@ export function extractFirstTemplateByPrefix(wikitext: string, prefix: string) {
 }
 
 export function extractTemplatesByNamePrefix(wikitext: string, prefix: string, limit = 300) {
-  const regex = new RegExp(`\\{\\{\\s*${escapeRegExp(prefix)}`, "gi");
+  const regex = new RegExp(`\\{\\{\\s*${escapeRegExp(prefix)}(?=\\s*(?:\\||\\}\\}))`, "gi");
   const templates: string[] = [];
   let match: RegExpExecArray | null;
 
@@ -93,7 +93,10 @@ export function cleanWikiValue(value?: string | null) {
   return output.length > 0 ? output : null;
 }
 
-export function parseWikiDate(value?: string | null) {
+export function parseWikiDate(value?: string | null): Date | null {
+  const templatedDate = parseKnownDateTemplate(value);
+  if (templatedDate) return templatedDate;
+
   const cleaned = cleanWikiValue(value);
   if (!cleaned) return null;
 
@@ -148,6 +151,10 @@ export function parseWikiDate(value?: string | null) {
     return date;
   }
 
+  if (/^(?:19|20)\d{2}$/.test(cleaned)) {
+    return null;
+  }
+
   const parsed = Date.parse(cleaned);
   if (!Number.isNaN(parsed)) {
     const date = new Date(parsed);
@@ -155,6 +162,80 @@ export function parseWikiDate(value?: string | null) {
   }
 
   return null;
+}
+
+function parseKnownDateTemplate(value?: string | null): Date | null {
+  if (!value) return null;
+
+  const templateMatches = String(value).match(/\{\{[^{}]+\}\}/g) ?? [];
+  for (const template of templateMatches) {
+    const { name, params, positional } = parseTemplate(template);
+    const normalizedName = name.trim().toLowerCase();
+
+    if (!/^(date|start date|start date and age|dts)$/i.test(normalizedName)) {
+      continue;
+    }
+
+    const positionalDate = parseDateTemplatePositionals(positional, params);
+    if (positionalDate) return positionalDate;
+  }
+
+  return null;
+}
+
+function parseDateTemplatePositionals(positional: string[], params: Record<string, string>): Date | null {
+  const clean = (value?: string | null) => cleanWikiValue(value) || "";
+  const first = clean(positional[0]);
+  const second = clean(positional[1]);
+  const third = clean(positional[2]);
+
+  if (/^(?:19|20)\d{2}$/.test(first) && second && third) {
+    const year = Number(first);
+    const month = Number(second);
+    const day = Number(third);
+    const hourText = clean(positional[3]) || clean(params.hour);
+    let minuteText = clean(positional[4]) || clean(params.minute);
+    let secondText = clean(positional[5]) || clean(params.second);
+    let timezone = clean(positional[6]) || clean(params.tz) || clean(params.timezone) || null;
+
+    if (minuteText && !/^\d{1,2}$/.test(minuteText) && !timezone) {
+      timezone = minuteText;
+      minuteText = "";
+    }
+    if (secondText && !/^\d{1,2}$/.test(secondText) && !timezone) {
+      timezone = secondText;
+      secondText = "";
+    }
+
+    const hour = Number(hourText || 0);
+    const minute = Number(minuteText || 0);
+    const secondValue = Number(secondText || 0);
+
+    if (isValidDatePart(year, month, day, hour, minute, secondValue)) {
+      const timezoneDate = buildTimezoneAwareDate(year, month, day, hour, minute, secondValue, timezone);
+      if (timezoneDate) return timezoneDate;
+      return new Date(Date.UTC(year, month - 1, day, hour, minute, secondValue));
+    }
+  }
+
+  if (first) {
+    const time = /^\d{1,2}:\d{2}(?::\d{2})?$/.test(second) ? second : "";
+    const timezone = time ? third : second;
+    return parseWikiDate([first, time, timezone].filter(Boolean).join(" "));
+  }
+
+  return null;
+}
+
+function isValidDatePart(year: number, month: number, day: number, hour: number, minute: number, second: number) {
+  return (
+    Number.isInteger(year) && year >= 1900 && year <= 2099 &&
+    Number.isInteger(month) && month >= 1 && month <= 12 &&
+    Number.isInteger(day) && day >= 1 && day <= 31 &&
+    Number.isInteger(hour) && hour >= 0 && hour <= 23 &&
+    Number.isInteger(minute) && minute >= 0 && minute <= 59 &&
+    Number.isInteger(second) && second >= 0 && second <= 59
+  );
 }
 
 function buildTimezoneAwareDate(

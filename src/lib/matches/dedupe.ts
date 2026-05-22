@@ -139,7 +139,7 @@ function getTeamKey(name: string | null | undefined, id: string | null | undefin
 
 function getDateBucket(match: MatchDedupeInput) {
   const textDate = getComparableDateText(match.matchDateTime);
-  if (textDate) {
+  if (textDate && hasCalendarDateText(textDate)) {
     return `text-time:${textDate}`;
   }
 
@@ -148,12 +148,24 @@ function getDateBucket(match: MatchDedupeInput) {
     return `minute:${Math.floor(parsedDate.getTime() / 60000)}`;
   }
 
+  if (textDate) {
+    return `text-time:${textDate}`;
+  }
+
   const looseTextDate = normalizeLoose(match.matchDateTime);
   if (looseTextDate && !/^(date|date tbd|tbd|-|unknown)$/i.test(looseTextDate)) {
     return `text:${looseTextDate}`;
   }
 
   return "date:tbd";
+}
+
+function hasCalendarDateText(value: string) {
+  return (
+    /\b(?:19|20)\d{2}\b/.test(value) ||
+    /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{1,2}\b/i.test(value) ||
+    /\b(?:19|20)\d{2}[-/]\d{1,2}[-/]\d{1,2}\b/.test(value)
+  );
 }
 
 function getComparableDateText(value: string | null | undefined) {

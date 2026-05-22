@@ -1,5 +1,7 @@
-import { getOrCreateDiscipline } from "@/lib/config/disciplines";
+import { prisma } from "@/lib/db/db";
+import { getKnownDisciplineApiUrl, isKnownDisciplineSlug } from "@/lib/config/disciplines";
 import { createSearchTournamentPostRoute } from "@/lib/liquipedia/searchRoute";
+import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
@@ -9,11 +11,23 @@ export async function POST(
 ) {
   const { disciplineSlug } = await params;
   const slug = disciplineSlug.trim().toLowerCase();
+  if (!isKnownDisciplineSlug(slug)) {
+    return NextResponse.json({ error: "Unsupported discipline" }, { status: 404 });
+  }
 
   const routeHandler = createSearchTournamentPostRoute({
     disciplineSlug: slug,
-    getDiscipline: () => getOrCreateDiscipline(slug),
-    defaultApiUrl: `https://liquipedia.net/${slug}/api.php`,
+    getDiscipline: async () => {
+      const discipline = await prisma.discipline.findUnique({
+        where: { slug },
+        select: { id: true, baseApiUrl: true },
+      });
+      if (!discipline) {
+        throw new Error("Discipline is not configured. Run database seed first.");
+      }
+      return discipline;
+    },
+    defaultApiUrl: getKnownDisciplineApiUrl(slug),
   });
 
   return routeHandler(request);

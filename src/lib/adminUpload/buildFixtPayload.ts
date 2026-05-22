@@ -94,39 +94,20 @@ export async function buildFixtPayload(
       continue;
     }
 
+    if (match.hasPlaceholderTeams || isPlaceholderTeam(teamAName) || isPlaceholderTeam(teamBName)) {
+      skippedMatches.push({
+        matchId: match.matchId,
+        reason: 'Placeholder/TBD teams are not upload-ready',
+        teams: `${teamAName} vs ${teamBName}`,
+      });
+      continue;
+    }
+
     const mappingA = findTeamMapping(mappingMap, teamAName);
     const mappingB = findTeamMapping(mappingMap, teamBName);
 
     let platformIdA = mappingA?.platformId || null;
     let platformIdB = mappingB?.platformId || null;
-
-    const isPlaceholderA = isPlaceholderTeam(teamAName);
-    const isPlaceholderB = isPlaceholderTeam(teamBName);
-
-    if ((isPlaceholderA && !platformIdA) || (isPlaceholderB && !platformIdB)) {
-      const placeholderMappings = teamMappings.filter(m => isPlaceholderTeam(m.liquipediaName) && m.platformId);
-      
-      if (placeholderMappings.length > 0) {
-        const usedIds = new Set<string>();
-        if (platformIdA) usedIds.add(String(platformIdA));
-        if (platformIdB) usedIds.add(String(platformIdB));
-
-        // Assign to A if placeholder and not mapped
-        if (isPlaceholderA && !platformIdA) {
-          const available = placeholderMappings.find(m => !usedIds.has(String(m.platformId)));
-          const chosen = available || placeholderMappings[0];
-          platformIdA = chosen.platformId;
-          usedIds.add(String(chosen.platformId));
-        }
-
-        // Assign to B if placeholder and not mapped
-        if (isPlaceholderB && !platformIdB) {
-          const available = placeholderMappings.find(m => !usedIds.has(String(m.platformId)));
-          const chosen = available || placeholderMappings[0];
-          platformIdB = chosen.platformId;
-        }
-      }
-    }
 
     const isMappedA = !!platformIdA;
     const isMappedB = !!platformIdB;

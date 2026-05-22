@@ -1,5 +1,4 @@
 import { HltvMode } from "../scraper";
-import { readRelatedHltvSearchCache } from "./helpers";
 import { executeScraper } from "./execute";
 
 let hltvHeavyQueue: Promise<any> = Promise.resolve();
@@ -11,19 +10,6 @@ const HLTV_MODES = new Set<HltvMode>(["scrape", "search", "event", "events", "he
 export async function runHltvScript(mode: HltvMode, queryOrId?: string, options: { noCache?: boolean } = {}) {
   if (!HLTV_MODES.has(mode)) {
     throw new Error(`Unsupported HLTV scraper mode: ${mode}`);
-  }
-
-  if (mode === "search" && queryOrId && !options.noCache) {
-    const relatedCache = readRelatedHltvSearchCache(queryOrId);
-    if (relatedCache) {
-      return {
-        ok: true,
-        events: relatedCache.events,
-        cacheHit: true,
-        cacheLayer: "file-related",
-        stale: true,
-      };
-    }
   }
 
   const requestKey = `${mode}:${queryOrId}:${options.noCache ? "force" : "cached"}`;

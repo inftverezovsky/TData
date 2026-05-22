@@ -13,6 +13,22 @@ test("parseHltvDate parses single and ranged HLTV dates", () => {
   const ranged = parseHltvDate("May 9th - May 17th, 2026", today);
   assert.equal(ranged?.start.getDate(), 9);
   assert.equal(ranged?.end.getDate(), 17);
+
+  const monthlessEnd = parseHltvDate("May 13th - 17th, 2026", today);
+  assert.equal(monthlessEnd?.start.getFullYear(), 2026);
+  assert.equal(monthlessEnd?.start.getMonth(), 4);
+  assert.equal(monthlessEnd?.start.getDate(), 13);
+  assert.equal(monthlessEnd?.end.getFullYear(), 2026);
+  assert.equal(monthlessEnd?.end.getMonth(), 4);
+  assert.equal(monthlessEnd?.end.getDate(), 17);
+
+  const crossYear = parseHltvDate("Dec 30th - Jan 2nd, 2026", today);
+  assert.equal(crossYear?.start.getFullYear(), 2025);
+  assert.equal(crossYear?.start.getMonth(), 11);
+  assert.equal(crossYear?.start.getDate(), 30);
+  assert.equal(crossYear?.end.getFullYear(), 2026);
+  assert.equal(crossYear?.end.getMonth(), 0);
+  assert.equal(crossYear?.end.getDate(), 2);
 });
 
 test("formatHltvDate formats ranges with ISO dates", () => {

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { runHltvScript } from "@/lib/hltv/scraper";
 import { emptyValidIfNoItems } from "@/lib/proxy/parserErrors";
 import { getHltvSearchErrorMessage, normalizeHltvErrorClass } from "@/lib/hltv/userFacingErrors";
+import { requireAdmin } from "@/lib/auth/adminAuth";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // 5 minutes for long scraping with retries
@@ -14,6 +15,11 @@ export async function GET(request: Request) {
     
     if (!query) {
       return NextResponse.json({ ok: false, error: "Query is required" }, { status: 400 });
+    }
+
+    if (force) {
+      const unauthorized = await requireAdmin(request);
+      if (unauthorized) return unauthorized;
     }
 
     const data = await runHltvScript('search', query, { noCache: force });

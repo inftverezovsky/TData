@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Calendar, Trash2 } from "lucide-react";
 import { getHltvSearchErrorMessage } from "@/lib/hltv/userFacingErrors";
@@ -28,9 +28,22 @@ export default function SearchHltv({ disciplineSlug }: { disciplineSlug: string 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [importingId, setImportingId] = useState<string | null>(null);
+  const [adminAuthenticated, setAdminAuthenticated] = useState(false);
   const router = useRouter();
 
+  useEffect(() => {
+    fetch("/api/admin-auth/session", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data) => setAdminAuthenticated(Boolean(data.authenticated)))
+      .catch(() => setAdminAuthenticated(false));
+  }, []);
+
   async function runSearch(force = false) {
+    if (force && !adminAuthenticated) {
+      setError("Принудительное обновление доступно после входа в админ-раздел.");
+      return;
+    }
+
     setLoading(true);
     setError(null);
     setResults([]);
@@ -68,6 +81,11 @@ export default function SearchHltv({ disciplineSlug }: { disciplineSlug: string 
   }
 
   const handleImport = async (hltvEvent: HltvEvent) => {
+    if (!adminAuthenticated) {
+      setError("Импорт доступен после входа в админ-раздел.");
+      return;
+    }
+
     setImportingId(hltvEvent.id);
     try {
       const response = await fetch(`/api/${disciplineSlug}/import-tournament`, {
@@ -144,33 +162,41 @@ export default function SearchHltv({ disciplineSlug }: { disciplineSlug: string 
                 Results: {results.length}
               </span>
             )}
-            <button
-              type="button"
-              onClick={() => runSearch(true)}
-              disabled={loading || query.trim().length < 2}
-              className="flex h-8 items-center gap-1.5 rounded-lg border border-orange-100 bg-orange-50 px-3 text-[10px] font-black uppercase tracking-widest text-orange-600 transition-colors hover:bg-orange-100 disabled:opacity-40"
-              title="Обновить принудительно, минуя кеш"
-            >
-              <Loader2 className={`w-3 h-3 ${loading ? "animate-spin" : "hidden"}`} />
-              Обновить
-            </button>
-            <button
-              onClick={async () => {
-                if (confirm('Очистить кэш поиска? Это не затронет привязки команд.')) {
-                  const res = await fetch('/api/settings/clear-search-cache', { method: 'POST' });
-                  const data = await res.json();
-                  if (data.ok) {
-                    setResults([]);
-                    alert(`Кэш очищен (${data.deletedCount} файлов)`);
-                  }
-                }
-              }}
-              className="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 text-[10px] font-black uppercase tracking-widest text-slate-500 transition-colors hover:border-red-100 hover:bg-red-50 hover:text-red-600"
-              title="Очистить временный кэш поиска"
-            >
-              <Trash2 className="w-3 h-3" />
-              Очистить кеш поиска
-            </button>
+            {adminAuthenticated && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => runSearch(true)}
+                  disabled={loading || query.trim().length < 2}
+                  className="flex h-8 items-center gap-1.5 rounded-lg border border-orange-100 bg-orange-50 px-3 text-[10px] font-black uppercase tracking-widest text-orange-600 transition-colors hover:bg-orange-100 disabled:opacity-40"
+                  title="Обновить принудительно, минуя кеш"
+                >
+                  <Loader2 className={`w-3 h-3 ${loading ? "animate-spin" : "hidden"}`} />
+                  Обновить
+                </button>
+                <button
+                  onClick={async () => {
+                    if (confirm('Очистить кэш поиска? Это не затронет привязки команд.')) {
+                      const res = await fetch('/api/settings/clear-search-cache', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ source: 'hltv', disciplineSlug }),
+                      });
+                      const data = await res.json();
+                      if (data.ok) {
+                        setResults([]);
+                        alert(`Кэш очищен (${data.deletedCount} файлов)`);
+                      }
+                    }
+                  }}
+                  className="flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 text-[10px] font-black uppercase tracking-widest text-slate-500 transition-colors hover:border-red-100 hover:bg-red-50 hover:text-red-600"
+                  title="Очистить временный кэш поиска"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  Очистить кеш поиска
+                </button>
+              </>
+            )}
           </div>
           {results.length > 0 && (
             <span className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-900">
@@ -223,10 +249,10 @@ export default function SearchHltv({ disciplineSlug }: { disciplineSlug: string 
                 </a>
                 <button
                   onClick={() => handleImport(result)}
-                  disabled={!!importingId}
+                  disabled={!!importingId || !adminAuthenticated}
                   className="flex h-11 min-w-0 items-center justify-center rounded-xl bg-slate-950 px-4 text-[10px] font-black uppercase tracking-widest text-white shadow-lg shadow-slate-200 transition-all hover:bg-orange-600 disabled:opacity-50 sm:px-8"
                 >
-                  {importingId === result.id ? "ЗАГРУЗКА..." : "ЗАГРУЗИТЬ"}
+                  {importingId === result.id ? "ЗАГРУЗКА..." : adminAuthenticated ? "ЗАГРУЗИТЬ" : "ВОЙДИТЕ ДЛЯ ИМПОРТА"}
                 </button>
               </div>
             </div>

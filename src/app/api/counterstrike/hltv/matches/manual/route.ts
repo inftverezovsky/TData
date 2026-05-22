@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/auth/adminAuth";
 import { prisma } from "@/lib/db/db";
 import { getTeamAliasKey, getTeamMappingLookupKeys } from "@/lib/teams/canonicalize";
 import { normalizeTeamName } from "@/lib/teams/teams";
 
 export async function POST(req: Request) {
+  const unauthorized = await requireAdmin(req);
+  if (unauthorized) return unauthorized;
+
   try {
     const { matches: rawMatches } = await req.json();
 

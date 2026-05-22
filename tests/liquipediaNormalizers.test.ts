@@ -111,3 +111,55 @@ test("Valorant normalizer only keeps stage subpages from the selected event", ()
     "https://liquipedia.net/valorant/Source_League/2026/Spring/Promotion/Group_Stage",
   ]);
 });
+
+test("Counter-Strike and LoL normalizers only keep stage subpages", () => {
+  const cs = normalizeCounterStrikeTournament({
+    title: "Source Cup",
+    pageUrl: "https://liquipedia.net/counterstrike/Source_Cup",
+    wikitext: infobox,
+    parsedHtml: `
+      <div class="tabs-static">
+        <a href="/counterstrike/Source_Cup/Playoffs">Playoffs</a>
+        <a href="/counterstrike/Source_Cup/Teams">Teams</a>
+        <a href="/counterstrike/Source_Cup/Europe">Europe</a>
+      </div>
+    `,
+  });
+
+  const lol = normalizeLeagueOfLegendsTournament({
+    title: "Source League",
+    pageUrl: "https://liquipedia.net/leagueoflegends/Source_League",
+    wikitext: `
+      ${infobox}
+      [[Source League/Group Stage]]
+      [[Source League/Teams]]
+      [[Source League/Europe]]
+    `,
+    parsedHtml: `
+      <div class="tabs-static">
+        <a href="/leagueoflegends/Source_League/Playoffs">Playoffs</a>
+      </div>
+    `,
+  });
+
+  assert.deepEqual(cs.subPages, [
+    "https://liquipedia.net/counterstrike/Source_Cup/Playoffs",
+  ]);
+  assert.deepEqual(lol.subPages, [
+    "https://liquipedia.net/leagueoflegends/Source_League/Playoffs",
+    "https://liquipedia.net/leagueoflegends/Source_League/Group_Stage",
+  ]);
+});
+
+test("Valorant wikitext extraction does not duplicate MatchSchedule templates", () => {
+  const normalized = normalizeValorantTournament({
+    title: "Valorant Parser Cup",
+    pageUrl: "https://liquipedia.net/valorant/Valorant_Parser_Cup",
+    wikitext: `
+      ${infobox}
+      {{MatchSchedule|team1=Alpha|team2=Bravo|date=2026-05-13 12:00 UTC}}
+    `,
+  });
+
+  assert.equal(normalized.matches.length, 1);
+});

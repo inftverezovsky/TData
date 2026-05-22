@@ -115,6 +115,27 @@ test("dedupeTournamentMatches collapses same visible time with and without timez
   assert.deepEqual(matches[0].matchDate, new Date("2026-05-13T10:00:00.000Z"));
 });
 
+test("dedupeTournamentMatches keeps same pair on different days when visible time is time-only", () => {
+  const matches = dedupeTournamentMatches([
+    {
+      matchId: "day-one",
+      teamAName: "Alpha",
+      teamBName: "Bravo",
+      matchDate: new Date("2026-05-13T10:00:00.000Z"),
+      matchDateTime: "12:00",
+    },
+    {
+      matchId: "day-two",
+      teamAName: "Bravo",
+      teamBName: "Alpha",
+      matchDate: new Date("2026-05-14T10:00:00.000Z"),
+      matchDateTime: "12:00",
+    },
+  ]);
+
+  assert.equal(matches.length, 2);
+});
+
 test("dedupeTournamentMatches prefers richer duplicate records and fills missing fields", () => {
   const datedMatches = dedupeTournamentMatches([
     {

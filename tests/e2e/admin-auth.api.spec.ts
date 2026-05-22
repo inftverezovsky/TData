@@ -1,12 +1,54 @@
 import { expect, test } from "@playwright/test";
 
 test("admin auth protects settings endpoints and creates a usable session cookie", async ({ request }) => {
-  const unauthenticated = await request.get("/api/settings/global");
-  expect(unauthenticated.status()).toBe(401);
+  const protectedRequests = [
+    () => request.get("/api/settings/global"),
+    () => request.post("/api/settings/global"),
+    () => request.get("/api/settings"),
+    () => request.post("/api/settings"),
+    () => request.post("/api/settings/clear-search-cache"),
+    () => request.get("/api/admin/proxies"),
+    () => request.get("/api/admin/health"),
+    () => request.post("/api/admin/sandbox"),
+    () => request.get("/api/admin-settings/counterstrike"),
+    () => request.post("/api/admin-settings/counterstrike"),
+    () => request.get("/api/admin-settings/proxy-pool"),
+    () => request.post("/api/admin-settings/proxy-pool"),
+    () => request.delete("/api/admin-settings/proxy-pool?id=example"),
+    () => request.get("/api/admin-settings/identity-sync"),
+    () => request.post("/api/admin-settings/identity-sync"),
+    () => request.post("/api/admin-teams/import"),
+    () => request.post("/api/counterstrike/tournament/example/admin-fixt-preview"),
+    () => request.post("/api/counterstrike/tournament/example/admin-fixt-send"),
+    () => request.post("/api/counterstrike/hltv/admin-send"),
+    () => request.post("/api/counterstrike/hltv/matches/manual"),
+    () => request.get("/api/counterstrike/search-hltv?query=test&force=true"),
+    () => request.get("/api/counterstrike/hltv/events?force=true"),
+    () => request.get("/api/counterstrike/hltv/matches?force=true"),
+    () => request.get("/api/counterstrike/hltv/health?force=true"),
+    () => request.get("/api/counterstrike/portal?t=1"),
+    () => request.post("/api/sync-matches"),
+    () => request.get("/api/cron/check-proxies"),
+    () => request.get("/api/team-mapping"),
+    () => request.post("/api/team-mapping"),
+    () => request.delete("/api/team-mapping?name=Example&discipline=counterstrike"),
+    () => request.post("/api/team-mapping/auto"),
+    () => request.post("/api/team-mapping/fuzzy"),
+    () => request.post("/api/counterstrike/import-tournament"),
+    () => request.post("/api/counterstrike/tournament/example/admin-mapping"),
+    () => request.post("/api/counterstrike/tournament/example/platform-id"),
+    () => request.get("/api/disciplines/counterstrike/platform-id"),
+    () => request.post("/api/disciplines/counterstrike/platform-id"),
+    () => request.get("/api/counterstrike/tournament/example/raw"),
+    () => request.get("/api/counterstrike/tournament/example/upload-history"),
+    () => request.get("/api/imports"),
+    () => request.post("/api/dota2/search-tournament", { data: { query: "test", force: true } }),
+  ];
 
-  const publicCacheClear = await request.post("/api/settings/clear-search-cache");
-  await expect(publicCacheClear).toBeOK();
-  await expect(await publicCacheClear.json()).toMatchObject({ ok: true });
+  for (const makeRequest of protectedRequests) {
+    const response = await makeRequest();
+    expect(response.status()).toBe(401);
+  }
 
   const badLogin = await request.post("/api/admin-auth/login", {
     data: { password: "wrong-password" },
@@ -32,4 +74,9 @@ test("admin auth protects settings endpoints and creates a usable session cookie
     headers: { cookie },
   });
   await expect(settings).toBeOK();
+
+  const proxies = await request.get("/api/admin/proxies", {
+    headers: { cookie },
+  });
+  await expect(proxies).toBeOK();
 });

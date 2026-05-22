@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/db";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import { SocksProxyAgent } from "socks-proxy-agent";
+import { requireAdmin } from "@/lib/auth/adminAuth";
 
 // Force Next.js to not cache this route
 export const dynamic = "force-dynamic";
@@ -11,12 +12,16 @@ const TEST_TIMEOUT_MS = 6000; // 6 seconds timeout for proxy test
 const TEST_URL = "https://httpbin.org/ip"; // Light and fast test target
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const secret = searchParams.get("secret");
-  
-  const configuredPassword = process.env.ADMIN_PASSWORD || "63016";
-  if (secret !== configuredPassword) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const configuredSecret = process.env.CRON_PROXY_CHECK_SECRET;
+  if (configuredSecret) {
+    const bearer = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
+
+    if (bearer !== configuredSecret) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+  } else {
+    const unauthorized = await requireAdmin(request);
+    if (unauthorized) return unauthorized;
   }
 
   try {

@@ -1,6 +1,7 @@
 param(
   [string]$Username = "inftverezovsky",
-  [string]$Tag = "latest"
+  [string]$Tag = "latest",
+  [switch]$Prune
 )
 
 $ErrorActionPreference = "Stop"
@@ -11,7 +12,7 @@ Set-Location $ProjectRoot
 
 Write-Host ""
 Write-Host "===============================================================" -ForegroundColor Cyan
-Write-Host "      TCYBER FULL DEPLOYMENT & AUTO-CLEANUP PIPELINE           " -ForegroundColor Cyan
+Write-Host "              TCYBER FULL DEPLOYMENT PIPELINE                  " -ForegroundColor Cyan
 Write-Host "===============================================================" -ForegroundColor Cyan
 Write-Host ""
 
@@ -28,16 +29,19 @@ if ($LASTEXITCODE -ne 0) {
   Write-Error "Remote SSH deployment phase failed."
 }
 
-# 3. Automatically perform deep local Docker cleanup to free up PC disk space
 Write-Host ""
 Write-Host "==> Phase 3: Deployment completed successfully!" -ForegroundColor Green
-Write-Host "==> Automatically cleaning up local Docker cache and builder history to free space..." -ForegroundColor Yellow
-Write-Host "---------------------------------------------------------------" -ForegroundColor Gray
 
-docker system prune -a --volumes -f
+if ($Prune) {
+  Write-Host "==> Prune requested. Cleaning unused local Docker images/build cache..." -ForegroundColor Yellow
+  Write-Host "---------------------------------------------------------------" -ForegroundColor Gray
+  docker system prune -a -f
+} else {
+  Write-Host "==> Skipping Docker prune. Pass -Prune to clean unused local Docker images/build cache." -ForegroundColor Yellow
+}
 
 Write-Host ""
 Write-Host "===============================================================" -ForegroundColor Green
-Write-Host "  SUCCESS! DEPLOYED LIVE ON SERVER & LOCAL PC DISK CLEANED!" -ForegroundColor Green
+Write-Host "            SUCCESS! DEPLOYED LIVE ON SERVER!" -ForegroundColor Green
 Write-Host "===============================================================" -ForegroundColor Green
 Write-Host ""

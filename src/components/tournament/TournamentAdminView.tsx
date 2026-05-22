@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import MatchList from "@/components/matches/MatchList";
 import AdminUploadPanel from "@/components/admin/AdminUploadPanel";
 import ExportPanel from "@/components/admin/ExportPanel";
+import { SettingsPasswordGate } from "@/components/settings/SettingsPasswordGate";
+import { ClientErrorBoundary } from "@/components/ui/ClientErrorBoundary";
 import useSWR from 'swr';
 import { fetcher } from '@/lib/utils/fetcher';
 import {
@@ -24,7 +26,7 @@ export default function TournamentAdminView({ tournament: initialTournament, map
   const selectedMatchIds = useMemo(() => Array.from(selectedIds), [selectedIds]);
 
   // SWR for caching (SAFE: Only hits local DB, not Liquipedia)
-  const { data: tournament, mutate } = useSWR(
+  const { data: tournament, error: refreshError, mutate } = useSWR(
     `/api/${disciplineSlug}/tournament/${initialTournament.id}/data`,
     fetcher,
     { 
@@ -84,34 +86,43 @@ export default function TournamentAdminView({ tournament: initialTournament, map
               {tournament.matches?.length || 0} Matches
             </div>
           </div>
-          <MatchList 
-            matches={normalizedMatches} 
-            mappings={mappingMap} 
-            disciplineSlug={disciplineSlug} 
-            selectedIds={selectedIds}
-            setSelectedIds={setSelectedIds}
-            mutate={mutate}
-          />
+          {refreshError ? (
+            <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-800">
+              Не удалось обновить расписание из API. Показаны последние данные страницы.
+            </div>
+          ) : null}
+          <ClientErrorBoundary title="Расписание временно недоступно">
+            <MatchList
+              matches={normalizedMatches}
+              mappings={mappingMap}
+              disciplineSlug={disciplineSlug}
+              selectedIds={selectedIds}
+              setSelectedIds={setSelectedIds}
+              mutate={mutate}
+            />
+          </ClientErrorBoundary>
         </section>
       </div>
 
       <div className="space-y-8">
-        <div>
-          <AdminUploadPanel 
-            tournamentId={tournament.id} 
-            disciplineSlug={disciplineSlug} 
-            tournamentName={tournament.name} 
-            selectedMatchIds={selectedMatchIds}
-          />
-        </div>
+        <SettingsPasswordGate>
+          <ClientErrorBoundary title="Панель заливки временно недоступна">
+            <AdminUploadPanel
+              tournamentId={tournament.id}
+              disciplineSlug={disciplineSlug}
+              tournamentName={tournament.name}
+              selectedMatchIds={selectedMatchIds}
+            />
+          </ClientErrorBoundary>
 
-        <div>
-          <ExportPanel 
-            tournamentId={tournament.id} 
-            disciplineSlug={disciplineSlug} 
-            selectedMatchIds={selectedMatchIds}
-          />
-        </div>
+          <ClientErrorBoundary title="Экспорт временно недоступен">
+            <ExportPanel
+              tournamentId={tournament.id}
+              disciplineSlug={disciplineSlug}
+              selectedMatchIds={selectedMatchIds}
+            />
+          </ClientErrorBoundary>
+        </SettingsPasswordGate>
       </div>
     </div>
   );

@@ -1,10 +1,12 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import SearchTournament from "@/components/liquipedia/SearchTournament";
 import SearchHltv from "@/components/hltv/SearchHltv";
 import UpcomingTournamentsWidget from "@/components/liquipedia/UpcomingTournamentsWidget";
 import HltvTournamentsWidget from "@/components/hltv/HltvTournamentsWidget";
+import { ClientErrorBoundary } from "@/components/ui/ClientErrorBoundary";
 
 export default function DynamicDisciplinePage({
   params,
@@ -13,8 +15,17 @@ export default function DynamicDisciplinePage({
 }) {
   const { disciplineSlug } = use(params);
   const slug = disciplineSlug.trim().toLowerCase();
+  const searchParams = useSearchParams();
 
-  const [activeTab, setActiveTab] = useState<"liquipedia" | "hltv">("liquipedia");
+  const [activeTab, setActiveTab] = useState<"liquipedia" | "hltv">(
+    slug === "counterstrike" && searchParams.get("tab") === "hltv" ? "hltv" : "liquipedia"
+  );
+
+  useEffect(() => {
+    if (slug === "counterstrike" && searchParams.get("tab") === "hltv") {
+      setActiveTab("hltv");
+    }
+  }, [searchParams, slug]);
 
   if (slug === "counterstrike") {
     return (
@@ -54,11 +65,15 @@ export default function DynamicDisciplinePage({
           <div className="min-w-0">
             {activeTab === "liquipedia" ? (
               <div className="animate-in fade-in slide-in-from-left-4 duration-500">
-                <SearchTournament disciplineSlug="counterstrike" hideSidebar={true} />
+                <ClientErrorBoundary title="Поиск Liquipedia недоступен">
+                  <SearchTournament disciplineSlug="counterstrike" hideSidebar={true} />
+                </ClientErrorBoundary>
               </div>
             ) : (
               <div className="animate-in fade-in slide-in-from-right-4 duration-500">
-                <SearchHltv disciplineSlug="counterstrike" />
+                <ClientErrorBoundary title="Поиск HLTV недоступен">
+                  <SearchHltv disciplineSlug="counterstrike" />
+                </ClientErrorBoundary>
               </div>
             )}
           </div>
@@ -67,11 +82,15 @@ export default function DynamicDisciplinePage({
           <div className="min-w-0 space-y-6">
             {activeTab === "liquipedia" ? (
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <UpcomingTournamentsWidget disciplineSlug="counterstrike" />
+                <ClientErrorBoundary title="Виджет турниров недоступен">
+                  <UpcomingTournamentsWidget disciplineSlug="counterstrike" />
+                </ClientErrorBoundary>
               </div>
             ) : (
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <HltvTournamentsWidget disciplineSlug="counterstrike" />
+                <ClientErrorBoundary title="Виджет HLTV недоступен">
+                  <HltvTournamentsWidget disciplineSlug="counterstrike" />
+                </ClientErrorBoundary>
               </div>
             )}
           </div>
@@ -83,7 +102,9 @@ export default function DynamicDisciplinePage({
   return (
     <div className="animate-in">
       <div className="space-y-12">
-        <SearchTournament disciplineSlug={slug} />
+        <ClientErrorBoundary title="Поиск Liquipedia недоступен">
+          <SearchTournament disciplineSlug={slug} />
+        </ClientErrorBoundary>
       </div>
     </div>
   );
