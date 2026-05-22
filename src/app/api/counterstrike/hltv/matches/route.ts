@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/db";
 import { runHltvScript } from "@/lib/hltv/scraper";
 import { classifyParserError, emptyValidIfNoItems } from "@/lib/proxy/parserErrors";
-import { requireAdmin } from "@/lib/auth/adminAuth";
 import { getTeamAliasKey, getTeamMappingLookupKeys } from "@/lib/teams/canonicalize";
 import { normalizeTeamName } from "@/lib/teams/teams";
 
@@ -12,10 +11,6 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const force = searchParams.get("force") === "true";
-    if (force) {
-      const unauthorized = await requireAdmin(request);
-      if (unauthorized) return unauthorized;
-    }
 
     // 2. Run the Playwright scraper script via the lib
     const data = await runHltvScript('scrape', undefined, { noCache: force });

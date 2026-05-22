@@ -3,15 +3,11 @@ import { prisma } from "@/lib/db/db";
 import { normalizeTeamName } from "@/lib/teams/teams";
 import { runAutoMappingForDiscipline } from "@/lib/teams/mapping";
 import { queueIdentitySync } from "@/lib/sync/identitySync";
-import { requireAdmin } from "@/lib/auth/adminAuth";
 import levenshtein from "fast-levenshtein";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
-
   const body = await request.json();
   const { disciplineSlug, liquipediaName } = body as { disciplineSlug: string; liquipediaName?: string };
   

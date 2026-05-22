@@ -12,8 +12,6 @@ export async function GET(
   { params }: { params: Promise<{ disciplineSlug: string }> }
 ) {
   const { disciplineSlug } = await params;
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
 
   try {
     const settings = await resolveAdminSettings(disciplineSlug);

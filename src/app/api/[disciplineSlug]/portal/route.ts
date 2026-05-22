@@ -1,26 +1,18 @@
 import { NextResponse } from "next/server";
 import { fetchDisciplinePortal } from "@/lib/liquipedia/portal";
 import { prisma } from "@/lib/db/db";
-import { isPlaceholderTeam } from "@/lib/teams/teams";
-import { requireAdmin } from "@/lib/auth/adminAuth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request, { params }: { params: Promise<{ disciplineSlug: string }> }) {
-  const start = Date.now();
   const { disciplineSlug } = await params;
   const slug = disciplineSlug;
   
   try {
     const { searchParams } = new URL(request.url);
     const force = searchParams.has("t");
-    if (force) {
-      const unauthorized = await requireAdmin(request);
-      if (unauthorized) return unauthorized;
-    }
     
     const data = await fetchDisciplinePortal(slug, force);
-    const fetchDone = Date.now();
 
     if (data.tournaments.length === 0) {
       return NextResponse.json(data);
@@ -78,8 +70,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ disc
     const statsMap = new Map(matchStats.map(s => [s.tournamentId, s]));
     const placeholdersSet = new Set(withPlaceholders.map(p => p.tournamentId));
 
-    const dbDone = Date.now();
-    
     // Enrich with DB status
     const enrichedTournaments = data.tournaments.map((t) => {
       const dbTournament = dbMap.get(t.url);

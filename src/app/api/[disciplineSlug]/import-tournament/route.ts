@@ -5,7 +5,6 @@ import { makeLiquipediaPageUrl } from "@/lib/liquipedia/client";
 import { getNormalizer } from "@/lib/normalizers/registry";
 import { importTournamentRecursive } from "@/lib/liquipedia/importer";
 import { dedupeTournamentMatches } from "@/lib/matches/dedupe";
-import { requireAdmin } from "@/lib/auth/adminAuth";
 import { importHltvTournament } from "@/lib/importSources/hltv";
 
 export const dynamic = "force-dynamic";
@@ -24,9 +23,6 @@ export async function POST(
   { params }: { params: Promise<{ disciplineSlug: string }> }
 ) {
   const { disciplineSlug } = await params;
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
-
   const slug = disciplineSlug.trim().toLowerCase();
 
   const body = (await request.json()) as Body;

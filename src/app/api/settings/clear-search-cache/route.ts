@@ -1,13 +1,9 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth/adminAuth";
 import { clearCacheFiles, type CacheSource } from "@/lib/cache/cacheMaintenance";
 
 const CACHE_SOURCES = new Set<CacheSource>(["hltv", "liquipedia", "all"]);
 
 export async function POST(request: Request) {
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
-
   try {
     const body = await request.json().catch(() => ({}));
     const source = typeof body.source === "string" && CACHE_SOURCES.has(body.source as CacheSource)

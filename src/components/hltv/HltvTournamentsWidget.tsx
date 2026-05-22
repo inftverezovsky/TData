@@ -2,7 +2,6 @@
 
 import { useCallback, useState, useEffect } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Trophy, RotateCw, Loader2, Check, Star } from "lucide-react";
 import { TournamentSkeleton } from "@/components/ui/Skeleton";
 import LoadTournamentButton from "@/components/ui/LoadTournamentButton";
@@ -20,7 +19,6 @@ type HltvTournament = {
 };
 
 export default function HltvTournamentsWidget({ disciplineSlug }: { disciplineSlug: string }) {
-  const router = useRouter();
   const providerSlug = "counterstrike";
   const [tournaments, setTournaments] = useState<HltvTournament[]>([]);
   const [loading, setLoading] = useState(false);
@@ -28,7 +26,6 @@ export default function HltvTournamentsWidget({ disciplineSlug }: { disciplineSl
   const [health, setHealth] = useState<{ status: 'online' | 'error' | 'loading', isCloudflare?: boolean }>({ status: 'loading' });
   const [hasLoaded, setHasLoaded] = useState(false);
   const [showUpcoming, setShowUpcoming] = useState(false);
-  const [adminAuthenticated, setAdminAuthenticated] = useState(false);
 
   const ongoing = tournaments.filter(t => t.status === "ongoing") || [];
   const upcoming = tournaments.filter(t => t.status === "upcoming") || [];
@@ -64,13 +61,6 @@ export default function HltvTournamentsWidget({ disciplineSlug }: { disciplineSl
     fetchHltvTournaments(false);
   }, [fetchHltvTournaments]);
 
-  useEffect(() => {
-    fetch("/api/admin-auth/session", { cache: "no-store" })
-      .then((response) => response.json())
-      .then((data) => setAdminAuthenticated(Boolean(data.authenticated)))
-      .catch(() => setAdminAuthenticated(false));
-  }, []);
-
   return (
     <aside className="premium-card h-fit flex flex-col border-slate-200 shadow-sm overflow-hidden">
       <div className="p-6 border-b border-slate-100 flex items-center justify-between">
@@ -96,7 +86,7 @@ export default function HltvTournamentsWidget({ disciplineSlug }: { disciplineSl
           </div>
         </div>
         <button 
-          onClick={() => fetchHltvTournaments(adminAuthenticated)}
+          onClick={() => fetchHltvTournaments(true)}
           disabled={loading}
           className="p-2 rounded-xl bg-slate-50 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all disabled:opacity-50"
         >

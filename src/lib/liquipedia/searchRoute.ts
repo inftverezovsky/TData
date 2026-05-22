@@ -3,7 +3,6 @@ import { prisma } from "@/lib/db/db";
 import { getSearchCacheTtlMs } from "@/lib/config/env";
 import { filterLiquipediaSearchResultsForQuery, searchTournamentPages } from "@/lib/liquipedia/client";
 import { classifyParserError, emptyValidIfNoItems } from "@/lib/proxy/parserErrors";
-import { requireAdmin } from "@/lib/auth/adminAuth";
 import { getClientRateLimitKey } from "@/lib/http/clientIp";
 import crypto from "crypto";
 
@@ -62,11 +61,6 @@ async function handleSearchRequest(config: {
 
     if (isSearchRateLimited(getClientRateLimitKey(request, "liquipedia-search"))) {
       return NextResponse.json({ error: "Too many search requests" }, { status: 429 });
-    }
-
-    if (force) {
-      const unauthorized = await requireAdmin(request);
-      if (unauthorized) return unauthorized;
     }
 
     const discipline = await config.getDiscipline();

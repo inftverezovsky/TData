@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from 'react';
 import MatchList from "@/components/matches/MatchList";
 import AdminUploadPanel from "@/components/admin/AdminUploadPanel";
 import ExportPanel from "@/components/admin/ExportPanel";
-import { SettingsPasswordGate } from "@/components/settings/SettingsPasswordGate";
 import { ClientErrorBoundary } from "@/components/ui/ClientErrorBoundary";
 import useSWR from 'swr';
 import { fetcher } from '@/lib/utils/fetcher';
@@ -105,24 +104,22 @@ export default function TournamentAdminView({ tournament: initialTournament, map
       </div>
 
       <div className="space-y-8">
-        <SettingsPasswordGate>
-          <ClientErrorBoundary title="Панель заливки временно недоступна">
-            <AdminUploadPanel
-              tournamentId={tournament.id}
-              disciplineSlug={disciplineSlug}
-              tournamentName={tournament.name}
-              selectedMatchIds={selectedMatchIds}
-            />
-          </ClientErrorBoundary>
+        <ClientErrorBoundary title="Панель заливки временно недоступна">
+          <AdminUploadPanel
+            tournamentId={tournament.id}
+            disciplineSlug={disciplineSlug}
+            tournamentName={tournament.name}
+            selectedMatchIds={selectedMatchIds}
+          />
+        </ClientErrorBoundary>
 
-          <ClientErrorBoundary title="Экспорт временно недоступен">
-            <ExportPanel
-              tournamentId={tournament.id}
-              disciplineSlug={disciplineSlug}
-              selectedMatchIds={selectedMatchIds}
-            />
-          </ClientErrorBoundary>
-        </SettingsPasswordGate>
+        <ClientErrorBoundary title="Экспорт временно недоступен">
+          <ExportPanel
+            tournamentId={tournament.id}
+            disciplineSlug={disciplineSlug}
+            selectedMatchIds={selectedMatchIds}
+          />
+        </ClientErrorBoundary>
       </div>
     </div>
   );

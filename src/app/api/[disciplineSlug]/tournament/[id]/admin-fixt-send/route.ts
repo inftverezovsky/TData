@@ -4,16 +4,12 @@ import { buildFixtPayload } from '@/lib/adminUpload/buildFixtPayload';
 import { phpSerialize } from '@/lib/adminUpload/phpSerialize';
 import { resolveAdminSettings } from '@/lib/adminUpload/resolveAdminSettings';
 import { sendFixtPayload } from '@/lib/adminUpload/sendFixtPayload';
-import { requireAdmin } from '@/lib/auth/adminAuth';
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string; disciplineSlug: string }> }
 ) {
   const { disciplineSlug: routeDisciplineSlug, id } = await params;
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
-
   try {
     const body = await request.json();
     const disciplineSlug = routeDisciplineSlug;
