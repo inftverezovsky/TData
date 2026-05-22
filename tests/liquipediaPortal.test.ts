@@ -23,3 +23,20 @@ test("League of Legends portal parser reads tournaments-list items from main pag
   const data = buildLeagueOfLegendsPortalResult(html, "leagueoflegends");
   assert.ok(data.tournaments.some((tournament) => tournament.title === "Mid-Season Invitational/2026"));
 });
+
+test("League of Legends portal keeps undated tournament-list items visible", () => {
+  const html = `
+    <div class="tournaments-list-item">
+      <div class="tournaments-list-item__name">
+        <a href="/leagueoflegends/LCK/2026" title="LCK/2026">LCK 2026</a>
+      </div>
+      <div class="tournaments-list-item__date"></div>
+    </div>
+  `;
+
+  const data = buildLeagueOfLegendsPortalResult(html, "leagueoflegends");
+  assert.deepEqual(
+    data.tournaments.map((tournament) => tournament.title),
+    ["LCK/2026"]
+  );
+});

@@ -19,6 +19,7 @@ export type DisciplinePortalData = {
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 const PORTAL_LOOKBACK_DAYS = Number(process.env.LIQUIPEDIA_PORTAL_LOOKBACK_DAYS || 5);
 const PORTAL_UPCOMING_WINDOW_DAYS = Number(process.env.LIQUIPEDIA_PORTAL_UPCOMING_WINDOW_DAYS || 7);
+const PORTAL_TIMEOUT_MS = Number(process.env.LIQUIPEDIA_PORTAL_TIMEOUT_MS || 60000);
 
 export async function fetchDisciplinePortal(slug: string, force = false): Promise<DisciplinePortalData> {
   const cacheKey = slug;
@@ -38,17 +39,23 @@ export async function fetchDisciplinePortal(slug: string, force = false): Promis
     console.log(`[Portal Lib] Force refresh: cleared proxy cooldowns and portal cache for ${slug}`);
   }
 
-  // Absolute timeout of 45 seconds for the entire operation
-  return Promise.race([
-    internalFetchDisciplinePortal(slug, force),
-    new Promise<DisciplinePortalData>((resolve) => 
-      setTimeout(() => {
-        console.warn(`[Portal Lib] TIMEOUT reached for ${slug}, returning cached/empty`);
-        const cached = portalCache.get(cacheKey);
-        resolve(cached?.data || { slug, name: slug, tournaments: [] });
-      }, 45000)
-    )
-  ]);
+  let timeoutId: NodeJS.Timeout | null = null;
+  const timeoutPromise = new Promise<DisciplinePortalData>((resolve) => {
+    timeoutId = setTimeout(() => {
+      console.warn(`[Portal Lib] TIMEOUT reached for ${slug}, returning cached/empty`);
+      const cached = portalCache.get(cacheKey);
+      resolve(cached?.data || { slug, name: slug, tournaments: [] });
+    }, PORTAL_TIMEOUT_MS);
+  });
+
+  try {
+    return await Promise.race([
+      internalFetchDisciplinePortal(slug, force),
+      timeoutPromise,
+    ]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
 }
 
 async function internalFetchDisciplinePortal(slug: string, force = false): Promise<DisciplinePortalData> {
@@ -61,7 +68,7 @@ async function internalFetchDisciplinePortal(slug: string, force = false): Promi
   try {
     let html = "";
     let attempts = 0;
-  const maxAttempts = force ? 3 : 1;
+  const maxAttempts = force || slug === "leagueoflegends" ? 3 : 1;
 
   while (attempts < maxAttempts && !html) {
     attempts++;
@@ -96,7 +103,9 @@ async function internalFetchDisciplinePortal(slug: string, force = false): Promi
       ? buildLeagueOfLegendsPortalResult(html, slug)
       : buildGenericPortalResult(html, slug);
 
-    getPortalCache().set(cacheKey, { data: result, timestamp: Date.now() });
+    if (result.tournaments.length > 0) {
+      getPortalCache().set(cacheKey, { data: result, timestamp: Date.now() });
+    }
     return result;
   } catch (err) {
     console.error(`[Portal Lib] Error in fetchDisciplinePortal for ${slug}:`, err);

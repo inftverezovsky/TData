@@ -4,6 +4,8 @@ import { useState, useCallback, useEffect } from "react";
 import LoadTournamentButton from "@/components/ui/LoadTournamentButton";
 import { TournamentSkeleton } from "@/components/ui/Skeleton";
 
+const PORTAL_CLIENT_TIMEOUT_MS = 90000;
+
 type PortalTournament = {
   title: string;
   url: string;
@@ -34,7 +36,7 @@ export default function UpcomingTournamentsWidget({ disciplineSlug }: { discipli
       const url = `/api/${disciplineSlug}/portal${forceRefresh ? `?t=${Date.now()}` : ""}`;
       
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      const timeoutId = setTimeout(() => controller.abort(), PORTAL_CLIENT_TIMEOUT_MS);
       
       const res = await fetch(url, { signal: controller.signal });
       clearTimeout(timeoutId);
