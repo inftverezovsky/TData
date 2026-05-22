@@ -18,6 +18,8 @@ const LIQUIPEDIA_SEARCH_TIME_BUDGET_MS = Number(process.env.LIQUIPEDIA_SEARCH_TI
 const LIQUIPEDIA_SEARCH_API_TIMEOUT_MS = Number(process.env.LIQUIPEDIA_SEARCH_API_TIMEOUT_MS || 7000);
 const LIQUIPEDIA_SEARCH_API_MAX_RETRIES = Number(process.env.LIQUIPEDIA_SEARCH_API_MAX_RETRIES || 0);
 const LIQUIPEDIA_SEARCH_METADATA_TTL_MS = Number(process.env.LIQUIPEDIA_SEARCH_METADATA_TTL_SECONDS || 24 * 60 * 60) * 1000;
+const LIQUIPEDIA_SEARCH_FUTURE_WINDOW_DAYS = Number(process.env.LIQUIPEDIA_SEARCH_FUTURE_WINDOW_DAYS || 30);
+const LIQUIPEDIA_LOL_SEARCH_FUTURE_WINDOW_DAYS = Number(process.env.LIQUIPEDIA_LOL_SEARCH_FUTURE_WINDOW_DAYS || 180);
 const SEARCH_PAGE_METADATA_VERSION = 3;
 
 export async function searchTournamentPages(
@@ -35,6 +37,9 @@ export async function searchTournamentPages(
     maxRetries: LIQUIPEDIA_SEARCH_API_MAX_RETRIES,
     mode: "search",
   };
+  const futureWindowDays = disciplineSlug === "leagueoflegends"
+    ? LIQUIPEDIA_LOL_SEARCH_FUTURE_WINDOW_DAYS
+    : LIQUIPEDIA_SEARCH_FUTURE_WINDOW_DAYS;
 
   const allTitlesSet = new Set<string>();
   const titleToUrl = new Map<string, string>();
@@ -146,7 +151,7 @@ export async function searchTournamentPages(
       }
       const now = Date.now();
       const pastLimit = now - 30 * 24 * 60 * 60 * 1000;
-      const futureLimit = now + 30 * 24 * 60 * 60 * 1000;
+      const futureLimit = now + futureWindowDays * 24 * 60 * 60 * 1000;
       
       const cleanDate = (val: string) => {
         const rawDateMatch = val.match(/\b(\d{4}-\d{2}-\d{2})\b/);
@@ -259,9 +264,9 @@ export async function searchTournamentPages(
           let score = allTitles.length - i;
           if (yearRegex.test(title)) score += 1000;
 
-          if (!shouldShowLiquipediaSearchResult(query, title, activeInfo.dates, currentYear)) {
-            continue;
-          }
+        if (!shouldShowLiquipediaSearchResult(query, title, activeInfo.dates, currentYear, { futureWindowDays })) {
+          continue;
+        }
 
           results.push({
             pageId: activeInfo.pageId,
@@ -387,11 +392,12 @@ function addYearPathVariations(query: string, variations: Set<string>) {
 export function filterLiquipediaSearchResultsForQuery<T extends { title: string; dates?: string | null }>(
   query: string,
   results: T[],
-  currentYear = new Date().getFullYear()
+  currentYear = new Date().getFullYear(),
+  options: { futureWindowDays?: number } = {}
 ) {
   return results.filter((result) =>
     isLiquipediaSearchValueRelevant(query, result.title, result.dates ?? null)
-    && shouldShowLiquipediaSearchResult(query, result.title, result.dates ?? null, currentYear)
+    && shouldShowLiquipediaSearchResult(query, result.title, result.dates ?? null, currentYear, options)
   );
 }
 
@@ -414,7 +420,13 @@ export function isLiquipediaSearchValueRelevant(query: string, title: string, da
   return explicitYears.every((year) => normalizedValue.includes(String(year)));
 }
 
-export function shouldShowLiquipediaSearchResult(query: string, title: string, dates: string | null | undefined, currentYear: number) {
+export function shouldShowLiquipediaSearchResult(
+  query: string,
+  title: string,
+  dates: string | null | undefined,
+  currentYear: number,
+  options: { futureWindowDays?: number } = {}
+) {
   if (queryHasExplicitYear(query)) {
     return isLiquipediaSearchValueRelevant(query, title, dates);
   }
@@ -430,7 +442,8 @@ export function shouldShowLiquipediaSearchResult(query: string, title: string, d
   const firstDate = dates.match(/\b(\d{4}-\d{2}-\d{2})\b/)?.[1];
   if (firstDate) {
     const startDate = new Date(firstDate);
-    const futureLimit = Date.now() + 30 * 24 * 60 * 60 * 1000;
+    const futureWindowDays = options.futureWindowDays ?? LIQUIPEDIA_SEARCH_FUTURE_WINDOW_DAYS;
+    const futureLimit = Date.now() + futureWindowDays * 24 * 60 * 60 * 1000;
     if (!Number.isNaN(startDate.getTime()) && startDate.getTime() > futureLimit) return false;
   }
 

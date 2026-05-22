@@ -71,6 +71,20 @@ export async function processSinglePage(params: {
     let warning: string | null = null;
     let externalRequests = 0;
     const requestOptions = getLiquipediaImportRequestOptions();
+    const shouldFetchParsedHtml = disciplineSlug === "leagueoflegends" || !getSkipParsedHtml();
+
+    const fetchParsedHtml = async (targetTitle: string) => {
+      try {
+        const html = await fetchPageParsed(apiUrl, targetTitle, requestOptions);
+        externalRequests += 1;
+        return html;
+      } catch (parseError) {
+        const parseWarning = `Parsed HTML недоступен для ${targetTitle}: ${parseError instanceof Error ? parseError.message : "unknown error"}`;
+        warning = warning ? `${warning}; ${parseWarning}` : parseWarning;
+        console.warn(`[Importer] ${parseWarning}`);
+        return undefined;
+      }
+    };
 
     const cacheInput = {
       source: "liquipedia",
@@ -162,6 +176,9 @@ export async function processSinglePage(params: {
       parsedHtml = rawSnapshot.rawHtml || undefined;
       currentPageId = rawSnapshot.pageId ?? pageId;
       currentPageUrl = getSnapshotPageUrl(rawSnapshot) || currentPageUrl;
+      if (shouldFetchParsedHtml && !parsedHtml) {
+        parsedHtml = await fetchParsedHtml(pageTitle);
+      }
     } else {
       console.log(`[Importer] Fetching data for ${title}`);
       await markSourceFetchAttempt(cacheInput);
@@ -175,15 +192,8 @@ export async function processSinglePage(params: {
         currentPageId = page.pageId;
         currentPageUrl = page.fullUrl || currentPageUrl;
 
-        if (!getSkipParsedHtml()) {
-          try {
-            parsedHtml = await fetchPageParsed(apiUrl, pageTitle, requestOptions);
-            externalRequests += 1;
-          } catch (parseError) {
-            const parseWarning = `Parsed HTML недоступен для ${pageTitle}: ${parseError instanceof Error ? parseError.message : "unknown error"}`;
-            warning = warning ? `${warning}; ${parseWarning}` : parseWarning;
-            console.warn(`[Importer] ${parseWarning}`);
-          }
+        if (shouldFetchParsedHtml) {
+          parsedHtml = await fetchParsedHtml(pageTitle);
         } else {
           console.log(`[Importer] Skipping fetchPageParsed for ${pageTitle} (LIQUIPEDIA_SKIP_PARSED_HTML=1)`);
         }
@@ -245,6 +255,9 @@ export async function processSinglePage(params: {
             parsedHtml = staleSnapshot.rawHtml || undefined;
             currentPageId = staleSnapshot.pageId ?? pageId;
             currentPageUrl = getSnapshotPageUrl(staleSnapshot) || currentPageUrl;
+            if (shouldFetchParsedHtml && !parsedHtml) {
+              parsedHtml = await fetchParsedHtml(pageTitle);
+            }
             cacheHit = true;
             cacheLayer = "stale-if-error";
             stale = true;
@@ -273,6 +286,9 @@ export async function processSinglePage(params: {
             parsedHtml = fallbackSnapshot.rawHtml || undefined;
             currentPageId = fallbackSnapshot.pageId ?? pageId;
             currentPageUrl = getSnapshotPageUrl(fallbackSnapshot) || currentPageUrl;
+            if (shouldFetchParsedHtml && !parsedHtml) {
+              parsedHtml = await fetchParsedHtml(pageTitle);
+            }
             cacheHit = true;
             cacheLayer = "raw-snapshot-stale-if-error";
             stale = true;

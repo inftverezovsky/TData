@@ -73,13 +73,14 @@ async function handleSearchRequest(config: {
     const cacheSince = new Date(Date.now() - getSearchCacheTtlMs());
     const staleSince = new Date(Date.now() - 24 * 60 * 60 * 1000);
     let staleRequest: Awaited<ReturnType<typeof findCachedSearchRequest>> = null;
+    const futureWindowDays = config.disciplineSlug === "leagueoflegends" ? 180 : 30;
 
     if (!force) {
       const cachedRequest = await findCachedSearchRequest(discipline.id, query, cacheSince);
       staleRequest = cachedRequest || await findCachedSearchRequest(discipline.id, query, staleSince);
 
       if (cachedRequest) {
-        const cachedResults = filterLiquipediaSearchResultsForQuery(query, cachedRequest.results);
+        const cachedResults = filterLiquipediaSearchResultsForQuery(query, cachedRequest.results, new Date().getFullYear(), { futureWindowDays });
         const cachedResultsCount = cachedResults.length;
         if (cachedResultsCount > 0) {
           await logSearchRouteRequest({
@@ -114,7 +115,7 @@ async function handleSearchRequest(config: {
       results = await searchTournamentPages(query, apiUrl, config.disciplineSlug);
     } catch (error) {
       if (staleRequest) {
-        const staleResults = filterLiquipediaSearchResultsForQuery(query, staleRequest.results);
+        const staleResults = filterLiquipediaSearchResultsForQuery(query, staleRequest.results, new Date().getFullYear(), { futureWindowDays });
         if (staleResults.length === 0) {
           throw error;
         }

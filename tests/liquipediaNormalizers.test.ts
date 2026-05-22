@@ -151,6 +151,41 @@ test("Counter-Strike and LoL normalizers only keep stage subpages", () => {
   ]);
 });
 
+test("LoL normalizer extracts match-info vertical schedule cards and season tabs", () => {
+  const normalized = normalizeLeagueOfLegendsTournament({
+    title: "LCK 2026 Season",
+    pageUrl: "https://liquipedia.net/leagueoflegends/LCK/2026",
+    wikitext: `
+      {{Infobox league|name=LCK 2026 Season|sdate=2026-04-01|edate=2026-09-13}}
+      [[LCK/2026/Rounds 1-2]]
+      [[LCK/2026/Road to MSI]]
+      [[LCK/2026/Rounds 3-4]]
+    `,
+    parsedHtml: `
+      <div class="tabs-static">
+        <a href="/leagueoflegends/LCK/2026/Cup">Cup</a>
+        <a href="/leagueoflegends/LCK/2026/Rounds_1-2">Rounds 1-2</a>
+        <a href="/leagueoflegends/LCK/2026/Road_to_MSI">Road to MSI</a>
+        <a href="/leagueoflegends/LCK/2026/Play-In">Play-In</a>
+        <a href="/leagueoflegends/LCK/2026/Playoffs">Playoffs</a>
+      </div>
+      <div class="match-info match-info--vertical">
+        <div class="match-info-top-row">
+          <span class="match-info-countdown"><span class="timer-object" data-format="compact" data-timestamp="1779436800">May 22 - 17:00 <abbr data-tz="+09:00" title="Korea Standard Time (UTC+9)">KST</abbr></span></span>
+        </div>
+        <span class="match-info-stage">Week 8</span>
+        <div class="match-info-header match-info-header-vertical">
+          <div class="match-info-opponent-row"><div class="match-info-opponent-identity"><div class="block-team"><span class="name"><a href="/leagueoflegends/SOOPers" title="SOOPers">DNS</a></span></div></div><span class="match-info-opponent-score"></span></div>
+          <div class="match-info-opponent-row"><div class="match-info-opponent-identity"><div class="block-team"><span class="name"><a href="/leagueoflegends/DRX" title="DRX">KRX</a></span></div></div><span class="match-info-opponent-score"></span></div>
+        </div>
+      </div>
+    `,
+  });
+
+  assert.ok(normalized.subPages.includes("https://liquipedia.net/leagueoflegends/LCK/2026/Rounds_1-2"));
+  assert.ok(normalized.matches.some((match) => match.teamAName === "SOOPers" && match.teamBName === "DRX"));
+});
+
 test("Valorant wikitext extraction does not duplicate MatchSchedule templates", () => {
   const normalized = normalizeValorantTournament({
     title: "Valorant Parser Cup",

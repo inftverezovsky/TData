@@ -158,7 +158,9 @@ export async function fetchPageParsed(apiUrl: string, title: string, options: Ap
       disabletoc: "1",
       redirects: "1"
     },
-    true
+    true,
+    0,
+    options
   );
 
   return response.parse?.text?.["*"] ?? "";

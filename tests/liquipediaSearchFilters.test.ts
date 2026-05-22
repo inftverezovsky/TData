@@ -4,6 +4,7 @@ import {
   buildLiquipediaSearchVariations,
   filterLiquipediaSearchResultsForQuery,
   isLiquipediaSearchTitleRelevant,
+  shouldShowLiquipediaSearchResult,
 } from "../src/lib/liquipedia/client";
 
 test("Liquipedia search expands trailing league abbreviation", () => {
@@ -40,5 +41,18 @@ test("Liquipedia cached search filters stale old tournaments unless year is expl
   assert.deepEqual(
     filterLiquipediaSearchResultsForQuery("DreamLeague 2020", results, 2026).map((result) => result.title),
     ["DreamLeague/13"]
+  );
+});
+
+test("LoL future window keeps major tournaments in search results", () => {
+  assert.equal(
+    shouldShowLiquipediaSearchResult(
+      "MSI",
+      "Mid-Season Invitational/2026",
+      "2026-06-28 — 2026-07-12",
+      2026,
+      { futureWindowDays: 180 }
+    ),
+    true
   );
 });

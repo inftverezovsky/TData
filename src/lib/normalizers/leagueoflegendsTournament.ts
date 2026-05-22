@@ -238,6 +238,21 @@ function extractMatchesFromParsedHtml(html: string, pageUrl: string): Normalized
   const $ = cheerio.load(html);
   const matches: NormalizedMatch[] = [];
 
+  const getMatchTimer = ($scope: any) => {
+    const timer = $scope.find(".timer-object").first();
+    const timestamp = timer.attr("data-timestamp");
+    const dateText = timer.text().trim() || null;
+    const finished = timer.attr("data-finished");
+
+    let matchDate: Date | null = null;
+    if (timestamp) {
+      const ts = parseInt(timestamp, 10);
+      if (!isNaN(ts)) matchDate = new Date(ts * 1000);
+    }
+
+    return { timer, timestamp, dateText, finished, matchDate };
+  };
+
   function findSectionForElement(el: any): string {
     const $el = $(el);
     let current = $el.closest("div, section, table").prev();
@@ -278,6 +293,28 @@ function extractMatchesFromParsedHtml(html: string, pageUrl: string): Normalized
 
   function isNonTeamTitle(value: string) {
     return /^(time|date)$/i.test(value) || value.includes("(page does not exist)");
+  }
+
+  function getOpponentNameFromElement($opp: any): string {
+    const aria = $opp.attr("aria-label")?.trim();
+    if (aria && aria !== "TBD") return aria;
+    const parentAria = $opp.closest("[aria-label]").attr("aria-label")?.trim();
+    if (parentAria && parentAria !== "TBD") return parentAria;
+    const nameLink = $opp.find(".name a").first();
+    const linkTitle = nameLink.attr("title")?.trim();
+    if (linkTitle && !isNonTeamTitle(linkTitle)) return linkTitle;
+    const linkText = nameLink.text().trim();
+    if (linkText && !isNonTeamTitle(linkText)) return linkText;
+    const teamLink = $opp.find("a[href*='/leagueoflegends/']").first();
+    const teamTitle = teamLink.attr("title")?.trim();
+    if (teamTitle && !isNonTeamTitle(teamTitle)) return teamTitle;
+    const teamText = teamLink.text().trim();
+    if (teamText && !isNonTeamTitle(teamText)) return teamText;
+    const literalText = $opp.find(".brkts-opponent-block-literal").first().text().trim();
+    if (literalText && !isNonTeamTitle(literalText)) return literalText;
+    const nameText = $opp.find(".name").text().trim();
+    if (nameText) return nameText;
+    return "TBD";
   }
 
   function getFullTeamName(oppEl: any): string | null {
@@ -351,6 +388,60 @@ function extractMatchesFromParsedHtml(html: string, pageUrl: string): Normalized
     });
 
     if (matches.length >= 500) return false;
+  });
+
+  // 1b. Extract from vertical match cards used on LoL season pages.
+  $(".match-info").each((_, matchEl) => {
+    const $match = $(matchEl);
+    if ($match.closest(".brkts-matchlist-match").length > 0) return;
+
+    const opponents = $match.find(".match-info-opponent-row, .match-info-header-opponent").filter((_, el) => {
+      return $(el).find(".name a, a[href*='/leagueoflegends/']").length > 0;
+    });
+    if (opponents.length < 2) return;
+
+    const teamAName = getOpponentNameFromElement(opponents.eq(0));
+    const teamBName = getOpponentNameFromElement(opponents.eq(1));
+    const { finished, dateText, matchDate } = getMatchTimer($match);
+
+    const scoreTexts = opponents.map((_, el) => {
+      const $opp = $(el);
+      const directScore = $opp.find(".match-info-opponent-score").first().text().trim();
+      if (directScore) return directScore;
+      const scoreholder = $opp.find(".match-info-header-scoreholder-score").first().text().trim();
+      if (scoreholder) return scoreholder;
+      return "";
+    }).get();
+
+    const scoreA = parseInt(scoreTexts[0] || "", 10);
+    const scoreB = parseInt(scoreTexts[1] || "", 10);
+    const hasScoreA = Number.isFinite(scoreA);
+    const hasScoreB = Number.isFinite(scoreB);
+
+    const stage = $match.find(".match-info-stage").first().text().trim() || null;
+    const tournamentName = $match.find(".match-info-tournament-name a").first().text().trim() || null;
+    const formatText = $match.find(".match-info-tournament, .match-info-header").find(".match-bm-lbl, .brkts-popup-header-dev-match-type").first().text().trim() || null;
+
+    let matchStatus: string | null = null;
+    if (finished === "finished") matchStatus = "finished";
+    else if (hasScoreA || hasScoreB) matchStatus = "in_progress";
+    else if (stage && /playoff|final|bracket/i.test(stage)) matchStatus = "scheduled";
+
+    matches.push({
+      stage: tournamentName || stage,
+      round: stage,
+      matchDate,
+      matchDateTime: dateText,
+      teamAName,
+      teamBName,
+      scoreA: hasScoreA ? scoreA : null,
+      scoreB: hasScoreB ? scoreB : null,
+      format: formatText,
+      status: matchStatus,
+      court: null,
+      sourceUrl: pageUrl,
+      rawText: $.html(matchEl)?.slice(0, 2500)
+    });
   });
 
   // 2. Extract completed round-robin results from Liquipedia crosstables.
@@ -749,8 +840,18 @@ const EVENT_SUBPAGE_ALLOWLIST = [
   "Regular_Season",
   "Finals",
   "Knockout_Stage",
+  "Match_Schedule",
   "Play-In",
-  "Play-In_Stage"
+  "Play-In_Stage",
+  "Play_In_Stage",
+  "Bracket_Stage",
+  "Cup",
+  "Season_Opening",
+  "Road_to_MSI",
+  "Rounds_1-2",
+  "Rounds_3-4",
+  "Play_Offs",
+  "Overview"
 ];
 
 const EVENT_SUBPAGE_BLOCKLIST = [
@@ -797,12 +898,26 @@ function extractSubPages(wikitext: string, html: string, pageUrl: string): strin
 
     subPages.push(`${parsed.origin}${path}`);
   };
+
+  const pushTabStaticRelative = (href: string | undefined | null) => {
+    if (!href || href.startsWith("#") || href.includes("action=edit")) return;
+    if (!href.startsWith("/")) return;
+    const candidateUrl = new URL(href, "https://liquipedia.net");
+    const path = candidateUrl.pathname.replace(/\/+$/, "");
+    if (!path.startsWith(`${basePath}/`)) return;
+    const suffix = decodeURIComponent(path.slice(basePath.length + 1)).replace(/ /g, "_");
+    if (!suffix || suffix.includes("Qualifier")) return;
+    if (EVENT_SUBPAGE_BLOCKLIST.includes(suffix)) return;
+    if (EVENT_SUBPAGE_ALLOWLIST.includes(suffix)) {
+      subPages.push(`${candidateUrl.origin}${path}`);
+    }
+  };
   
   // 1. HTML Tabs
   if (html) {
     const $ = cheerio.load(html);
     $(".tabs-static a, .nav-tabs a").each((_, el) => {
-      pushIfRelevant($(el).attr("href"));
+      pushTabStaticRelative($(el).attr("href"));
     });
   }
 
@@ -813,7 +928,7 @@ function extractSubPages(wikitext: string, html: string, pageUrl: string): strin
     const rawTitle = match[1].trim().replace(/ /g, "_");
     const rawBase = decodeURIComponent(basePath.split("/").slice(2).join("/")).replace(/ /g, "_");
     if (rawTitle.startsWith(`${rawBase}/`)) {
-      pushIfRelevant(`/leagueoflegends/${rawTitle}`);
+      pushTabStaticRelative(`/leagueoflegends/${rawTitle}`);
     }
   }
 
