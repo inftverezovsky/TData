@@ -21,7 +21,9 @@ yarn-error.log*
 # Scratch files
 scratch/
 .gemini/
-cache/
+/cache/
+!src/lib/cache/
+!src/lib/cache/**
 User/
 hltv_debug_error.png
 *.tsbuildinfo
