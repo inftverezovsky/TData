@@ -128,6 +128,7 @@ export default function ManualImportWorkbench() {
   const [ocrFallbackAvailable, setOcrFallbackAvailable] = useState(false);
   const [matches, setMatches] = useState<ManualMatch[]>([]);
   const [mappedMatches, setMappedMatches] = useState<MappedMatch[]>([]);
+  const [selectedMatchIndexes, setSelectedMatchIndexes] = useState<Set<number>>(new Set());
   const [preview, setPreview] = useState<PreviewData | null>(null);
   const [message, setMessage] = useState<ResultMessage | null>(null);
   const [parsing, setParsing] = useState(false);
@@ -146,15 +147,26 @@ export default function ManualImportWorkbench() {
   const [teamImportMessage, setTeamImportMessage] = useState<ResultMessage | null>(null);
   const activeRecognitionController = useRef<AbortController | null>(null);
 
-  const readyCount =
+  const selectedMatches = getSelectedMatches(matches, selectedMatchIndexes);
+  const selectedCount = selectedMatchIndexes.size;
+  const allMatchesSelected = matches.length > 0 && selectedMatchIndexes.size === matches.length;
+  const selectedReadyCount =
     preview?.readyMatchesCount ??
     matches.filter((match, index) => {
+      if (!selectedMatchIndexes.has(index)) return false;
       const mapped = mappedMatches[index];
       return Boolean(
         (match.team1PlatformId || mapped?.team1.platformId) &&
           (match.team2PlatformId || mapped?.team2.platformId)
       );
     }).length;
+  const totalReadyCount = matches.filter((match, index) => {
+    const mapped = mappedMatches[index];
+    return Boolean(
+      (match.team1PlatformId || mapped?.team1.platformId) &&
+        (match.team2PlatformId || mapped?.team2.platformId)
+    );
+  }).length;
 
   async function handleTeamFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0] || null;
@@ -558,8 +570,11 @@ export default function ManualImportWorkbench() {
   }
 
   function applyParsedData(data: any) {
-    setMatches(mergeMatchesWithMappedIds(data.rawMatches || [], data.mappedMatches || []));
+    const nextMatches = mergeMatchesWithMappedIds(data.rawMatches || [], data.mappedMatches || []);
+    setMatches(nextMatches);
     setMappedMatches(data.mappedMatches || []);
+    setSelectedMatchIndexes(createAllSelectedIndexes(nextMatches.length));
+    setPreview(null);
     setMappingConflicts([]);
     setMappingSaveSummary(null);
     setAiFallbackAvailable(false);
@@ -607,8 +622,11 @@ export default function ManualImportWorkbench() {
   }
 
   async function runPreview() {
-    if (matches.length === 0) {
-      setMessage({ type: "error", text: "Сначала распознайте или добавьте матчи." });
+    if (selectedMatches.length === 0) {
+      setMessage({
+        type: "error",
+        text: matches.length === 0 ? "Сначала распознайте или добавьте матчи." : "Выберите матчи для заливки.",
+      });
       return;
     }
 
@@ -619,15 +637,15 @@ export default function ManualImportWorkbench() {
       const response = await fetch("/api/manual-import/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ disciplineId, shapkaId, matches }),
+        body: JSON.stringify({ disciplineId, shapkaId, matches: selectedMatches }),
       });
       const data = await response.json();
       if (!response.ok || !data.ok) throw new Error(data.error || "Ошибка превью");
 
       setPreview(data);
-      setMappedMatches(data.mappedMatches || []);
-      setMatches((current) => mergeMatchesWithMappedIds(current, data.mappedMatches || []));
-      setMessage({ type: "success", text: `Готово к заливке: ${data.readyMatchesCount} матчей.` });
+      setMappedMatches((current) => mergeSelectedMappedMatches(current, selectedMatchIndexes, data.mappedMatches || []));
+      setMatches((current) => mergeSelectedMatchesWithMappedIds(current, selectedMatchIndexes, data.mappedMatches || []));
+      setMessage({ type: "success", text: `Готово к заливке: ${data.readyMatchesCount} выбранных матчей.` });
     } catch (error) {
       setMessage({ type: "error", text: error instanceof Error ? error.message : "Ошибка превью" });
     } finally {
@@ -636,7 +654,11 @@ export default function ManualImportWorkbench() {
   }
 
   async function sendToAdmin() {
-    if (!confirm("Залить ручной payload в API?")) return;
+    if (selectedMatches.length === 0) {
+      setMessage({ type: "error", text: "Выберите матчи для заливки." });
+      return;
+    }
+    if (!confirm(`Залить выбранные матчи в API? Количество: ${selectedMatches.length}`)) return;
 
     setSending(true);
     setMessage(null);
@@ -645,7 +667,7 @@ export default function ManualImportWorkbench() {
       const response = await fetch("/api/manual-import/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ disciplineId, shapkaId, matches }),
+        body: JSON.stringify({ disciplineId, shapkaId, matches: selectedMatches }),
       });
       const data = await response.json();
       if (!response.ok || !data.ok) {
@@ -748,6 +770,18 @@ export default function ManualImportWorkbench() {
   }
 
   async function openServiceUpload() {
+    if (selectedMatches.length === 0) {
+      setMessage({ type: "error", text: "Выберите матчи для заливки через сервис." });
+      return;
+    }
+
+    const openedWindow = window.open("", "_blank");
+    if (!openedWindow) {
+      setMessage({ type: "error", text: "Не удалось открыть сервис. Разрешите всплывающие окна для этого сайта." });
+      return;
+    }
+    openedWindow.opener = null;
+
     setSending(true);
     setMessage(null);
 
@@ -755,7 +789,7 @@ export default function ManualImportWorkbench() {
       const response = await fetch("/api/manual-import/service-link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ disciplineId, shapkaId, matches }),
+        body: JSON.stringify({ disciplineId, shapkaId, matches: selectedMatches }),
       });
       const data = await response.json();
       if (!response.ok || !data.ok) {
@@ -763,9 +797,13 @@ export default function ManualImportWorkbench() {
       }
 
       await copyToClipboard(data.jsonUrl);
-      setMessage({ type: "success", text: "JSON-ссылка создана и скопирована. Открываю сервис..." });
-      window.open(data.serviceUrl, "_blank", "noopener,noreferrer");
+      openedWindow.location.href = data.serviceUrl;
+      setMessage({
+        type: "success",
+        text: `Сервис открыт, JSON-ссылка скопирована. Выбрано матчей: ${selectedMatches.length}.`,
+      });
     } catch (error) {
+      if (!openedWindow.closed) openedWindow.close();
       setMessage({ type: "error", text: error instanceof Error ? error.message : "Ошибка сервиса" });
     } finally {
       setSending(false);
@@ -784,6 +822,7 @@ export default function ManualImportWorkbench() {
         date: "",
       },
     ]);
+    setSelectedMatchIndexes((current) => new Set([...current, matches.length]));
     setPreview(null);
     setMappingConflicts([]);
     setMappingSaveSummary(null);
@@ -798,9 +837,38 @@ export default function ManualImportWorkbench() {
 
   function removeMatch(index: number) {
     setMatches((current) => current.filter((_, i) => i !== index));
+    setMappedMatches((current) => current.filter((_, i) => i !== index));
+    setSelectedMatchIndexes((current) => {
+      const next = new Set<number>();
+      for (const selectedIndex of current) {
+        if (selectedIndex < index) next.add(selectedIndex);
+        if (selectedIndex > index) next.add(selectedIndex - 1);
+      }
+      return next;
+    });
     setPreview(null);
     setMappingConflicts([]);
     setMappingSaveSummary(null);
+  }
+
+  function toggleMatchSelection(index: number) {
+    setSelectedMatchIndexes((current) => {
+      const next = new Set(current);
+      if (next.has(index)) {
+        next.delete(index);
+      } else {
+        next.add(index);
+      }
+      return next;
+    });
+    setPreview(null);
+  }
+
+  function toggleAllMatchesSelection() {
+    setSelectedMatchIndexes((current) =>
+      current.size === matches.length ? new Set() : createAllSelectedIndexes(matches.length)
+    );
+    setPreview(null);
   }
 
   const visibleRecognitionStages = getVisibleRecognitionStages(recognitionStage, recognitionStepDetails);
@@ -1141,22 +1209,25 @@ export default function ManualImportWorkbench() {
             </div>
             <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-right">
               <div className="text-[9px] font-black uppercase tracking-widest text-slate-400">Готово</div>
-              <div className="text-2xl font-black text-white">{readyCount}</div>
+              <div className="text-2xl font-black text-white">{selectedReadyCount}</div>
+              <div className="mt-1 text-[9px] font-bold uppercase tracking-widest text-slate-500">
+                выбрано {selectedCount}
+              </div>
             </div>
           </div>
 
           <div className="mt-5 space-y-3">
             <button
               onClick={runPreview}
-              disabled={previewing || matches.length === 0}
+              disabled={previewing || selectedCount === 0}
               className="flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white px-4 text-xs font-black uppercase tracking-widest text-slate-950 transition hover:bg-indigo-50 disabled:bg-white/10 disabled:text-slate-500"
             >
               {previewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileJson className="h-4 w-4" />}
-              Сформировать
+              Сформировать {selectedCount ? `(${selectedCount})` : ""}
             </button>
             <button
               onClick={sendToAdmin}
-              disabled={sending || !preview?.phpArray}
+              disabled={sending || !preview?.phpArray || selectedCount === 0}
               className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-indigo-500 px-4 text-xs font-black uppercase tracking-widest text-white transition hover:bg-indigo-400 disabled:bg-white/10 disabled:text-slate-500"
             >
               {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
@@ -1164,12 +1235,15 @@ export default function ManualImportWorkbench() {
             </button>
             <button
               onClick={openServiceUpload}
-              disabled={sending || matches.length === 0}
+              disabled={sending || selectedCount === 0}
               className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 text-xs font-black uppercase tracking-widest text-white transition hover:bg-emerald-400 disabled:bg-white/10 disabled:text-slate-500"
             >
-              <UploadCloud className="h-4 w-4" />
+              {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
               Залить через сервис
             </button>
+            {matches.length > 0 && selectedCount === 0 && (
+              <p className="text-[11px] font-bold text-slate-400">Выберите хотя бы один матч в таблице ниже.</p>
+            )}
           </div>
 
           {preview?.phpArray && (
@@ -1206,6 +1280,13 @@ export default function ManualImportWorkbench() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
+              onClick={toggleAllMatchesSelection}
+              disabled={matches.length === 0}
+              className="flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-[10px] font-black uppercase tracking-widest text-slate-600 transition hover:bg-slate-50 disabled:border-slate-100 disabled:bg-slate-50 disabled:text-slate-300"
+            >
+              {allMatchesSelected ? "Снять все" : "Выбрать все"}
+            </button>
+            <button
               onClick={runAutoMap}
               disabled={autoMapping || matches.length === 0}
               className="flex h-10 items-center justify-center gap-2 rounded-xl border border-indigo-100 bg-indigo-50 px-4 text-[10px] font-black uppercase tracking-widest text-indigo-700 transition hover:bg-indigo-100 disabled:border-slate-100 disabled:bg-slate-50 disabled:text-slate-300"
@@ -1223,7 +1304,7 @@ export default function ManualImportWorkbench() {
             </button>
             <div className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500">
               <Bot className="h-4 w-4 text-indigo-500" />
-              {mappedMatches.length || matches.length} строк
+              {selectedCount}/{matches.length} выбрано · {totalReadyCount} готово
             </div>
           </div>
         </div>
@@ -1270,6 +1351,15 @@ export default function ManualImportWorkbench() {
             <table className="w-full min-w-[760px] text-left">
               <thead>
                 <tr className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                  <th className="px-3 py-2">
+                    <input
+                      type="checkbox"
+                      checked={allMatchesSelected}
+                      onChange={toggleAllMatchesSelection}
+                      aria-label="Выбрать все матчи"
+                      className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                  </th>
                   <th className="px-3 py-2">Дата</th>
                   <th className="px-3 py-2">Команда 1</th>
                   <th className="px-3 py-2">ID</th>
@@ -1285,8 +1375,23 @@ export default function ManualImportWorkbench() {
                   const team1PlatformId = match.team1PlatformId || mapped?.team1.platformId || "";
                   const team2PlatformId = match.team2PlatformId || mapped?.team2.platformId || "";
                   const isReady = Boolean(team1PlatformId && team2PlatformId);
+                  const isSelected = selectedMatchIndexes.has(index);
                   return (
-                    <tr key={`${match.team1}-${match.team2}-${index}`} className="text-xs font-bold text-slate-700">
+                    <tr
+                      key={`${match.team1}-${match.team2}-${index}`}
+                      className={`text-xs font-bold text-slate-700 transition ${
+                        isSelected ? "bg-white" : "bg-slate-50/70 opacity-70"
+                      }`}
+                    >
+                      <td className="px-3 py-3 align-middle">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleMatchSelection(index)}
+                          aria-label={`Выбрать матч ${match.team1} против ${match.team2}`}
+                          className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                      </td>
                       <td className="px-3 py-3">
                         <input
                           value={match.date || ""}
@@ -1441,6 +1546,45 @@ function mergeMatchesWithMappedIds(matches: ManualMatch[], mappedMatches: Mapped
       team2PlatformId: match.team2PlatformId || mapped?.team2.platformId || "",
     };
   });
+}
+
+function createAllSelectedIndexes(length: number) {
+  return new Set(Array.from({ length }, (_, index) => index));
+}
+
+function getSelectedMatches(matches: ManualMatch[], selectedIndexes: Set<number>) {
+  return matches.filter((_, index) => selectedIndexes.has(index));
+}
+
+function mergeSelectedMatchesWithMappedIds(
+  matches: ManualMatch[],
+  selectedIndexes: Set<number>,
+  mappedMatches: MappedMatch[]
+) {
+  let mappedIndex = 0;
+  return matches.map((match, index) => {
+    if (!selectedIndexes.has(index)) return match;
+    const mapped = mappedMatches[mappedIndex++];
+    return {
+      ...match,
+      team1PlatformId: match.team1PlatformId || mapped?.team1.platformId || "",
+      team2PlatformId: match.team2PlatformId || mapped?.team2.platformId || "",
+    };
+  });
+}
+
+function mergeSelectedMappedMatches(
+  currentMappedMatches: MappedMatch[],
+  selectedIndexes: Set<number>,
+  nextMappedMatches: MappedMatch[]
+) {
+  let mappedIndex = 0;
+  const merged = [...currentMappedMatches];
+  for (const selectedIndex of Array.from(selectedIndexes).sort((a, b) => a - b)) {
+    const mapped = nextMappedMatches[mappedIndex++];
+    if (mapped) merged[selectedIndex] = mapped;
+  }
+  return merged;
 }
 
 function getVisibleRecognitionStages(

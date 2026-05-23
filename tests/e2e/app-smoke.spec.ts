@@ -111,6 +111,9 @@ test("manual import hides discipline selector and uses AI-first image recognitio
   await expect(page.getByText("OCR изображения")).toHaveCount(0);
   await expect(page.getByText(/ArcCodex AI\. Найдено матчей: 1/)).toBeVisible();
   await expect(page.locator("tbody tr")).toHaveCount(1);
+  await expect(page.getByRole("checkbox", { name: /выбрать все матчи/i })).toBeChecked();
+  await expect(page.getByRole("checkbox", { name: /выбрать матч team liquid против g2 esports/i })).toBeChecked();
+  await expect(page.getByRole("button", { name: /сформировать \(1\)/i })).toBeEnabled();
   expect(ocrCalled).toBe(false);
   expect(parseBodies).toHaveLength(1);
   expect(parseBodies[0]).toContain('name="mode"');
@@ -290,4 +293,84 @@ test("manual import can cancel an in-flight AI recognition request", async ({ pa
 
   await expect(page.getByText("Распознавание отменено.").first()).toBeVisible();
   await expect(page.getByRole("button", { name: /распознать/i })).toBeEnabled();
+});
+
+test("manual import service upload sends only selected matches and opens popup", async ({ page }) => {
+  let serviceRequestBody: any = null;
+
+  await page.route("**/api/admin-auth/session", async route => {
+    await route.fulfill({ json: { authenticated: true } });
+  });
+  await page.route("**/api/manual-import/parse", async route => {
+    await route.fulfill({
+      json: {
+        ok: true,
+        rawMatches: [
+          {
+            tournament: "Manual Import",
+            team1: "Team Alpha",
+            team2: "Team Beta",
+            date: "24.05.2026 11:50:00",
+          },
+          {
+            tournament: "Manual Import",
+            team1: "Team Gamma",
+            team2: "Team Delta",
+            date: "24.05.2026 12:50:00",
+          },
+        ],
+        mappedMatches: [
+          {
+            id: "manual-service-1",
+            tournament: "Manual Import",
+            team1: { name: "Team Alpha", platformId: "101" },
+            team2: { name: "Team Beta", platformId: "202" },
+            date: "24.05.2026 11:50:00",
+            isReady: true,
+          },
+          {
+            id: "manual-service-2",
+            tournament: "Manual Import",
+            team1: { name: "Team Gamma", platformId: "303" },
+            team2: { name: "Team Delta", platformId: "404" },
+            date: "24.05.2026 12:50:00",
+            isReady: true,
+          },
+        ],
+        normalizedText: "Team Alpha vs Team Beta\nTeam Gamma vs Team Delta",
+        ocrText: "",
+        ocrConfidence: null,
+        parseSource: "local-text",
+        warnings: [],
+      },
+    });
+  });
+  await page.route("**/api/manual-import/service-link", async route => {
+    serviceRequestBody = route.request().postDataJSON();
+    await route.fulfill({
+      json: {
+        ok: true,
+        jsonUrl: "http://localhost/api/manual-import/json/test-token",
+        serviceUrl: "about:blank#manual-service-upload",
+        readyMatchesCount: 1,
+      },
+    });
+  });
+
+  await page.goto("/manual-import");
+  await page.getByPlaceholder("12345").fill("777");
+  await page.getByPlaceholder("Вставьте текст расписания или OCR...").fill("Team Alpha vs Team Beta\nTeam Gamma vs Team Delta");
+  await page.getByRole("button", { name: /распознать/i }).click();
+
+  await expect(page.locator("tbody tr")).toHaveCount(2);
+  await expect(page.getByRole("checkbox", { name: /выбрать все матчи/i })).toBeChecked();
+  await page.getByRole("checkbox", { name: /выбрать матч team gamma против team delta/i }).uncheck();
+
+  const popupPromise = page.waitForEvent("popup");
+  await page.getByRole("button", { name: /залить через сервис/i }).click();
+  await popupPromise;
+
+  await expect.poll(() => serviceRequestBody?.matches?.length).toBe(1);
+  expect(serviceRequestBody.matches[0].team1).toBe("Team Alpha");
+  expect(serviceRequestBody.matches[0].team2).toBe("Team Beta");
 });
