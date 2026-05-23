@@ -20,11 +20,17 @@ test("extractManualImportOcr reads a generated schedule image", async () => {
     const matches = parseHltvCopiedText(ocr.text);
 
     assert.equal(ocr.warnings.length, 0);
+    assert.equal(ocr.cached, undefined);
     assert.ok((ocr.confidence || 0) > 60);
     assert.ok(ocr.text.includes("Team Liquid"));
     assert.ok(matches.length >= 2);
+    assert.equal(ocr.variants.length, 1);
     assert.ok(matches.some((match) => match.date === "23.05.2026 16:10:00"));
     assert.ok(matches.some((match) => match.date === "23.05.2026 18:30:00"));
+
+    const cachedOcr = await extractManualImportOcr({ imageBuffer, imageMime: "image/png" });
+    assert.equal(cachedOcr.cached, true);
+    assert.equal(cachedOcr.text, ocr.text);
   } finally {
     await shutdownManualImportOcrWorker();
   }

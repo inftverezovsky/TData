@@ -24,6 +24,7 @@ test("admin auth protects settings endpoints and creates a usable session cookie
     () => request.post("/api/counterstrike/hltv/admin-send"),
     () => request.post("/api/counterstrike/hltv/matches/manual"),
     () => request.post("/api/manual-import/parse"),
+    () => request.post("/api/manual-import/ocr"),
     () => request.post("/api/manual-import/preview"),
     () => request.post("/api/manual-import/send"),
     () => request.post("/api/manual-import/service-link"),

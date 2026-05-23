@@ -1,17 +1,23 @@
+export type ManualImportParseMode = "auto" | "text" | "ai";
+
 export type ManualImportParseRequestInput = {
   disciplineSlug: string;
   disciplineId: string;
   text: string;
+  ocrText: string;
   imageDataUrl: string;
   imageBuffer?: Buffer;
   imageMime?: string;
+  mode: ManualImportParseMode;
 };
 
 type JsonRequestBody = {
   disciplineSlug?: unknown;
   disciplineId?: unknown;
   text?: unknown;
+  ocrText?: unknown;
   imageDataUrl?: unknown;
+  mode?: unknown;
 };
 
 export async function readManualImportParseRequest(request: Request): Promise<ManualImportParseRequestInput> {
@@ -25,9 +31,11 @@ export async function readManualImportParseRequest(request: Request): Promise<Ma
       disciplineSlug: readFormString(formData.get("disciplineSlug")).trim().toLowerCase(),
       disciplineId: readFormString(formData.get("disciplineId")),
       text: readFormString(formData.get("text")),
+      ocrText: readFormString(formData.get("ocrText")),
       imageDataUrl: readFormString(formData.get("imageDataUrl")),
       imageBuffer: image?.buffer,
       imageMime: image?.mime,
+      mode: normalizeParseMode(readFormString(formData.get("mode"))),
     };
   }
 
@@ -36,7 +44,9 @@ export async function readManualImportParseRequest(request: Request): Promise<Ma
     disciplineSlug: typeof body.disciplineSlug === "string" ? body.disciplineSlug.trim().toLowerCase() : "",
     disciplineId: typeof body.disciplineId === "string" || typeof body.disciplineId === "number" ? String(body.disciplineId).trim() : "",
     text: typeof body.text === "string" ? body.text : "",
+    ocrText: typeof body.ocrText === "string" ? body.ocrText : "",
     imageDataUrl: typeof body.imageDataUrl === "string" ? body.imageDataUrl : "",
+    mode: normalizeParseMode(body.mode),
   };
 }
 
@@ -53,4 +63,8 @@ async function readImageFormFile(value: FormDataEntryValue | null) {
     buffer: Buffer.from(await file.arrayBuffer()),
     mime: file.type || "application/octet-stream",
   };
+}
+
+function normalizeParseMode(value: unknown): ManualImportParseMode {
+  return value === "text" || value === "ai" || value === "auto" ? value : "auto";
 }

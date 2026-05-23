@@ -1,14 +1,17 @@
 import { parseHltvCopiedText } from "@/lib/hltv/manualTextParser";
-import { ARCCODEX_CHAT_COMPLETIONS_URL, ARCCODEX_RESPONSES_URL, MANUAL_IMPORT_MODEL } from "./config";
+import { ARCCODEX_CHAT_COMPLETIONS_URL, ARCCODEX_RESPONSES_URL, MANUAL_IMPORT_AI_TIMEOUT_MS, MANUAL_IMPORT_MODEL } from "./config";
 import type { ManualImportRawMatch } from "./buildManualFixtPayload";
 import { extractManualImportOcr, type ManualImportOcrResult } from "./ocrPipeline";
+import type { ManualImportParseMode } from "./parseRequest";
 
 type AiParseInput = {
   text?: string;
+  ocrText?: string;
   imageDataUrl?: string;
   imageBuffer?: Buffer;
   imageMime?: string;
   disciplineSlug: string;
+  mode?: ManualImportParseMode;
 };
 
 type AiParseResult = {
@@ -17,7 +20,7 @@ type AiParseResult = {
   normalizedText?: string;
   ocrText?: string;
   ocrConfidence?: number | null;
-  parseSource?: "local-text" | "local-ocr" | "ai" | "fallback";
+  parseSource?: "local-text" | "local-ocr" | "ocr-cache" | "ai" | "fallback";
   warnings?: string[];
   error?: string;
   fallback?: boolean;
@@ -25,9 +28,37 @@ type AiParseResult = {
 
 export async function parseManualMatchesWithAi(input: AiParseInput): Promise<AiParseResult> {
   const warnings: string[] = [];
+  const mode = input.mode || "auto";
   const rawText = input.text?.trim() || "";
+  const suppliedOcrText = input.ocrText?.trim() || "";
+  const textCandidates = [rawText, suppliedOcrText].filter(Boolean);
 
-  if (rawText) {
+  if (mode === "text") {
+    const candidate = textCandidates[0] || "";
+    const directMatches = candidate ? parseHltvCopiedText(candidate) : [];
+    if (directMatches.length > 0) {
+      return {
+        ok: true,
+        matches: directMatches,
+        fallback: true,
+        normalizedText: candidate,
+        parseSource: "local-text",
+        warnings,
+      };
+    }
+
+    return {
+      ok: false,
+      matches: [],
+      fallback: true,
+      normalizedText: candidate,
+      parseSource: "local-text",
+      warnings: candidate ? ["Локальный парсер не нашёл матчей в тексте."] : warnings,
+      error: "Матчи не распознаны локальным парсером.",
+    };
+  }
+
+  if (mode !== "ai" && rawText) {
     const directMatches = parseHltvCopiedText(rawText);
     if (directMatches.length > 0) {
       return {
@@ -42,7 +73,7 @@ export async function parseManualMatchesWithAi(input: AiParseInput): Promise<AiP
   }
 
   let ocrResult: ManualImportOcrResult | null = null;
-  if (input.imageDataUrl || input.imageBuffer?.length) {
+  if (mode === "auto" && (input.imageDataUrl || input.imageBuffer?.length)) {
     ocrResult = await extractManualImportOcr({
       imageDataUrl: input.imageDataUrl,
       imageBuffer: input.imageBuffer,
@@ -60,14 +91,14 @@ export async function parseManualMatchesWithAi(input: AiParseInput): Promise<AiP
           normalizedText: ocrResult.text,
           ocrText: ocrResult.text,
           ocrConfidence: ocrResult.confidence,
-          parseSource: "local-ocr",
+          parseSource: ocrResult.cached ? "ocr-cache" : "local-ocr",
           warnings,
         };
       }
     }
   }
 
-  if (input.text?.trim()) {
+  if (mode !== "ai" && input.text?.trim()) {
     warnings.push("Локальный парсер не нашёл матчей в тексте.");
   }
 
@@ -77,12 +108,18 @@ export async function parseManualMatchesWithAi(input: AiParseInput): Promise<AiP
 
   const apiKey = process.env.ARCCODEX_API_KEY;
   if (!apiKey) {
-    return fallbackParse({ ...input, ocrText: ocrResult?.text || "" }, "ARCCODEX_API_KEY is not configured.", ocrResult, warnings);
+    return fallbackParse(
+      { ...input, mode, ocrText: suppliedOcrText || ocrResult?.text || "" },
+      "ARCCODEX_API_KEY is not configured.",
+      ocrResult,
+      warnings
+    );
   }
 
   const aiInput = {
     ...input,
-    ocrText: ocrResult?.text || "",
+    mode,
+    ocrText: suppliedOcrText || ocrResult?.text || "",
     imageDataUrl: input.imageDataUrl || imageBufferToDataUrl(input.imageBuffer, input.imageMime),
   };
 
@@ -93,6 +130,7 @@ export async function parseManualMatchesWithAi(input: AiParseInput): Promise<AiP
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
+      signal: AbortSignal.timeout(MANUAL_IMPORT_AI_TIMEOUT_MS),
       body: JSON.stringify(buildResponsesPayload(aiInput)),
     });
 
@@ -124,7 +162,7 @@ export async function parseManualMatchesWithAi(input: AiParseInput): Promise<AiP
       ok: true,
       matches: parsed.matches,
       normalizedText: parsed.normalizedText || outputText,
-      ocrText: ocrResult?.text || "",
+      ocrText: ocrResult?.text || suppliedOcrText || "",
       ocrConfidence: ocrResult?.confidence ?? null,
       parseSource: "ai",
       warnings,
@@ -141,7 +179,7 @@ export async function parseManualMatchesWithAi(input: AiParseInput): Promise<AiP
 }
 
 async function parseManualMatchesWithChatCompletions(
-  input: AiParseInput & { ocrText?: string },
+  input: AiParseInput & { ocrText?: string; mode?: ManualImportParseMode },
   apiKey: string,
   previousError: string,
   ocrResult: ManualImportOcrResult | null,
@@ -154,6 +192,7 @@ async function parseManualMatchesWithChatCompletions(
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
+      signal: AbortSignal.timeout(MANUAL_IMPORT_AI_TIMEOUT_MS),
       body: JSON.stringify(buildChatCompletionsPayload(input)),
     });
 
@@ -179,7 +218,7 @@ async function parseManualMatchesWithChatCompletions(
       ok: true,
       matches: parsed.matches,
       normalizedText: parsed.normalizedText || outputText,
-      ocrText: ocrResult?.text || "",
+      ocrText: ocrResult?.text || input.ocrText || "",
       ocrConfidence: ocrResult?.confidence ?? null,
       parseSource: "ai",
       warnings,
@@ -189,7 +228,7 @@ async function parseManualMatchesWithChatCompletions(
   }
 }
 
-function buildResponsesPayload(input: AiParseInput & { ocrText?: string }) {
+function buildResponsesPayload(input: AiParseInput & { ocrText?: string; mode?: ManualImportParseMode }) {
   const content: any[] = [
     {
       type: "input_text",
@@ -256,7 +295,7 @@ function buildResponsesPayload(input: AiParseInput & { ocrText?: string }) {
   };
 }
 
-function buildChatCompletionsPayload(input: AiParseInput & { ocrText?: string }) {
+function buildChatCompletionsPayload(input: AiParseInput & { ocrText?: string; mode?: ManualImportParseMode }) {
   const content: any[] = [
     {
       type: "text",
@@ -325,7 +364,7 @@ function parseAiJson(text: string): { matches: ManualImportRawMatch[]; normalize
 }
 
 async function fallbackParse(
-  input: AiParseInput & { ocrText?: string },
+  input: AiParseInput & { ocrText?: string; mode?: ManualImportParseMode },
   error: string,
   ocrResult: ManualImportOcrResult | null,
   warnings: string[]
@@ -341,7 +380,7 @@ async function fallbackParse(
   }
 
   let finalOcrResult = ocrResult;
-  if (!finalOcrResult && (input.imageDataUrl || input.imageBuffer?.length)) {
+  if (!finalOcrResult && input.mode === "auto" && (input.imageDataUrl || input.imageBuffer?.length)) {
     finalOcrResult = await extractManualImportOcr({
       imageDataUrl: input.imageDataUrl,
       imageBuffer: input.imageBuffer,
@@ -361,7 +400,7 @@ async function fallbackParse(
         matches,
         fallback: true,
         normalizedText: candidate,
-        ocrText: finalOcrResult?.text || "",
+        ocrText: finalOcrResult?.text || input.ocrText || "",
         ocrConfidence: finalOcrResult?.confidence ?? null,
         parseSource: "fallback",
         warnings,
@@ -375,7 +414,7 @@ async function fallbackParse(
     matches: [],
     fallback: true,
     normalizedText: candidates[0] || input.text || "",
-    ocrText: finalOcrResult?.text || "",
+    ocrText: finalOcrResult?.text || input.ocrText || "",
     ocrConfidence: finalOcrResult?.confidence ?? null,
     parseSource: "fallback",
     warnings,

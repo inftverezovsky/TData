@@ -13,22 +13,24 @@ export async function POST(request: Request) {
   if (unauthorized) return unauthorized;
 
   try {
-    const { disciplineSlug, disciplineId, text, imageDataUrl, imageBuffer, imageMime } = await readManualImportParseRequest(request);
+    const { disciplineSlug, disciplineId, text, ocrText, imageDataUrl, imageBuffer, imageMime, mode } = await readManualImportParseRequest(request);
 
     if (!getManualImportDiscipline(disciplineSlug)) {
       return NextResponse.json({ ok: false, error: "Unsupported discipline" }, { status: 400 });
     }
 
-    if (!text.trim() && !imageBuffer?.length && !imageDataUrl.startsWith("data:image/")) {
+    if (!text.trim() && !ocrText.trim() && !imageBuffer?.length && !imageDataUrl.startsWith("data:image/")) {
       return NextResponse.json({ ok: false, error: "Добавьте текст или изображение." }, { status: 400 });
     }
 
     const parsed = await parseManualMatchesWithAi({
       disciplineSlug,
       text,
+      ocrText,
       imageDataUrl,
       imageBuffer,
       imageMime,
+      mode,
     });
     const mappedMatches = await mapManualMatches(parsed.matches, disciplineSlug, disciplineId);
 

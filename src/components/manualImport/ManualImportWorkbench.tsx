@@ -61,7 +61,18 @@ type ResultMessage = {
   raw?: string;
 };
 
-type ParseSource = "local-text" | "local-ocr" | "ai" | "fallback" | "";
+type ParseSource = "local-text" | "local-ocr" | "ocr-cache" | "ai" | "fallback" | "";
+type ParseMode = "auto" | "text" | "ai";
+type RecognitionStage = "idle" | "preparing" | "ocr" | "local-parser" | "ai-fallback" | "mapping" | "done";
+
+const recognitionStages: Array<{ id: Exclude<RecognitionStage, "idle">; label: string }> = [
+  { id: "preparing", label: "Подготовка" },
+  { id: "ocr", label: "OCR изображения" },
+  { id: "local-parser", label: "Локальный парсер" },
+  { id: "ai-fallback", label: "AI fallback" },
+  { id: "mapping", label: "Маппинг" },
+  { id: "done", label: "Готово" },
+];
 
 type TeamImportResult = {
   success: boolean;
@@ -110,6 +121,9 @@ export default function ManualImportWorkbench() {
   const [ocrConfidence, setOcrConfidence] = useState<number | null>(null);
   const [parseSource, setParseSource] = useState<ParseSource>("");
   const [parseWarnings, setParseWarnings] = useState<string[]>([]);
+  const [recognitionStage, setRecognitionStage] = useState<RecognitionStage>("idle");
+  const [recognitionStepDetails, setRecognitionStepDetails] = useState<Partial<Record<RecognitionStage, string>>>({});
+  const [aiFallbackAvailable, setAiFallbackAvailable] = useState(false);
   const [matches, setMatches] = useState<ManualMatch[]>([]);
   const [mappedMatches, setMappedMatches] = useState<MappedMatch[]>([]);
   const [preview, setPreview] = useState<PreviewData | null>(null);
@@ -154,6 +168,9 @@ export default function ManualImportWorkbench() {
     setOcrConfidence(null);
     setParseSource("");
     setParseWarnings([]);
+    setRecognitionStage("idle");
+    setRecognitionStepDetails({});
+    setAiFallbackAvailable(false);
     setPreview(null);
     setMappingConflicts([]);
     setMappingSaveSummary(null);
@@ -205,54 +222,227 @@ export default function ManualImportWorkbench() {
       return;
     }
 
+    beginRecognition();
+
+    try {
+      if (shouldUploadImage) {
+        if (textForParse.trim()) {
+          setRecognitionStep("local-parser", "Сначала проверяю введённый текст.");
+          try {
+            const data = await postManualParse({ mode: "text", text: textForParse });
+            applyParsedData(data);
+            setRecognitionStep("done", `Найдено матчей: ${(data.rawMatches || []).length}.`);
+            setMessage({
+              type: "info",
+              text: `${getParseSourceLabel(data.parseSource)}. Найдено матчей: ${(data.rawMatches || []).length}.`,
+            });
+            return;
+          } catch {
+            setRecognitionStep("local-parser", "Текст не собрал матчи, перехожу к OCR.");
+          }
+        }
+        await parseImageWithFastOcr();
+        return;
+      }
+
+      setRecognitionStep("local-parser", "Разбираю текст без OCR и AI.");
+      const data = await postManualParse({ mode: "text", text: textForParse });
+      applyParsedData(data);
+      setRecognitionStep("done", `Найдено матчей: ${(data.rawMatches || []).length}.`);
+      setMessage({
+        type: "info",
+        text: `${getParseSourceLabel(data.parseSource)}. Найдено матчей: ${(data.rawMatches || []).length}.`,
+      });
+    } catch (error) {
+      setRecognitionStep("done", "Распознавание остановлено.");
+      setMessage({ type: "error", text: error instanceof Error ? error.message : "Ошибка распознавания" });
+    } finally {
+      setParsing(false);
+    }
+  }
+
+  async function parseImageWithFastOcr() {
+    setRecognitionStep("preparing", "Готовлю изображение для быстрого OCR.");
+    const preparedImage = imageFile ? await resizeImageForOcr(imageFile) : null;
+    const ocrFormData = new FormData();
+    ocrFormData.append("disciplineSlug", disciplineSlug);
+    ocrFormData.append("disciplineId", disciplineId);
+    if (preparedImage) {
+      ocrFormData.append("image", preparedImage);
+    } else if (imageDataUrl) {
+      ocrFormData.append("imageDataUrl", imageDataUrl);
+    }
+
+    setRecognitionStep("ocr", "Извлекаю текст из изображения.");
+    const ocrResponse = await fetch("/api/manual-import/ocr", {
+      method: "POST",
+      body: ocrFormData,
+    });
+    const ocrData = await ocrResponse.json();
+    if (!ocrResponse.ok || !ocrData.ok) {
+      throw new Error(ocrData.error || "OCR не смог извлечь текст.");
+    }
+
+    const extractedText = typeof ocrData.ocrText === "string" ? ocrData.ocrText : "";
+    setOcrText(extractedText);
+    setOcrConfidence(typeof ocrData.ocrConfidence === "number" ? ocrData.ocrConfidence : null);
+    setParseSource(ocrData.cached ? "ocr-cache" : "local-ocr");
+    setParseWarnings(Array.isArray(ocrData.warnings) ? ocrData.warnings : []);
+    setRecognitionStep(
+      "ocr",
+      `${ocrData.cached ? "Взято из кэша OCR" : "OCR завершён"}${
+        typeof ocrData.ocrConfidence === "number" ? `, confidence ${Math.round(ocrData.ocrConfidence)}%` : ""
+      }.`
+    );
+
+    setRecognitionStep("local-parser", "Собираю матчи из OCR-текста.");
+    try {
+      const data = await postManualParse({ mode: "text", text: extractedText });
+      applyParsedData({
+        ...data,
+        ocrText: extractedText,
+        ocrConfidence: ocrData.ocrConfidence,
+        parseSource: ocrData.cached ? "ocr-cache" : "local-ocr",
+        warnings: [...(ocrData.warnings || []), ...(data.warnings || [])],
+      });
+      setRecognitionStep("mapping", "ID команд подтянуты из справочников.");
+      setRecognitionStep("done", `Найдено матчей: ${(data.rawMatches || []).length}.`);
+      setMessage({
+        type: "success",
+        text: `${ocrData.cached ? "Кэш OCR" : "Локальный OCR"}. Найдено матчей: ${(data.rawMatches || []).length}.`,
+      });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "Локальный парсер не смог собрать матчи.";
+      await runAiFallbackParse({
+        ocrTextOverride: extractedText,
+        imageFallback: false,
+        introDetail: `${reason} Отправляю OCR-текст в AI fallback автоматически.`,
+      });
+    }
+  }
+
+  async function runAiFallback() {
+    await runAiFallbackParse({ resetProgress: true });
+  }
+
+  async function runAiFallbackParse({
+    resetProgress = false,
+    ocrTextOverride,
+    imageFallback = true,
+    introDetail = "Отправляю OCR-текст в AI fallback.",
+  }: {
+    resetProgress?: boolean;
+    ocrTextOverride?: string;
+    imageFallback?: boolean;
+    introDetail?: string;
+  } = {}) {
+    const nextOcrText = ocrTextOverride ?? ocrText;
+    if (!nextOcrText.trim() && !rawText.trim() && (!imageFallback || (!imageFile && !imageDataUrl))) {
+      setMessage({ type: "error", text: "Нет текста или фото для AI fallback." });
+      return;
+    }
+
+    if (resetProgress) {
+      beginRecognition();
+    }
+    setRecognitionStep("ai-fallback", introDetail);
+
+    try {
+      const data = await postManualParse({
+        mode: "ai",
+        text: rawText,
+        ocrText: nextOcrText,
+        image: imageFallback && !nextOcrText.trim() && imageFile ? await resizeImageForOcr(imageFile) : undefined,
+        imageDataUrl: imageFallback && !nextOcrText.trim() ? imageDataUrl : "",
+      });
+      applyParsedData(data);
+      setAiFallbackAvailable(false);
+      setRecognitionStep("mapping", "ID команд подтянуты из справочников.");
+      setRecognitionStep("done", `Найдено матчей: ${(data.rawMatches || []).length}.`);
+      setMessage({
+        type: "success",
+        text: `${getParseSourceLabel(data.parseSource)}. Найдено матчей: ${(data.rawMatches || []).length}.`,
+      });
+    } catch (error) {
+      setAiFallbackAvailable(true);
+      setRecognitionStep("done", "AI fallback не смог собрать матчи.");
+      setMessage({ type: "error", text: error instanceof Error ? error.message : "Ошибка AI fallback" });
+    } finally {
+      if (resetProgress) {
+        setParsing(false);
+      }
+    }
+  }
+
+  function beginRecognition() {
     setParsing(true);
     setMessage(null);
     setPreview(null);
     setParseWarnings([]);
+    setRecognitionStage("preparing");
+    setRecognitionStepDetails({});
+    setAiFallbackAvailable(false);
+  }
 
-    try {
-      const formData = new FormData();
-      formData.append("disciplineSlug", disciplineSlug);
-      formData.append("disciplineId", disciplineId);
-      formData.append("text", textForParse);
-      if (shouldUploadImage && imageFile) {
-        formData.append("image", imageFile);
-      } else if (shouldUploadImage && imageDataUrl) {
-        formData.append("imageDataUrl", imageDataUrl);
-      }
+  function setRecognitionStep(stage: RecognitionStage, detail?: string) {
+    setRecognitionStage(stage);
+    if (detail) {
+      setRecognitionStepDetails((current) => ({ ...current, [stage]: detail }));
+    }
+  }
 
-      const response = await fetch("/api/manual-import/parse", {
-        method: "POST",
-        body: formData,
-      });
-      const data = await response.json();
-      if (!response.ok || !data.ok) {
-        throw new Error(data.error || "Матчи не распознаны");
-      }
+  async function postManualParse({
+    mode,
+    text = "",
+    ocrText: nextOcrText = "",
+    image,
+    imageDataUrl: nextImageDataUrl = "",
+  }: {
+    mode: ParseMode;
+    text?: string;
+    ocrText?: string;
+    image?: File;
+    imageDataUrl?: string;
+  }) {
+    const formData = new FormData();
+    formData.append("disciplineSlug", disciplineSlug);
+    formData.append("disciplineId", disciplineId);
+    formData.append("mode", mode);
+    formData.append("text", text);
+    formData.append("ocrText", nextOcrText);
+    if (image) {
+      formData.append("image", image);
+    } else if (nextImageDataUrl) {
+      formData.append("imageDataUrl", nextImageDataUrl);
+    }
 
-      setMatches(mergeMatchesWithMappedIds(data.rawMatches || [], data.mappedMatches || []));
-      setMappedMatches(data.mappedMatches || []);
-      setMappingConflicts([]);
-      setMappingSaveSummary(null);
-      setParseSource(data.parseSource || "");
-      setParseWarnings(Array.isArray(data.warnings) ? data.warnings : []);
-      setOcrConfidence(typeof data.ocrConfidence === "number" ? data.ocrConfidence : null);
-      if (typeof data.ocrText === "string" && data.ocrText.trim()) {
-        setOcrText(data.ocrText);
-      } else if (data.parseSource === "local-ocr" && typeof data.normalizedText === "string") {
-        setOcrText(data.normalizedText);
-      }
-      if (data.normalizedText && !rawText.trim() && !data.ocrText && data.parseSource !== "local-ocr") {
-        setRawText(data.normalizedText);
-      }
-      setMessage({
-        type: data.fallback ? "info" : "success",
-        text: `${getParseSourceLabel(data.parseSource)}. Найдено матчей: ${(data.rawMatches || []).length}.`,
-      });
-    } catch (error) {
-      setMessage({ type: "error", text: error instanceof Error ? error.message : "Ошибка распознавания" });
-    } finally {
-      setParsing(false);
+    const response = await fetch("/api/manual-import/parse", {
+      method: "POST",
+      body: formData,
+    });
+    const data = await response.json();
+    if (!response.ok || !data.ok) {
+      throw new Error(data.error || "Матчи не распознаны");
+    }
+    return data;
+  }
+
+  function applyParsedData(data: any) {
+    setMatches(mergeMatchesWithMappedIds(data.rawMatches || [], data.mappedMatches || []));
+    setMappedMatches(data.mappedMatches || []);
+    setMappingConflicts([]);
+    setMappingSaveSummary(null);
+    setAiFallbackAvailable(false);
+    setParseSource(data.parseSource || "");
+    setParseWarnings(Array.isArray(data.warnings) ? data.warnings : []);
+    setOcrConfidence(typeof data.ocrConfidence === "number" ? data.ocrConfidence : null);
+    if (typeof data.ocrText === "string" && data.ocrText.trim()) {
+      setOcrText(data.ocrText);
+    } else if ((data.parseSource === "local-ocr" || data.parseSource === "ocr-cache") && typeof data.normalizedText === "string") {
+      setOcrText(data.normalizedText);
+    }
+    if (data.normalizedText && !rawText.trim() && !data.ocrText && data.parseSource !== "local-ocr" && data.parseSource !== "ocr-cache") {
+      setRawText(data.normalizedText);
     }
   }
 
@@ -461,12 +651,12 @@ export default function ManualImportWorkbench() {
             <p className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-600">Manual import</p>
             <h1 className="mt-2 text-4xl font-black tracking-tight text-slate-950">Ручной импорт матчей</h1>
             <p className="mt-2 max-w-2xl text-sm font-bold leading-relaxed text-slate-600">
-              Фото или текст проходят через ArcCodex GPT-5.5, затем payload собирается в тот же формат FIxt.
+              Фото или текст сначала проходят быстрый OCR и локальный парсер, AI подключается только как fallback.
             </p>
           </div>
-          <div className="space-y-2">
-            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Дисциплина</label>
+          <div>
             <select
+              aria-label="Дисциплина"
               value={disciplineSlug}
               onChange={(event) => {
                 const nextDiscipline = event.target.value;
@@ -481,6 +671,9 @@ export default function ManualImportWorkbench() {
                 setOcrConfidence(null);
                 setParseSource("");
                 setParseWarnings([]);
+                setRecognitionStage("idle");
+                setRecognitionStepDetails({});
+                setAiFallbackAvailable(false);
                 setPreview(null);
                 setMatches([]);
                 setMappedMatches([]);
@@ -635,7 +828,7 @@ export default function ManualImportWorkbench() {
               <p className="mt-1 text-xs font-bold text-slate-500">Скрин расписания, OCR-текст или копипаст из HLTV.</p>
             </div>
             <div className="rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1 text-[9px] font-black uppercase tracking-widest text-indigo-600">
-              GPT-5.5
+              OCR + AI
             </div>
           </div>
 
@@ -659,6 +852,50 @@ export default function ManualImportWorkbench() {
             </div>
           </div>
 
+          {recognitionStage !== "idle" && (
+            <div className="mt-5 rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h3 className="text-sm font-black text-slate-950">Ход распознавания</h3>
+                <span className="text-[10px] font-black uppercase tracking-widest text-indigo-600">
+                  {recognitionStage === "done" ? "готово" : "в процессе"}
+                </span>
+              </div>
+              <div className="grid gap-2 md:grid-cols-3">
+                {recognitionStages.map((stage) => {
+                  const status = getRecognitionStageStatus(recognitionStage, stage.id);
+                  const isActive = status === "active";
+                  const isDone = status === "done";
+                  return (
+                    <div
+                      key={stage.id}
+                      className={`rounded-xl border px-3 py-2 transition ${
+                        isActive
+                          ? "border-indigo-200 bg-white text-indigo-700 shadow-sm"
+                          : isDone
+                            ? "border-emerald-100 bg-emerald-50 text-emerald-700"
+                            : "border-slate-100 bg-white/60 text-slate-400"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        {isActive ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : isDone ? (
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                        ) : (
+                          <div className="h-3.5 w-3.5 rounded-full border border-current opacity-40" />
+                        )}
+                        <span className="text-[10px] font-black uppercase tracking-widest">{stage.label}</span>
+                      </div>
+                      {recognitionStepDetails[stage.id] && (
+                        <p className="mt-1 text-[10px] font-bold leading-snug opacity-80">{recognitionStepDetails[stage.id]}</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {(ocrText || parseSource || parseWarnings.length > 0) && (
             <div className="mt-5 rounded-2xl border border-sky-100 bg-sky-50/70 p-4">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -674,16 +911,28 @@ export default function ManualImportWorkbench() {
                     </p>
                   </div>
                 </div>
-                {ocrText && (
-                  <button
-                    onClick={() => parseMatches({ useOcrText: true })}
-                    disabled={parsing || !ocrText.trim()}
-                    className="flex h-10 items-center justify-center gap-2 rounded-xl border border-sky-200 bg-white px-4 text-[10px] font-black uppercase tracking-widest text-sky-700 transition hover:bg-sky-100 disabled:border-slate-100 disabled:bg-slate-50 disabled:text-slate-300"
-                  >
-                    {parsing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-                    Повторить по OCR
-                  </button>
-                )}
+                <div className="flex flex-wrap gap-2">
+                  {ocrText && (
+                    <button
+                      onClick={() => parseMatches({ useOcrText: true })}
+                      disabled={parsing || !ocrText.trim()}
+                      className="flex h-10 items-center justify-center gap-2 rounded-xl border border-sky-200 bg-white px-4 text-[10px] font-black uppercase tracking-widest text-sky-700 transition hover:bg-sky-100 disabled:border-slate-100 disabled:bg-slate-50 disabled:text-slate-300"
+                    >
+                      {parsing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                      Повторить по OCR
+                    </button>
+                  )}
+                  {aiFallbackAvailable && (
+                    <button
+                      onClick={runAiFallback}
+                      disabled={parsing}
+                      className="flex h-10 items-center justify-center gap-2 rounded-xl border border-indigo-200 bg-indigo-600 px-4 text-[10px] font-black uppercase tracking-widest text-white transition hover:bg-indigo-700 disabled:border-slate-100 disabled:bg-slate-50 disabled:text-slate-300"
+                    >
+                      {parsing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                      AI fallback
+                    </button>
+                  )}
+                </div>
               </div>
 
               {ocrText && (
@@ -989,6 +1238,8 @@ function getParseSourceLabel(source?: string) {
       return "Локальный парсер текста";
     case "local-ocr":
       return "Локальный OCR";
+    case "ocr-cache":
+      return "Кэш OCR";
     case "ai":
       return "AI fallback";
     case "fallback":
@@ -1032,4 +1283,47 @@ function mergeMatchesWithMappedIds(matches: ManualMatch[], mappedMatches: Mapped
       team2PlatformId: match.team2PlatformId || mapped?.team2.platformId || "",
     };
   });
+}
+
+function getRecognitionStageStatus(current: RecognitionStage, stage: Exclude<RecognitionStage, "idle">) {
+  if (current === "idle") return "pending";
+  const currentIndex = recognitionStages.findIndex((item) => item.id === current);
+  const stageIndex = recognitionStages.findIndex((item) => item.id === stage);
+  if (currentIndex === -1 || stageIndex === -1) return "pending";
+  if (stageIndex < currentIndex || current === "done") return "done";
+  if (stageIndex === currentIndex) return "active";
+  return "pending";
+}
+
+async function resizeImageForOcr(file: File) {
+  if (typeof window === "undefined" || !file.type.startsWith("image/")) return file;
+  if (typeof createImageBitmap !== "function") return file;
+
+  try {
+    const bitmap = await createImageBitmap(file);
+    const maxSide = Math.max(bitmap.width, bitmap.height);
+    if (maxSide <= 2000 && file.size <= 2 * 1024 * 1024) {
+      bitmap.close?.();
+      return file;
+    }
+
+    const scale = Math.min(1, 2000 / maxSide);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const context = canvas.getContext("2d");
+    if (!context) {
+      bitmap.close?.();
+      return file;
+    }
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close?.();
+
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/webp", 0.92));
+    if (!blob) return file;
+    const resizedName = file.name.replace(/\.[^.]+$/, "") || "schedule";
+    return new File([blob], `${resizedName}.webp`, { type: "image/webp" });
+  } catch {
+    return file;
+  }
 }
