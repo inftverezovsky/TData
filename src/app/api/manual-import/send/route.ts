@@ -4,7 +4,7 @@ import { resolveAdminSettings } from "@/lib/adminUpload/resolveAdminSettings";
 import { sendFixtPayload } from "@/lib/adminUpload/sendFixtPayload";
 import { prisma } from "@/lib/db/db";
 import { buildManualFixtPayload } from "@/lib/manualImport/buildManualFixtPayload";
-import { getManualImportDiscipline, MANUAL_IMPORT_TOURNAMENT_ID } from "@/lib/manualImport/config";
+import { getManualImportDiscipline, MANUAL_IMPORT_TOURNAMENT_ID, resolveManualImportDisciplineSlug } from "@/lib/manualImport/config";
 import { requireAdmin } from "@/lib/auth/adminAuth";
 
 export const dynamic = "force-dynamic";
@@ -15,9 +15,9 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json().catch(() => ({}));
-    const disciplineSlug = typeof body.disciplineSlug === "string" ? body.disciplineSlug.trim().toLowerCase() : "";
     const shapkaId = typeof body.shapkaId === "string" || typeof body.shapkaId === "number" ? String(body.shapkaId).trim() : "";
     const disciplineId = typeof body.disciplineId === "string" || typeof body.disciplineId === "number" ? String(body.disciplineId).trim() : "";
+    const disciplineSlug = resolveManualImportDisciplineSlug({ disciplineId, disciplineSlug: body.disciplineSlug });
     const matches = Array.isArray(body.matches) ? body.matches : [];
     const force = Boolean(body.force);
 

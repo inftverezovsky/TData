@@ -1,6 +1,5 @@
 import { buildTeamMappingLookup, findTeamMapping } from "@/lib/teams/mappingLookup";
 import { prisma } from "@/lib/db/db";
-import { MANUAL_IMPORT_DISCIPLINES } from "./config";
 import { findClosestPlatformTeamFromCandidates } from "@/lib/teams/fuzzyMatch";
 import { normalizeTeamName } from "@/lib/teams/teams";
 import { loadManualImportTeamMappingLookup } from "./teamMappings";
@@ -148,11 +147,9 @@ export async function buildManualFixtPayload({
 }): Promise<ManualFixtBuildResult> {
   const warnings: string[] = [];
   const skippedMatches: ManualFixtBuildResult["skippedMatches"] = [];
-  const discipline = MANUAL_IMPORT_DISCIPLINES[disciplineSlug as keyof typeof MANUAL_IMPORT_DISCIPLINES];
   const mappedMatches = await mapManualMatches(matches, disciplineSlug, disciplineId);
   const readyMatches: ManualFixtMatch[] = [];
 
-  if (!discipline) warnings.push("Дисциплина для ручного импорта не поддерживается.");
   if (!shapkaId) warnings.push("ID шапки не указан.");
   if (!disciplineId) warnings.push("ID дисциплины не указан.");
 

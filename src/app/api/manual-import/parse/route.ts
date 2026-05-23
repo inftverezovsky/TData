@@ -13,7 +13,8 @@ export async function POST(request: Request) {
   if (unauthorized) return unauthorized;
 
   try {
-    const { disciplineSlug, disciplineId, text, ocrText, imageDataUrl, imageBuffer, imageMime, mode } = await readManualImportParseRequest(request);
+    const totalStartedAt = Date.now();
+    const { disciplineSlug, disciplineId, text, ocrText, imageDataUrl, imageBuffer, imageMime, mode, fast } = await readManualImportParseRequest(request);
 
     if (!getManualImportDiscipline(disciplineSlug)) {
       return NextResponse.json({ ok: false, error: "Unsupported discipline" }, { status: 400 });
@@ -31,8 +32,11 @@ export async function POST(request: Request) {
       imageBuffer,
       imageMime,
       mode,
+      fast,
     });
+    const mappingStartedAt = Date.now();
     const mappedMatches = await mapManualMatches(parsed.matches, disciplineSlug, disciplineId);
+    const mappingMs = Date.now() - mappingStartedAt;
 
     return NextResponse.json({
       ok: parsed.ok,
@@ -44,6 +48,12 @@ export async function POST(request: Request) {
       parseSource: parsed.parseSource,
       warnings: parsed.warnings || [],
       fallback: parsed.fallback || false,
+      cacheHit: Boolean(parsed.cacheHit),
+      timings: {
+        ...(parsed.timings || {}),
+        mappingMs,
+        totalMs: Date.now() - totalStartedAt,
+      },
       error: parsed.error,
     });
   } catch (error) {

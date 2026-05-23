@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, useState } from "react";
+import { ChangeEvent, useRef, useState } from "react";
 import {
   Bot,
   CheckCircle2,
@@ -17,13 +17,6 @@ import {
   Table2,
   UploadCloud,
 } from "lucide-react";
-
-const disciplines = [
-  { slug: "dota2", label: "Dota 2" },
-  { slug: "counterstrike", label: "Counter-Strike" },
-  { slug: "leagueoflegends", label: "League of Legends" },
-  { slug: "valorant", label: "Valorant" },
-] as const;
 
 type ManualMatch = {
   id?: string;
@@ -67,9 +60,9 @@ type RecognitionStage = "idle" | "preparing" | "ocr" | "local-parser" | "ai-fall
 
 const recognitionStages: Array<{ id: Exclude<RecognitionStage, "idle">; label: string }> = [
   { id: "preparing", label: "Подготовка" },
+  { id: "ai-fallback", label: "AI распознавание" },
   { id: "ocr", label: "OCR изображения" },
   { id: "local-parser", label: "Локальный парсер" },
-  { id: "ai-fallback", label: "AI fallback" },
   { id: "mapping", label: "Маппинг" },
   { id: "done", label: "Готово" },
 ];
@@ -109,8 +102,16 @@ type ManualMappingSaveSummary = {
   overwrittenCount: number;
 };
 
+type ClientAiImageCacheEntry = {
+  rawMatches: ManualMatch[];
+  normalizedText: string;
+  expiresAt: number;
+};
+
+const CLIENT_AI_IMAGE_CACHE_TTL_MS = 30 * 60 * 1000;
+const clientAiImageCache = new Map<string, ClientAiImageCacheEntry>();
+
 export default function ManualImportWorkbench() {
-  const [disciplineSlug, setDisciplineSlug] = useState("counterstrike");
   const [disciplineId, setDisciplineId] = useState("73");
   const [shapkaId, setShapkaId] = useState("");
   const [rawText, setRawText] = useState("");
@@ -124,6 +125,7 @@ export default function ManualImportWorkbench() {
   const [recognitionStage, setRecognitionStage] = useState<RecognitionStage>("idle");
   const [recognitionStepDetails, setRecognitionStepDetails] = useState<Partial<Record<RecognitionStage, string>>>({});
   const [aiFallbackAvailable, setAiFallbackAvailable] = useState(false);
+  const [ocrFallbackAvailable, setOcrFallbackAvailable] = useState(false);
   const [matches, setMatches] = useState<ManualMatch[]>([]);
   const [mappedMatches, setMappedMatches] = useState<MappedMatch[]>([]);
   const [preview, setPreview] = useState<PreviewData | null>(null);
@@ -141,6 +143,7 @@ export default function ManualImportWorkbench() {
   const [teamUrl, setTeamUrl] = useState("");
   const [teamImporting, setTeamImporting] = useState(false);
   const [teamImportResult, setTeamImportResult] = useState<TeamImportResult | null>(null);
+  const activeRecognitionController = useRef<AbortController | null>(null);
 
   const readyCount =
     preview?.readyMatchesCount ??
@@ -171,6 +174,7 @@ export default function ManualImportWorkbench() {
     setRecognitionStage("idle");
     setRecognitionStepDetails({});
     setAiFallbackAvailable(false);
+    setOcrFallbackAvailable(false);
     setPreview(null);
     setMappingConflicts([]);
     setMappingSaveSummary(null);
@@ -186,7 +190,7 @@ export default function ManualImportWorkbench() {
     setMessage(null);
 
     const formData = new FormData();
-    formData.append("disciplineSlug", disciplineSlug);
+    formData.append("disciplineId", disciplineId);
     if (teamImportMode === "file" && teamFile) {
       formData.append("file", teamFile);
     } else {
@@ -222,14 +226,14 @@ export default function ManualImportWorkbench() {
       return;
     }
 
-    beginRecognition();
+    const controller = beginRecognition();
 
     try {
       if (shouldUploadImage) {
         if (textForParse.trim()) {
           setRecognitionStep("local-parser", "Сначала проверяю введённый текст.");
           try {
-            const data = await postManualParse({ mode: "text", text: textForParse });
+            const data = await postManualParse({ mode: "text", text: textForParse, signal: controller.signal });
             applyParsedData(data);
             setRecognitionStep("done", `Найдено матчей: ${(data.rawMatches || []).length}.`);
             setMessage({
@@ -238,15 +242,15 @@ export default function ManualImportWorkbench() {
             });
             return;
           } catch {
-            setRecognitionStep("local-parser", "Текст не собрал матчи, перехожу к OCR.");
+            setRecognitionStep("local-parser", "Текст не собрал матчи, перехожу к AI распознаванию.");
           }
         }
-        await parseImageWithFastOcr();
+        await parseImageWithAiFirst(controller);
         return;
       }
 
       setRecognitionStep("local-parser", "Разбираю текст без OCR и AI.");
-      const data = await postManualParse({ mode: "text", text: textForParse });
+      const data = await postManualParse({ mode: "text", text: textForParse, signal: controller.signal });
       applyParsedData(data);
       setRecognitionStep("done", `Найдено матчей: ${(data.rawMatches || []).length}.`);
       setMessage({
@@ -254,18 +258,73 @@ export default function ManualImportWorkbench() {
         text: `${getParseSourceLabel(data.parseSource)}. Найдено матчей: ${(data.rawMatches || []).length}.`,
       });
     } catch (error) {
-      setRecognitionStep("done", "Распознавание остановлено.");
-      setMessage({ type: "error", text: error instanceof Error ? error.message : "Ошибка распознавания" });
+      if (isAbortError(error)) {
+        setRecognitionStep("done", "Распознавание отменено.");
+        setMessage({ type: "info", text: "Распознавание отменено." });
+      } else {
+        setRecognitionStep("done", "Распознавание остановлено.");
+        setMessage({ type: "error", text: error instanceof Error ? error.message : "Ошибка распознавания" });
+      }
     } finally {
-      setParsing(false);
+      finishRecognition(controller);
     }
   }
 
-  async function parseImageWithFastOcr() {
-    setRecognitionStep("preparing", "Готовлю изображение для быстрого OCR.");
+  async function parseImageWithAiFirst(controller: AbortController) {
+    setRecognitionStep("preparing", "Готовлю изображение для ArcCodex AI.");
+    const preparedImage = imageFile ? await resizeImageForAi(imageFile) : null;
+    throwIfAborted(controller.signal);
+    const cacheKey = await getClientAiImageCacheKey(disciplineId, preparedImage, imageDataUrl);
+    const cached = cacheKey ? getClientAiImageCache(cacheKey) : null;
+
+    if (cached) {
+      setRecognitionStep("ai-fallback", "Взято из кэша ArcCodex AI.");
+      await applyCachedAiImageParse(cached, controller.signal);
+      return;
+    }
+
+    setRecognitionStep("ai-fallback", "Отправляю изображение в ArcCodex AI.");
+    try {
+      const data = await postManualParse({
+        mode: "ai",
+        text: rawText,
+        image: preparedImage || undefined,
+        imageDataUrl: preparedImage ? "" : imageDataUrl,
+        fast: true,
+        signal: controller.signal,
+      });
+      applyParsedData(data);
+      if (cacheKey) {
+        setClientAiImageCache(cacheKey, {
+          rawMatches: data.rawMatches || [],
+          normalizedText: data.normalizedText || "",
+        });
+      }
+      setAiFallbackAvailable(false);
+      setOcrFallbackAvailable(false);
+      setRecognitionStep("mapping", "ID команд подтянуты из справочников.");
+      setRecognitionStep("done", `Найдено матчей: ${(data.rawMatches || []).length}.`);
+      setMessage({
+        type: "success",
+        text: `${getParseSourceLabel(data.parseSource)}. Найдено матчей: ${(data.rawMatches || []).length}.`,
+      });
+    } catch (error) {
+      if (isAbortError(error)) throw error;
+      const reason = error instanceof Error ? error.message : "AI не смог собрать матчи.";
+      setAiFallbackAvailable(false);
+      setOcrFallbackAvailable(Boolean(imageFile || imageDataUrl));
+      setParseSource("ai");
+      setParseWarnings([`${reason} OCR fallback можно запустить вручную.`]);
+      setRecognitionStep("done", "AI не нашёл матчи. OCR fallback доступен вручную.");
+      setMessage({ type: "error", text: `${reason} Можно запустить OCR fallback вручную.` });
+    }
+  }
+
+  async function parseImageWithFastOcr(controller: AbortController) {
+    setRecognitionStep("preparing", "Готовлю изображение для локального OCR.");
     const preparedImage = imageFile ? await resizeImageForOcr(imageFile) : null;
+    throwIfAborted(controller.signal);
     const ocrFormData = new FormData();
-    ocrFormData.append("disciplineSlug", disciplineSlug);
     ocrFormData.append("disciplineId", disciplineId);
     if (preparedImage) {
       ocrFormData.append("image", preparedImage);
@@ -273,10 +332,11 @@ export default function ManualImportWorkbench() {
       ocrFormData.append("imageDataUrl", imageDataUrl);
     }
 
-    setRecognitionStep("ocr", "Извлекаю текст из изображения.");
+    setRecognitionStep("ocr", "Извлекаю текст локальным OCR.");
     const ocrResponse = await fetch("/api/manual-import/ocr", {
       method: "POST",
       body: ocrFormData,
+      signal: controller.signal,
     });
     const ocrData = await ocrResponse.json();
     if (!ocrResponse.ok || !ocrData.ok) {
@@ -297,7 +357,7 @@ export default function ManualImportWorkbench() {
 
     setRecognitionStep("local-parser", "Собираю матчи из OCR-текста.");
     try {
-      const data = await postManualParse({ mode: "text", text: extractedText });
+      const data = await postManualParse({ mode: "text", text: extractedText, signal: controller.signal });
       applyParsedData({
         ...data,
         ocrText: extractedText,
@@ -306,45 +366,80 @@ export default function ManualImportWorkbench() {
         warnings: [...(ocrData.warnings || []), ...(data.warnings || [])],
       });
       setRecognitionStep("mapping", "ID команд подтянуты из справочников.");
+      setOcrFallbackAvailable(false);
       setRecognitionStep("done", `Найдено матчей: ${(data.rawMatches || []).length}.`);
       setMessage({
         type: "success",
         text: `${ocrData.cached ? "Кэш OCR" : "Локальный OCR"}. Найдено матчей: ${(data.rawMatches || []).length}.`,
       });
     } catch (error) {
+      if (isAbortError(error)) throw error;
       const reason = error instanceof Error ? error.message : "Локальный парсер не смог собрать матчи.";
       await runAiFallbackParse({
         ocrTextOverride: extractedText,
         imageFallback: false,
-        introDetail: `${reason} Отправляю OCR-текст в AI fallback автоматически.`,
+        introDetail: `${reason} Отправляю OCR-текст в ArcCodex AI автоматически.`,
+        signal: controller.signal,
       });
     }
   }
 
   async function runAiFallback() {
-    await runAiFallbackParse({ resetProgress: true });
+    try {
+      await runAiFallbackParse({ resetProgress: true });
+    } catch (error) {
+      if (isAbortError(error)) {
+        setRecognitionStep("done", "AI fallback отменён.");
+        setMessage({ type: "info", text: "AI fallback отменён." });
+      }
+    }
+  }
+
+  async function runOcrFallback() {
+    if (!imageFile && !imageDataUrl) {
+      setMessage({ type: "error", text: "Нет фото для OCR fallback." });
+      return;
+    }
+
+    const controller = beginRecognition();
+    try {
+      await parseImageWithFastOcr(controller);
+    } catch (error) {
+      if (isAbortError(error)) {
+        setRecognitionStep("done", "OCR fallback отменён.");
+        setMessage({ type: "info", text: "OCR fallback отменён." });
+      } else {
+        setRecognitionStep("done", "OCR fallback не смог собрать матчи.");
+        setOcrFallbackAvailable(true);
+        setMessage({ type: "error", text: error instanceof Error ? error.message : "Ошибка OCR fallback" });
+      }
+    } finally {
+      finishRecognition(controller);
+    }
   }
 
   async function runAiFallbackParse({
     resetProgress = false,
     ocrTextOverride,
     imageFallback = true,
-    introDetail = "Отправляю OCR-текст в AI fallback.",
+    introDetail = "Отправляю OCR-текст в ArcCodex AI.",
+    signal,
   }: {
     resetProgress?: boolean;
     ocrTextOverride?: string;
     imageFallback?: boolean;
     introDetail?: string;
+    signal?: AbortSignal;
   } = {}) {
+    const resetController = resetProgress ? beginRecognition() : null;
+    const requestSignal = signal || resetController?.signal;
     const nextOcrText = ocrTextOverride ?? ocrText;
     if (!nextOcrText.trim() && !rawText.trim() && (!imageFallback || (!imageFile && !imageDataUrl))) {
       setMessage({ type: "error", text: "Нет текста или фото для AI fallback." });
+      if (resetController) finishRecognition(resetController);
       return;
     }
 
-    if (resetProgress) {
-      beginRecognition();
-    }
     setRecognitionStep("ai-fallback", introDetail);
 
     try {
@@ -352,11 +447,14 @@ export default function ManualImportWorkbench() {
         mode: "ai",
         text: rawText,
         ocrText: nextOcrText,
-        image: imageFallback && !nextOcrText.trim() && imageFile ? await resizeImageForOcr(imageFile) : undefined,
+        image: imageFallback && !nextOcrText.trim() && imageFile ? await resizeImageForAi(imageFile) : undefined,
         imageDataUrl: imageFallback && !nextOcrText.trim() ? imageDataUrl : "",
+        fast: true,
+        signal: requestSignal,
       });
       applyParsedData(data);
       setAiFallbackAvailable(false);
+      setOcrFallbackAvailable(false);
       setRecognitionStep("mapping", "ID команд подтянуты из справочников.");
       setRecognitionStep("done", `Найдено матчей: ${(data.rawMatches || []).length}.`);
       setMessage({
@@ -364,17 +462,21 @@ export default function ManualImportWorkbench() {
         text: `${getParseSourceLabel(data.parseSource)}. Найдено матчей: ${(data.rawMatches || []).length}.`,
       });
     } catch (error) {
+      if (isAbortError(error)) throw error;
       setAiFallbackAvailable(true);
       setRecognitionStep("done", "AI fallback не смог собрать матчи.");
       setMessage({ type: "error", text: error instanceof Error ? error.message : "Ошибка AI fallback" });
     } finally {
-      if (resetProgress) {
-        setParsing(false);
+      if (resetController) {
+        finishRecognition(resetController);
       }
     }
   }
 
   function beginRecognition() {
+    activeRecognitionController.current?.abort();
+    const controller = new AbortController();
+    activeRecognitionController.current = controller;
     setParsing(true);
     setMessage(null);
     setPreview(null);
@@ -382,6 +484,23 @@ export default function ManualImportWorkbench() {
     setRecognitionStage("preparing");
     setRecognitionStepDetails({});
     setAiFallbackAvailable(false);
+    setOcrFallbackAvailable(false);
+    return controller;
+  }
+
+  function finishRecognition(controller: AbortController) {
+    if (activeRecognitionController.current === controller) {
+      activeRecognitionController.current = null;
+    }
+    setParsing(false);
+  }
+
+  function abortRecognition() {
+    activeRecognitionController.current?.abort();
+    activeRecognitionController.current = null;
+    setParsing(false);
+    setRecognitionStep("done", "Распознавание отменено.");
+    setMessage({ type: "info", text: "Распознавание отменено." });
   }
 
   function setRecognitionStep(stage: RecognitionStage, detail?: string) {
@@ -397,17 +516,21 @@ export default function ManualImportWorkbench() {
     ocrText: nextOcrText = "",
     image,
     imageDataUrl: nextImageDataUrl = "",
+    fast = false,
+    signal,
   }: {
     mode: ParseMode;
     text?: string;
     ocrText?: string;
     image?: File;
     imageDataUrl?: string;
+    fast?: boolean;
+    signal?: AbortSignal;
   }) {
     const formData = new FormData();
-    formData.append("disciplineSlug", disciplineSlug);
     formData.append("disciplineId", disciplineId);
     formData.append("mode", mode);
+    if (fast) formData.append("fast", "true");
     formData.append("text", text);
     formData.append("ocrText", nextOcrText);
     if (image) {
@@ -419,6 +542,7 @@ export default function ManualImportWorkbench() {
     const response = await fetch("/api/manual-import/parse", {
       method: "POST",
       body: formData,
+      signal,
     });
     const data = await response.json();
     if (!response.ok || !data.ok) {
@@ -446,6 +570,36 @@ export default function ManualImportWorkbench() {
     }
   }
 
+  async function applyCachedAiImageParse(cached: ClientAiImageCacheEntry, signal: AbortSignal) {
+    setRecognitionStep("mapping", "Обновляю ID команд по текущему справочнику.");
+    const mapped = await postManualAutomap(cached.rawMatches, signal);
+    const data = {
+      rawMatches: cached.rawMatches,
+      mappedMatches: mapped.mappedMatches || [],
+      normalizedText: cached.normalizedText,
+      parseSource: "ai",
+      warnings: [],
+      cacheHit: true,
+    };
+    applyParsedData(data);
+    setAiFallbackAvailable(false);
+    setOcrFallbackAvailable(false);
+    setRecognitionStep("done", `Найдено матчей: ${cached.rawMatches.length}.`);
+    setMessage({ type: "success", text: `ArcCodex AI (кэш). Найдено матчей: ${cached.rawMatches.length}.` });
+  }
+
+  async function postManualAutomap(rawMatches: ManualMatch[], signal?: AbortSignal) {
+    const response = await fetch("/api/manual-import/automap", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ disciplineId, matches: rawMatches }),
+      signal,
+    });
+    const data = await response.json();
+    if (!response.ok || !data.ok) throw new Error(data.error || "Автомапинг не выполнен");
+    return data;
+  }
+
   async function runPreview() {
     if (matches.length === 0) {
       setMessage({ type: "error", text: "Сначала распознайте или добавьте матчи." });
@@ -459,7 +613,7 @@ export default function ManualImportWorkbench() {
       const response = await fetch("/api/manual-import/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ disciplineSlug, disciplineId, shapkaId, matches }),
+        body: JSON.stringify({ disciplineId, shapkaId, matches }),
       });
       const data = await response.json();
       if (!response.ok || !data.ok) throw new Error(data.error || "Ошибка превью");
@@ -485,7 +639,7 @@ export default function ManualImportWorkbench() {
       const response = await fetch("/api/manual-import/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ disciplineSlug, disciplineId, shapkaId, matches }),
+        body: JSON.stringify({ disciplineId, shapkaId, matches }),
       });
       const data = await response.json();
       if (!response.ok || !data.ok) {
@@ -518,7 +672,7 @@ export default function ManualImportWorkbench() {
       const response = await fetch("/api/manual-import/automap", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ disciplineSlug, disciplineId, matches }),
+        body: JSON.stringify({ disciplineId, matches }),
       });
       const data = await response.json();
       if (!response.ok || !data.ok) throw new Error(data.error || "Автомапинг не выполнен");
@@ -555,7 +709,7 @@ export default function ManualImportWorkbench() {
       const response = await fetch("/api/manual-import/team-mappings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ disciplineSlug, disciplineId, matches, overwriteConflicts }),
+        body: JSON.stringify({ disciplineId, matches, overwriteConflicts }),
       });
       const data = await response.json();
       if (!response.ok || !data.ok) throw new Error(data.error || "Не удалось сохранить ID команд");
@@ -595,7 +749,7 @@ export default function ManualImportWorkbench() {
       const response = await fetch("/api/manual-import/service-link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ disciplineSlug, disciplineId, shapkaId, matches }),
+        body: JSON.stringify({ disciplineId, shapkaId, matches }),
       });
       const data = await response.json();
       if (!response.ok || !data.ok) {
@@ -643,55 +797,18 @@ export default function ManualImportWorkbench() {
     setMappingSaveSummary(null);
   }
 
+  const visibleRecognitionStages = getVisibleRecognitionStages(recognitionStage, recognitionStepDetails);
+
   return (
     <div className="space-y-6">
       <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-soft">
-        <div className="grid gap-4 lg:grid-cols-[1fr_220px_220px_220px] lg:items-end">
+        <div className="grid gap-4 lg:grid-cols-[1fr_220px_220px] lg:items-end">
           <div>
             <p className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-600">Manual import</p>
             <h1 className="mt-2 text-4xl font-black tracking-tight text-slate-950">Ручной импорт матчей</h1>
             <p className="mt-2 max-w-2xl text-sm font-bold leading-relaxed text-slate-600">
-              Фото или текст сначала проходят быстрый OCR и локальный парсер, AI подключается только как fallback.
+              Фото сначала распознает ArcCodex AI, локальный OCR остается резервом для сложных случаев.
             </p>
-          </div>
-          <div>
-            <select
-              aria-label="Дисциплина"
-              value={disciplineSlug}
-              onChange={(event) => {
-                const nextDiscipline = event.target.value;
-                setDisciplineSlug(nextDiscipline);
-                setDisciplineId("");
-                setShapkaId("");
-                setRawText("");
-                setImageFile(null);
-                setImageDataUrl("");
-                setImageName("");
-                setOcrText("");
-                setOcrConfidence(null);
-                setParseSource("");
-                setParseWarnings([]);
-                setRecognitionStage("idle");
-                setRecognitionStepDetails({});
-                setAiFallbackAvailable(false);
-                setPreview(null);
-                setMatches([]);
-                setMappedMatches([]);
-                setTeamImportResult(null);
-                setTeamFile(null);
-                setTeamUrl("");
-                setMappingConflicts([]);
-                setMappingSaveSummary(null);
-                setMessage(null);
-              }}
-              className="h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10"
-            >
-              {disciplines.map((discipline) => (
-                <option key={discipline.slug} value={discipline.slug}>
-                  {discipline.label}
-                </option>
-              ))}
-            </select>
           </div>
           <div className="space-y-2">
             <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">ID дисциплины</label>
@@ -761,7 +878,7 @@ export default function ManualImportWorkbench() {
               <label className="flex min-h-14 cursor-pointer items-center gap-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 text-sm font-bold text-slate-500 transition hover:border-indigo-300 hover:bg-indigo-50/40">
                 <FileUp className="h-5 w-5 text-indigo-500" />
                 <span className="truncate">{teamFile ? teamFile.name : "Выберите файл из админки"}</span>
-                <input key={`team-file-${disciplineSlug}`} type="file" accept=".xlsx" onChange={handleTeamFileChange} className="hidden" />
+                <input key={`team-file-${disciplineId}`} type="file" accept=".xlsx" onChange={handleTeamFileChange} className="hidden" />
               </label>
             ) : (
               <input
@@ -837,7 +954,7 @@ export default function ManualImportWorkbench() {
               <ImageUp className="h-9 w-9 text-indigo-500" />
               <span className="mt-3 text-sm font-black text-slate-950">{imageName || "Добавить фото"}</span>
               <span className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">png / jpg / webp</span>
-              <input key={`image-file-${disciplineSlug}`} type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
+              <input key={`image-file-${disciplineId}`} type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
             </label>
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-2">
               <textarea
@@ -856,13 +973,24 @@ export default function ManualImportWorkbench() {
             <div className="mt-5 rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <h3 className="text-sm font-black text-slate-950">Ход распознавания</h3>
-                <span className="text-[10px] font-black uppercase tracking-widest text-indigo-600">
-                  {recognitionStage === "done" ? "готово" : "в процессе"}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-indigo-600">
+                    {recognitionStage === "done" ? "готово" : "в процессе"}
+                  </span>
+                  {parsing && (
+                    <button
+                      type="button"
+                      onClick={abortRecognition}
+                      className="h-8 rounded-lg border border-slate-200 bg-white px-3 text-[10px] font-black uppercase tracking-widest text-slate-500 transition hover:bg-slate-50"
+                    >
+                      Отменить
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="grid gap-2 md:grid-cols-3">
-                {recognitionStages.map((stage) => {
-                  const status = getRecognitionStageStatus(recognitionStage, stage.id);
+                {visibleRecognitionStages.map((stage) => {
+                  const status = getRecognitionStageStatus(recognitionStage, stage.id, visibleRecognitionStages);
                   const isActive = status === "active";
                   const isDone = status === "done";
                   return (
@@ -896,7 +1024,7 @@ export default function ManualImportWorkbench() {
             </div>
           )}
 
-          {(ocrText || parseSource || parseWarnings.length > 0) && (
+          {(ocrText || parseSource || parseWarnings.length > 0 || ocrFallbackAvailable) && (
             <div className="mt-5 rounded-2xl border border-sky-100 bg-sky-50/70 p-4">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div className="flex items-center gap-3">
@@ -930,6 +1058,16 @@ export default function ManualImportWorkbench() {
                     >
                       {parsing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                       AI fallback
+                    </button>
+                  )}
+                  {ocrFallbackAvailable && (
+                    <button
+                      onClick={runOcrFallback}
+                      disabled={parsing}
+                      className="flex h-10 items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-500 px-4 text-[10px] font-black uppercase tracking-widest text-white transition hover:bg-amber-600 disabled:border-slate-100 disabled:bg-slate-50 disabled:text-slate-300"
+                    >
+                      {parsing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScanText className="h-4 w-4" />}
+                      Запустить OCR fallback
                     </button>
                   )}
                 </div>
@@ -1241,7 +1379,7 @@ function getParseSourceLabel(source?: string) {
     case "ocr-cache":
       return "Кэш OCR";
     case "ai":
-      return "AI fallback";
+      return "ArcCodex AI";
     case "fallback":
       return "Fallback parser";
     default:
@@ -1285,29 +1423,72 @@ function mergeMatchesWithMappedIds(matches: ManualMatch[], mappedMatches: Mapped
   });
 }
 
-function getRecognitionStageStatus(current: RecognitionStage, stage: Exclude<RecognitionStage, "idle">) {
+function getVisibleRecognitionStages(
+  current: RecognitionStage,
+  details: Partial<Record<RecognitionStage, string>>
+) {
+  return recognitionStages.filter((stage) => {
+    if (stage.id === "preparing" || stage.id === "mapping" || stage.id === "done") return true;
+    return current === stage.id || Boolean(details[stage.id]);
+  });
+}
+
+function getRecognitionStageStatus(
+  current: RecognitionStage,
+  stage: Exclude<RecognitionStage, "idle">,
+  stages: Array<{ id: Exclude<RecognitionStage, "idle">; label: string }>
+) {
   if (current === "idle") return "pending";
-  const currentIndex = recognitionStages.findIndex((item) => item.id === current);
-  const stageIndex = recognitionStages.findIndex((item) => item.id === stage);
+  const currentIndex = stages.findIndex((item) => item.id === current);
+  const stageIndex = stages.findIndex((item) => item.id === stage);
   if (currentIndex === -1 || stageIndex === -1) return "pending";
   if (stageIndex < currentIndex || current === "done") return "done";
   if (stageIndex === currentIndex) return "active";
   return "pending";
 }
 
+async function resizeImageForAi(file: File) {
+  return resizeImage(file, {
+    maxSide: 1600,
+    maxPassthroughBytes: 1.25 * 1024 * 1024,
+    outputType: "image/webp",
+    quality: 0.86,
+    suffix: "ai",
+  });
+}
+
 async function resizeImageForOcr(file: File) {
+  return resizeImage(file, {
+    maxSide: 2000,
+    maxPassthroughBytes: 2 * 1024 * 1024,
+    outputType: "image/webp",
+    quality: 0.92,
+    suffix: "ocr",
+  });
+}
+
+async function resizeImage(
+  file: File,
+  options: {
+    maxSide: number;
+    maxPassthroughBytes: number;
+    outputType: "image/webp" | "image/jpeg";
+    quality: number;
+    suffix: string;
+  }
+) {
   if (typeof window === "undefined" || !file.type.startsWith("image/")) return file;
   if (typeof createImageBitmap !== "function") return file;
 
   try {
     const bitmap = await createImageBitmap(file);
     const maxSide = Math.max(bitmap.width, bitmap.height);
-    if (maxSide <= 2000 && file.size <= 2 * 1024 * 1024) {
+    if (maxSide <= options.maxSide && file.size <= options.maxPassthroughBytes) {
       bitmap.close?.();
       return file;
     }
 
-    const scale = Math.min(1, 2000 / maxSide);
+    const scale = Math.min(1, options.maxSide / maxSide);
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(bitmap.width * scale));
     canvas.height = Math.max(1, Math.round(bitmap.height * scale));
@@ -1319,11 +1500,70 @@ async function resizeImageForOcr(file: File) {
     context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
     bitmap.close?.();
 
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/webp", 0.92));
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, options.outputType, options.quality));
     if (!blob) return file;
     const resizedName = file.name.replace(/\.[^.]+$/, "") || "schedule";
-    return new File([blob], `${resizedName}.webp`, { type: "image/webp" });
+    const extension = options.outputType === "image/jpeg" ? "jpg" : "webp";
+    return new File([blob], `${resizedName}-${options.suffix}.${extension}`, { type: options.outputType });
   } catch {
     return file;
   }
+}
+
+async function getClientAiImageCacheKey(disciplineId: string, file: File | null, imageDataUrl: string) {
+  if (typeof window === "undefined" || !window.crypto?.subtle) return "";
+  const source = file ? await file.arrayBuffer() : imageDataUrl ? new TextEncoder().encode(imageDataUrl).buffer : null;
+  if (!source) return "";
+  const hash = await window.crypto.subtle.digest("SHA-256", source);
+  return `${disciplineId.trim() || "manual"}:${Array.from(new Uint8Array(hash))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("")}`;
+}
+
+function getClientAiImageCache(key: string) {
+  const cached = clientAiImageCache.get(key);
+  if (!cached) return null;
+  if (cached.expiresAt < Date.now()) {
+    clientAiImageCache.delete(key);
+    return null;
+  }
+  return {
+    rawMatches: cached.rawMatches.map((match) => ({ ...match })),
+    normalizedText: cached.normalizedText,
+    expiresAt: cached.expiresAt,
+  };
+}
+
+function setClientAiImageCache(
+  key: string,
+  value: {
+    rawMatches: ManualMatch[];
+    normalizedText: string;
+  }
+) {
+  cleanupClientAiImageCache();
+  clientAiImageCache.set(key, {
+    rawMatches: value.rawMatches.map((match) => ({ ...match })),
+    normalizedText: value.normalizedText,
+    expiresAt: Date.now() + CLIENT_AI_IMAGE_CACHE_TTL_MS,
+  });
+}
+
+function cleanupClientAiImageCache() {
+  const now = Date.now();
+  for (const [key, value] of clientAiImageCache) {
+    if (value.expiresAt < now) clientAiImageCache.delete(key);
+  }
+}
+
+function throwIfAborted(signal: AbortSignal) {
+  if (signal.aborted) {
+    throw new DOMException("Aborted", "AbortError");
+  }
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof DOMException
+    ? error.name === "AbortError"
+    : error instanceof Error && error.name === "AbortError";
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/adminAuth";
-import { getManualImportDiscipline } from "@/lib/manualImport/config";
+import { getManualImportDiscipline, resolveManualImportDisciplineSlug } from "@/lib/manualImport/config";
 import { normalizeAdminSportId, saveManualImportTeamMappings } from "@/lib/manualImport/teamMappings";
 
 export const dynamic = "force-dynamic";
@@ -11,8 +11,8 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json().catch(() => ({}));
-    const disciplineSlug = typeof body.disciplineSlug === "string" ? body.disciplineSlug.trim().toLowerCase() : "";
     const disciplineId = normalizeAdminSportId(body.disciplineId);
+    const disciplineSlug = resolveManualImportDisciplineSlug({ disciplineId, disciplineSlug: body.disciplineSlug });
     const matches = Array.isArray(body.matches) ? body.matches : [];
     const overwriteConflicts = Boolean(body.overwriteConflicts);
 

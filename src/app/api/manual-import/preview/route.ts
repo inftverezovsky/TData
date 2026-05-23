@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { phpSerialize } from "@/lib/adminUpload/phpSerialize";
 import { toPhpString } from "@/lib/adminUpload/utils";
 import { buildManualFixtPayload } from "@/lib/manualImport/buildManualFixtPayload";
-import { getManualImportDiscipline } from "@/lib/manualImport/config";
+import { getManualImportDiscipline, resolveManualImportDisciplineSlug } from "@/lib/manualImport/config";
 import { requireAdmin } from "@/lib/auth/adminAuth";
 
 export const dynamic = "force-dynamic";
@@ -13,9 +13,9 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json().catch(() => ({}));
-    const disciplineSlug = typeof body.disciplineSlug === "string" ? body.disciplineSlug.trim().toLowerCase() : "";
     const shapkaId = typeof body.shapkaId === "string" || typeof body.shapkaId === "number" ? String(body.shapkaId).trim() : "";
     const disciplineId = typeof body.disciplineId === "string" || typeof body.disciplineId === "number" ? String(body.disciplineId).trim() : "";
+    const disciplineSlug = resolveManualImportDisciplineSlug({ disciplineId, disciplineSlug: body.disciplineSlug });
     const matches = Array.isArray(body.matches) ? body.matches : [];
 
     const discipline = getManualImportDiscipline(disciplineSlug);

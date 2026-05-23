@@ -5,6 +5,7 @@ import { requireAdmin } from "@/lib/auth/adminAuth";
 import { queueIdentitySync } from "@/lib/sync/identitySync";
 import { parseAdminTeamImportRows } from "@/lib/adminTeams/importSpreadsheet";
 import { runAutoMappingForDiscipline } from "@/lib/teams/mapping";
+import { resolveManualImportDisciplineSlug } from "@/lib/manualImport/config";
 
 const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
 const REMOTE_FETCH_TIMEOUT_MS = 15000;
@@ -17,7 +18,11 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const file = formData.get("file") as File;
     const url = formData.get("url") as string;
-    const disciplineSlug = (formData.get("disciplineSlug") as string) || "dota2";
+    const disciplineSlug =
+      resolveManualImportDisciplineSlug({
+        disciplineId: formData.get("disciplineId"),
+        disciplineSlug: formData.get("disciplineSlug"),
+      }) || "dota2";
 
     if (!file && !url) {
       return NextResponse.json({ error: "No file or URL provided" }, { status: 400 });
