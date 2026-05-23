@@ -2,6 +2,7 @@ import { DateTime } from 'luxon';
 import { prisma } from '@/lib/db/db';
 import { dedupeTournamentMatches } from '@/lib/matches/dedupe';
 import { applyDisciplineScheduleLead } from '@/lib/matches/scheduleOffset';
+import { resolveExactMatchDate } from '@/lib/matches/time';
 import { isPlaceholderTeam, isTbdPlaceholderTeam } from '@/lib/teams/teams';
 import { buildTeamMappingLookup, findTeamMapping } from '@/lib/teams/mappingLookup';
 import { resolveAdminSettings } from './resolveAdminSettings';
@@ -44,15 +45,9 @@ export async function buildFixtPayload(
   // 1. Fetch settings from Prisma (discipline-specific or global)
   const settings = await resolveAdminSettings(disciplineSlug);
 
-  const [mapping, tournament] = await Promise.all([
-    prisma.tournamentAdminMapping.findUnique({
-      where: { tournamentId },
-    }),
-    prisma.tournament.findUnique({
-      where: { id: tournamentId },
-      select: { startDate: true },
-    })
-  ]);
+  const mapping = await prisma.tournamentAdminMapping.findUnique({
+    where: { tournamentId },
+  });
 
   const shapkaId = mapping?.adminShapkaId || settings.defaultShapkaId;
   const sportId = settings.adminSportId;
@@ -136,11 +131,18 @@ export async function buildFixtPayload(
       continue;
     }
 
-    if (!match.matchDate) {
-      warnings.push(`Для матча ${teamAName} vs ${teamBName} отсутствует дата, использована дата начала турнира.`);
+    const exactMatchDate = resolveExactMatchDate(match);
+    if (!exactMatchDate) {
+      warnings.push(`Матч ${teamAName} vs ${teamBName} пропущен: нет точного времени.`);
+      skippedMatches.push({
+        matchId: match.matchId,
+        reason: 'Missing exact match time',
+        teams: `${teamAName} vs ${teamBName}`,
+      });
+      continue;
     }
 
-    const matchDate = applyDisciplineScheduleLead(match.matchDate || tournament?.startDate || new Date(), disciplineSlug);
+    const matchDate = applyDisciplineScheduleLead(exactMatchDate, disciplineSlug);
 
     // 2.3 Skip finished matches (with result)
     const hasScores = match.scoreA !== null || match.scoreB !== null;

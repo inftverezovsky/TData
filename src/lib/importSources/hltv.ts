@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/db";
 import { dedupeTournamentMatches } from "@/lib/matches/dedupe";
 import { getBestOfLabel } from "@/lib/matches/format";
+import { resolveExactMatchDate } from "@/lib/matches/time";
 import { applyTbdPairCycling } from "@/lib/matches/tbdCycling";
 import { classifyParserError } from "@/lib/proxy/parserErrors";
 import { getTeamMappingLookupKeys } from "@/lib/teams/canonicalize";
@@ -92,6 +93,13 @@ async function saveHltvTournamentMatches(params: {
     const teamAId = isPlaceholderTeam(m.team1) ? "tbd" : generateInternalTeamId(m.team1);
     const teamBId = isPlaceholderTeam(m.team2) ? "tbd" : generateInternalTeamId(m.team2);
     const format = getBestOfLabel(m.format || m.matchFormat || m.bestOf || m.rawText);
+    const sourceUrl = `https://www.hltv.org/matches/${m.id}/match`;
+    const candidate = {
+      ...m,
+      matchDate: m.unix_time ? new Date(m.unix_time * 1000) : null,
+      sourceUrl,
+    };
+    const matchDate = resolveExactMatchDate(candidate);
     return {
       ...m,
       matchId: `hltv-${m.id}`,
@@ -100,10 +108,11 @@ async function saveHltvTournamentMatches(params: {
       teamAId,
       teamBId,
       hasPlaceholderTeams,
-      matchDate: m.unix_time ? new Date(m.unix_time * 1000) : null,
+      matchDate,
       format,
+      sourceUrl,
     };
-  }));
+  }).filter((m: any) => m.matchDate));
 
   const knownFormats = Array.from(new Set(hltvMatches.map((m: any) => m.format).filter(Boolean)));
   const eventWideFormat = knownFormats.length === 1 ? knownFormats[0] : null;
@@ -129,7 +138,7 @@ async function saveHltvTournamentMatches(params: {
         hasPlaceholderTeams: m.hasPlaceholderTeams,
         matchDate,
         format: m.format,
-        sourceUrl: `https://www.hltv.org/matches/${m.id}/match`,
+        sourceUrl: m.sourceUrl,
         status: "upcoming",
       },
       update: {
@@ -139,6 +148,7 @@ async function saveHltvTournamentMatches(params: {
         teamBId: m.teamBId,
         hasPlaceholderTeams: m.hasPlaceholderTeams,
         matchDate,
+        sourceUrl: m.sourceUrl,
         ...(m.format ? { format: m.format } : {}),
       },
     });

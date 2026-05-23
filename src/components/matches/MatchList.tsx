@@ -3,6 +3,7 @@
 import { useMemo, useEffect, useState } from "react";
 import { getBestOfLabel } from "@/lib/matches/format";
 import { applyDisciplineScheduleLead } from "@/lib/matches/scheduleOffset";
+import { hasExactMatchTime, resolveExactMatchDate } from "@/lib/matches/time";
 import { isPlaceholderTeam, normalizeTeamName } from "@/lib/teams/teams";
 import { getTeamAliasKey } from "@/lib/teams/canonicalize";
 import { Clock, LayoutGrid, CheckCircle2, TimerReset } from "lucide-react";
@@ -42,20 +43,7 @@ const moscowDateFormatter = new Intl.DateTimeFormat("ru-RU", {
 });
 
 function getMatchDateObj(match: Match): Date | null {
-  let d: Date | null = null;
-  if (match.matchDate) {
-    d = typeof match.matchDate === "string" ? new Date(match.matchDate) : match.matchDate;
-    if (isNaN(d.getTime())) d = null;
-  }
-  if (!d && match.matchDateTime) {
-    const cleaned = match.matchDateTime.replace(/\s*-\s*/, " ").replace(/\s+[A-Z]{2,5}$/, "");
-    // Treat as MSK: create UTC date then subtract 3h
-    const parsed = new Date(cleaned + "Z");
-    if (!isNaN(parsed.getTime())) {
-      d = parsed;
-    }
-  }
-  return d;
+  return resolveExactMatchDate(match);
 }
 
 function getMatchTimestamp(match: Match): number | null {
@@ -71,14 +59,9 @@ function isMatchPlaceholder(match: Match) {
   );
 }
 
-function hasExactVisibleTime(match: Match) {
-  return /\b\d{1,2}:\d{2}\b/.test(match.matchDateTime || "");
-}
-
 function isGeneratedScheduleMatrixRow(match: Match) {
   if (isMatchPlaceholder(match)) return false;
-  if (getMatchDateObj(match)) return false;
-  if (hasExactVisibleTime(match)) return false;
+  if (hasExactMatchTime(match)) return false;
 
   const rawText = String(match.rawText || "").toLowerCase();
   const format = String(match.format || "").toLowerCase().trim();
@@ -144,6 +127,10 @@ export default function MatchList({
         // Liquipedia crosstable rows are schedule matrix hints, not exact
         // upload-ready matches. TBD slots are preserved separately.
         if (isGeneratedScheduleMatrixRow(m)) return false;
+
+        // Анонсы без точного времени не показываем: сначала parser/helper
+        // пытается восстановить время из timestamp/raw text, затем скрываем.
+        if (!hasExactMatchTime(m)) return false;
 
         // 1. Скрываем матчи с результатами
         if (m.scoreA !== null || m.scoreB !== null) return false;

@@ -14,6 +14,7 @@ import {
   buildMatchCandidateMetadata,
   computeMatchSetQuality,
 } from "@/lib/matches/quality";
+import { resolveExactMatchDate } from "@/lib/matches/time";
 import {
   findSourceFetchCache,
   isSourceCacheFresh,
@@ -462,10 +463,14 @@ export async function processSinglePage(params: {
       const futureLimit = new Date(today.getTime() + IMPORT_MATCH_FUTURE_WINDOW_DAYS * 24 * 60 * 60 * 1000);
 
       matchesToInsert = normalized.matches
+        .map((m: any) => {
+          const exactMatchDate = resolveExactMatchDate(m);
+          return exactMatchDate ? { ...m, matchDate: exactMatchDate } : null;
+        })
+        .filter((m: any): m is any => Boolean(m))
         .filter((m: any) => {
           if (m.scoreA !== null || m.scoreB !== null) return false;
           if (isFinishedMatchStatus(m.status)) return false;
-          if (!m.matchDate && normalized.tournamentStatus === "finished") return false;
           
           if (m.matchDate) {
             const mDate = new Date(m.matchDate);
