@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { PortalTournament } from "@/lib/liquipedia/portal";
+import { getLiquipediaUserMessage } from "@/lib/liquipedia/userFacingErrors";
 
 type Props = {
   slug: string;
@@ -97,10 +98,11 @@ function TournamentRow({ tournament, slug }: { tournament: PortalTournament; slu
       if (data.tournament?.id) {
         router.push(`/${slug}/tournament/${data.tournament.id}`);
       } else {
-        alert(data.error || "Ошибка");
+        alert(data.userMessage || getLiquipediaUserMessage(data.errorClass, data.error || "Ошибка"));
       }
     } catch (err) {
       console.error(err);
+      alert(getLiquipediaUserMessage(null, err instanceof Error ? err.message : "Ошибка"));
     } finally {
       setLoading(false);
     }

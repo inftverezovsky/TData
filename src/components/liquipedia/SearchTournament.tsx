@@ -4,6 +4,7 @@ import { FormEvent, useState } from "react";
 import LoadTournamentButton from "@/components/ui/LoadTournamentButton";
 import UpcomingTournamentsWidget from "@/components/liquipedia/UpcomingTournamentsWidget";
 import { Loader2, Calendar, Trash2 } from "lucide-react";
+import { getLiquipediaUserMessage } from "@/lib/liquipedia/userFacingErrors";
 
 type SearchResult = {
   pageId: number;
@@ -13,6 +14,13 @@ type SearchResult = {
   score?: number | null;
   wordCount?: number | null;
   dates?: string | null;
+};
+
+type SearchResponse = {
+  results?: SearchResult[];
+  error?: string;
+  userMessage?: string | null;
+  errorClass?: string | null;
 };
 
 function toPlainSnippet(snippet: string) {
@@ -50,14 +58,16 @@ export default function SearchTournament({ disciplineSlug, hideSidebar = false }
       });
       clearTimeout(timeoutId);
       
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? "Search failed");
+      const data = await response.json().catch(() => ({})) as SearchResponse;
+      if (!response.ok) {
+        throw new Error(data.userMessage || getLiquipediaUserMessage(data.errorClass, data.error ?? "Search failed"));
+      }
       setResults(data.results ?? []);
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
         setError("Поиск занял слишком много времени. Попробуйте еще раз.");
       } else {
-        setError(err instanceof Error ? err.message : "Search error");
+        setError(getLiquipediaUserMessage(null, err instanceof Error ? err.message : "Search error"));
       }
     } finally {
       setLoading(false);

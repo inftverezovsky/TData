@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { fetchDisciplinePortal } from "@/lib/liquipedia/portal";
 import { prisma } from "@/lib/db/db";
+import { getLiquipediaResponseStatus, toLiquipediaUserFacingError } from "@/lib/liquipedia/userFacingErrors";
 
 export const dynamic = "force-dynamic";
 
@@ -88,7 +89,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ disc
 
     return NextResponse.json({ ...data, tournaments: enrichedTournaments });
   } catch (err: any) {
+    const userFacingError = toLiquipediaUserFacingError(err);
     console.error(`[Portal API] Error:`, err);
-    return NextResponse.json({ error: "Failed to fetch portal data", details: err.message }, { status: 500 });
+    return NextResponse.json(
+      { error: userFacingError.userMessage, userMessage: userFacingError.userMessage, errorClass: userFacingError.errorClass },
+      { status: getLiquipediaResponseStatus(userFacingError.errorClass) }
+    );
   }
 }

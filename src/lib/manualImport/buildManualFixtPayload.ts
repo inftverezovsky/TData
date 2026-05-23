@@ -1,0 +1,248 @@
+import { buildTeamMappingLookup, findTeamMapping } from "@/lib/teams/mappingLookup";
+import { prisma } from "@/lib/db/db";
+import { MANUAL_IMPORT_DISCIPLINES } from "./config";
+import { findClosestPlatformTeamFromCandidates } from "@/lib/teams/fuzzyMatch";
+
+export type ManualImportRawMatch = {
+  id?: unknown;
+  tournament?: unknown;
+  team1?: unknown;
+  team2?: unknown;
+  team1PlatformId?: unknown;
+  team2PlatformId?: unknown;
+  date?: unknown;
+  unix_time?: unknown;
+};
+
+export type ManualImportMappedMatch = {
+  id: string;
+  tournament: string;
+  team1: {
+    name: string;
+    platformId: string | null;
+  };
+  team2: {
+    name: string;
+    platformId: string | null;
+  };
+  date: string;
+  isReady: boolean;
+};
+
+export type ManualFixtMatch = {
+  date: string;
+  team1: number;
+  team2: number;
+};
+
+export type ManualFixtPayload = {
+  shapka: number;
+  sport: number;
+  max: number;
+  match: ManualFixtMatch[];
+};
+
+export type ManualFixtBuildResult = {
+  payload: ManualFixtPayload | null;
+  readyMatchesCount: number;
+  skippedMatches: Array<{ matchId: string; reason: string; teams: string }>;
+  warnings: string[];
+  mappedMatches: ManualImportMappedMatch[];
+};
+
+export async function mapManualMatches(rawMatches: ManualImportRawMatch[], disciplineSlug: string) {
+  const mappings = await prisma.teamMapping.findMany({
+    where: { disciplineSlug },
+  });
+  const mappingMap = buildTeamMappingLookup(mappings);
+  const adminTeams = await prisma.adminTeam.findMany({
+    where: { disciplineSlug: disciplineSlug.trim().toLowerCase() },
+    select: { platformId: true, platformName: true, normalizedName: true },
+  });
+
+  return Promise.all(rawMatches.map(async (match, index) => {
+    const team1Name = readTeamName(match.team1) || "TBD";
+    const team2Name = readTeamName(match.team2) || "TBD";
+    const mappingA = findTeamMapping(mappingMap, team1Name);
+    const mappingB = findTeamMapping(mappingMap, team2Name);
+    const adminTeamA = mappingA?.platformId ? null : findClosestPlatformTeamFromCandidates(adminTeams, team1Name, 0.62);
+    const adminTeamB = mappingB?.platformId ? null : findClosestPlatformTeamFromCandidates(adminTeams, team2Name, 0.62);
+    const platformIdA = readString(match.team1PlatformId) || mappingA?.platformId || adminTeamA?.platformId || readTeamPlatformId(match.team1);
+    const platformIdB = readString(match.team2PlatformId) || mappingB?.platformId || adminTeamB?.platformId || readTeamPlatformId(match.team2);
+    const fallbackId = `manual-${stableMatchKey(team1Name, team2Name, readString(match.date) || String(index)).slice(0, 10)}`;
+
+    return {
+      id: readString(match.id) || fallbackId,
+      tournament: readString(match.tournament) || "Manual Import",
+      team1: {
+        name: team1Name,
+        platformId: platformIdA,
+      },
+      team2: {
+        name: team2Name,
+        platformId: platformIdB,
+      },
+      date: normalizeManualDate(match.date, match.unix_time),
+      isReady: Boolean(platformIdA && platformIdB),
+    };
+  }));
+}
+
+export async function buildManualFixtPayload({
+  matches,
+  disciplineSlug,
+  shapkaId,
+  disciplineId,
+}: {
+  matches: ManualImportRawMatch[];
+  disciplineSlug: string;
+  shapkaId: string;
+  disciplineId: string;
+}): Promise<ManualFixtBuildResult> {
+  const warnings: string[] = [];
+  const skippedMatches: ManualFixtBuildResult["skippedMatches"] = [];
+  const discipline = MANUAL_IMPORT_DISCIPLINES[disciplineSlug as keyof typeof MANUAL_IMPORT_DISCIPLINES];
+  const mappedMatches = await mapManualMatches(matches, disciplineSlug);
+  const readyMatches: ManualFixtMatch[] = [];
+
+  if (!discipline) warnings.push("Дисциплина для ручного импорта не поддерживается.");
+  if (!shapkaId) warnings.push("ID шапки не указан.");
+  if (!disciplineId) warnings.push("ID дисциплины не указан.");
+
+  const parsedShapka = parsePositiveInteger(shapkaId);
+  const parsedSport = parsePositiveInteger(disciplineId);
+
+  if (shapkaId && parsedShapka === null) warnings.push("ID шапки должен быть положительным числом.");
+  if (disciplineId && parsedSport === null) warnings.push("ID дисциплины должен быть положительным числом.");
+
+  for (const match of mappedMatches) {
+    const team1Id = parsePositiveInteger(match.team1.platformId);
+    const team2Id = parsePositiveInteger(match.team2.platformId);
+    const hasDate = isManualDateReady(match.date);
+
+    if (!team1Id || !team2Id) {
+      const missing = [
+        !team1Id ? `${match.team1.name} (${match.team1.platformId || "NO ID"})` : null,
+        !team2Id ? `${match.team2.name} (${match.team2.platformId || "NO ID"})` : null,
+      ].filter(Boolean);
+
+      warnings.push(`Команды без ID: ${missing.join(", ")}`);
+      skippedMatches.push({
+        matchId: match.id,
+        reason: "Missing or invalid team platform IDs",
+        teams: `${match.team1.name} (${match.team1.platformId || "N/A"}) vs ${match.team2.name} (${match.team2.platformId || "N/A"})`,
+      });
+      continue;
+    }
+
+    if (!hasDate) {
+      warnings.push(`Для матча ${match.team1.name} vs ${match.team2.name} не распознана дата.`);
+      skippedMatches.push({
+        matchId: match.id,
+        reason: "Missing or invalid match date",
+        teams: `${match.team1.name} vs ${match.team2.name}`,
+      });
+      continue;
+    }
+
+    readyMatches.push({
+      date: match.date,
+      team1: team1Id,
+      team2: team2Id,
+    });
+  }
+
+  const payload =
+    parsedShapka && parsedSport && readyMatches.length > 0
+      ? {
+          shapka: parsedShapka,
+          sport: parsedSport,
+          max: 5000,
+          match: readyMatches,
+        }
+      : null;
+
+  return {
+    payload,
+    readyMatchesCount: readyMatches.length,
+    skippedMatches,
+    warnings: dedupeWarnings(warnings),
+    mappedMatches,
+  };
+}
+
+function readString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function readTeamName(value: unknown) {
+  if (typeof value === "string") return value.trim();
+  if (value && typeof value === "object" && "name" in value) {
+    return readString((value as { name?: unknown }).name);
+  }
+  return "";
+}
+
+function readTeamPlatformId(value: unknown) {
+  if (value && typeof value === "object" && "platformId" in value) {
+    const raw = (value as { platformId?: unknown }).platformId;
+    return raw === null || raw === undefined ? null : String(raw).trim() || null;
+  }
+  return null;
+}
+
+function normalizeManualDate(dateValue: unknown, unixTimeValue: unknown) {
+  const unixTime = typeof unixTimeValue === "number" || typeof unixTimeValue === "string" ? Number(unixTimeValue) : NaN;
+  if (Number.isFinite(unixTime) && unixTime > 0) {
+    return new Date(unixTime * 1000)
+      .toLocaleString("ru-RU", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        timeZone: "Europe/Moscow",
+      })
+      .replace(",", "");
+  }
+
+  const date = readString(dateValue);
+  if (!date) return "Unknown";
+
+  const alreadyReady = date.match(/^(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (alreadyReady) {
+    return `${alreadyReady[1]}.${alreadyReady[2]}.${alreadyReady[3]} ${alreadyReady[4]}:${alreadyReady[5]}:${alreadyReady[6] || "00"}`;
+  }
+
+  const isoLike = date.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (isoLike) {
+    return `${isoLike[3]}.${isoLike[2]}.${isoLike[1]} ${isoLike[4].padStart(2, "0")}:${isoLike[5]}:${isoLike[6] || "00"}`;
+  }
+
+  return date;
+}
+
+function isManualDateReady(date: string) {
+  return /^\d{2}\.\d{2}\.\d{4}\s+\d{2}:\d{2}:\d{2}$/.test(date);
+}
+
+function parsePositiveInteger(value: string | number | null | undefined) {
+  if (value === null || value === undefined || value === "") return null;
+
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function dedupeWarnings(warnings: string[]) {
+  return Array.from(new Set(warnings));
+}
+
+function stableMatchKey(team1: string, team2: string, date: string) {
+  let hash = 0;
+  const value = `${team1}|${team2}|${date}`;
+  for (let i = 0; i < value.length; i++) {
+    hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash).toString(36).padStart(8, "0");
+}

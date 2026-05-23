@@ -9,6 +9,7 @@ const navItems = [
   { href: "/counterstrike", label: "Counter-Strike" },
   { href: "/leagueoflegends", label: "League of Legends" },
   { href: "/valorant", label: "Valorant" },
+  { href: "/manual-import", label: "Ручной импорт" },
   { href: "/history", label: "История" },
   { href: "/settings", label: "API" }
 ];

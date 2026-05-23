@@ -1,6 +1,6 @@
 import { getLiquipediaUserAgent } from "@/lib/config/env";
 import { prisma } from "@/lib/db/db";
-import { withGenericRateLimit, withParseRateLimit } from "@/lib/liquipedia/rateLimiter";
+import { registerLiquipediaBackoff, withGenericRateLimit, withParseRateLimit } from "@/lib/liquipedia/rateLimiter";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import { SocksProxyAgent } from "socks-proxy-agent";
 import { markProxyFailure, markProxySuccess, maskProxyUrl, selectProxyCandidate } from "@/lib/proxy/proxySelector";
@@ -8,10 +8,24 @@ import { classifyParserError, shouldCooldownProxyForError } from "@/lib/proxy/pa
 import crypto from "crypto";
 import nodeFetch from "node-fetch";
 import { ApiRequestOptions } from "./types";
+import type { ParserErrorClass } from "@/lib/proxy/parserErrors";
 
 export const LIQUIPEDIA_API_TIMEOUT_MS = Number(process.env.LIQUIPEDIA_API_TIMEOUT_MS || 40000);
 export const LIQUIPEDIA_API_MAX_RETRIES = Number(process.env.LIQUIPEDIA_API_MAX_RETRIES || 1);
 export const LIQUIPEDIA_DIRECT_FALLBACK_ENABLED = process.env.LIQUIPEDIA_DIRECT_FALLBACK_ENABLED !== "0";
+
+export class LiquipediaRequestError extends Error {
+  errorClass: ParserErrorClass;
+  statusCode?: number;
+
+  constructor(message: string, params: { errorClass: ParserErrorClass; statusCode?: number; cause?: unknown }) {
+    super(message);
+    this.name = "LiquipediaRequestError";
+    this.errorClass = params.errorClass;
+    this.statusCode = params.statusCode;
+    this.cause = params.cause;
+  }
+}
 
 export async function fetchHtml(url: string): Promise<string> {
   const controller = new AbortController();
@@ -48,7 +62,7 @@ export async function fetchHtml(url: string): Promise<string> {
     if (shouldCooldownProxyForError(errorClass)) {
       await markProxyFailure(proxy?.proxyId || null, {
         errorClass,
-        errorMessage: `Failed to fetch HTML ${response.status} from ${url}`,
+        errorMessage: `Liquipedia HTML request failed with ${response.status} (${errorClass})`,
         durationMs: Date.now() - startedAt,
         blocked: errorClass === "cloudflare_block",
       });
@@ -57,7 +71,10 @@ export async function fetchHtml(url: string): Promise<string> {
       const htmlFromApi = await fetchHtmlViaMediaWikiApi(url).catch(() => "");
       if (htmlFromApi) return htmlFromApi;
     }
-    throw new Error(`Failed to fetch HTML ${response.status} from ${url}`);
+    throw new LiquipediaRequestError(
+      `Liquipedia HTML request failed with ${response.status} (${errorClass})`,
+      { errorClass, statusCode: response.status }
+    );
   }
   await markProxySuccess(proxy?.proxyId || null, Date.now() - startedAt);
   return response.text();
@@ -88,24 +105,14 @@ export async function apiRequest<T>(
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-    const finalUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
-
     const fetchOptions: any = {
       method: "GET",
       headers: {
-        "User-Agent": finalUserAgent,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "User-Agent": getLiquipediaUserAgent(),
+        "Accept": "application/json, application/mediawiki+json;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9,ru;q=0.8",
         "Accept-Encoding": "gzip, deflate, br",
-        "Cache-Control": "max-age=0",
-        "Sec-Ch-Ua": '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
-        "Sec-Ch-Ua-Mobile": "?0",
-        "Sec-Ch-Ua-Platform": '"Windows"',
-        "Sec-Fetch-Dest": "document",
-        "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "none",
-        "Sec-Fetch-User": "?1",
-        "Upgrade-Insecure-Requests": "1"
+        "Cache-Control": "no-cache"
       },
       signal: controller.signal
     };
@@ -193,6 +200,7 @@ export async function apiRequest<T>(
     if (response.status === 424 || response.status === 403) {
       const durationMs = Date.now() - startedAt;
       const errorClass = classifyParserError({ statusCode: response.status, message: `Liquipedia blocked with ${response.status}` });
+      registerLiquipediaBackoff(proxyKey, errorClass, response.headers.get("retry-after"), isParse ? "parse" : "generic");
       await markProxyFailure(activeProxyId, {
         errorClass,
         errorMessage: `Liquipedia blocked with ${response.status}`,
@@ -220,10 +228,11 @@ export async function apiRequest<T>(
       const text = await response.text();
       const errorClass = classifyParserError({ statusCode: response.status, message: text });
       console.log(`[Liquipedia API Error Body] ${text.slice(0, 500)}`);
+      registerLiquipediaBackoff(proxyKey, errorClass, response.headers.get("retry-after"), isParse ? "parse" : "generic");
       if (shouldCooldownProxyForError(errorClass)) {
         await markProxyFailure(activeProxyId, {
           errorClass,
-          errorMessage: `Liquipedia API error ${response.status}: ${text.slice(0, 300)}`,
+          errorMessage: `Liquipedia API request failed with ${response.status} (${errorClass})`,
           durationMs: Date.now() - startedAt,
           blocked: errorClass === "cloudflare_block",
         });
@@ -237,7 +246,10 @@ export async function apiRequest<T>(
         bytesIn: text.length,
         queryHash: hashQuery(url.toString()),
       });
-      throw new Error(`Liquipedia API error ${response.status}: ${text.slice(0, 300)}`);
+      throw new LiquipediaRequestError(
+        `Liquipedia API request failed with ${response.status} (${errorClass})`,
+        { errorClass, statusCode: response.status }
+      );
     }
 
     if (!contentType.includes("application/json") && !contentType.includes("application/mediawiki+json")) {
@@ -247,6 +259,7 @@ export async function apiRequest<T>(
         message: `non-json response ${text.slice(0, 500)}`,
       });
       console.log(`[Liquipedia API Non-JSON Body] ${text.slice(0, 500)}`);
+      registerLiquipediaBackoff(proxyKey, errorClass, response.headers.get("retry-after"), isParse ? "parse" : "generic");
       if (shouldCooldownProxyForError(errorClass)) {
         await markProxyFailure(activeProxyId, {
           errorClass,
@@ -264,7 +277,10 @@ export async function apiRequest<T>(
         bytesIn: text.length,
         queryHash: hashQuery(url.toString()),
       });
-      throw new Error(`Liquipedia API returned non-JSON response. This usually means the request was blocked by Cloudflare or Liquipedia. (Status: ${response.status})`);
+      throw new LiquipediaRequestError(
+        `Liquipedia API returned non-JSON response (${errorClass}, status ${response.status})`,
+        { errorClass, statusCode: response.status }
+      );
     }
 
     const text = await response.text();
@@ -290,7 +306,10 @@ export async function apiRequest<T>(
         bytesIn: text.length,
         queryHash: hashQuery(url.toString()),
       });
-      throw new Error(`Liquipedia API returned invalid JSON. Body length: ${text.length}`);
+      throw new LiquipediaRequestError(
+        "Liquipedia API returned invalid JSON",
+        { errorClass: "parse_failed", statusCode: response.status }
+      );
     }
   };
 

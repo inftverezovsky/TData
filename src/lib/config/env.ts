@@ -26,6 +26,18 @@ export function getParseMinIntervalMs() {
   return numberFromEnv("LIQUIPEDIA_PARSE_MIN_INTERVAL_MS", 31000);
 }
 
+export function getLiquipediaJitterMs() {
+  return numberFromEnv("LIQUIPEDIA_JITTER_MS", 650);
+}
+
+export function getLiquipediaCooldownMs() {
+  return numberFromEnv("LIQUIPEDIA_COOLDOWN_MS", 10 * 60 * 1000);
+}
+
+export function getHltvQueueDelayMs() {
+  return numberFromEnv("HLTV_QUEUE_DELAY_MS", 1000);
+}
+
 export function getSearchCacheTtlMs() {
   return numberFromEnv("SEARCH_CACHE_TTL_SECONDS", 86400) * 1000;
 }

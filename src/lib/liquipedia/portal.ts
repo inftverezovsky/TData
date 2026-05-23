@@ -1,6 +1,7 @@
 import * as cheerio from "cheerio";
 import { getPortalCache } from "../db/db";
 import { fetchHtml } from "./client";
+import { withGenericRateLimit } from "./rateLimiter";
 
 export type PortalTournament = {
   title: string;
@@ -76,7 +77,7 @@ async function internalFetchDisciplinePortal(slug: string, force = false): Promi
       for (const url of urls) {
         try {
           console.log(`[Portal Lib] Fetching ${url} via Proxy (Attempt ${attempts}/${maxAttempts})`);
-          const content = await fetchHtml(url);
+          const content = await withGenericRateLimit(() => fetchHtml(url), `portal:${slug}`);
           if (content.length > 5000) {
             html = content;
             break;
@@ -89,7 +90,7 @@ async function internalFetchDisciplinePortal(slug: string, force = false): Promi
 
     if (!html && attempts < maxAttempts) {
       console.log(`[Portal Lib] No content received, waiting 2s before retry...`);
-      await new Promise(r => setTimeout(r, 2000));
+      await new Promise(r => setTimeout(r, 2000 + Math.floor(Math.random() * 700)));
     }
   }
 

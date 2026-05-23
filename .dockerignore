@@ -13,7 +13,6 @@ yarn-error.log*
 .DS_Store
 README.md
 docker-compose.yml
-Dockerfile
 .dockerignore
 scratch/
 cache/
@@ -28,3 +27,4 @@ hltv_debug_error.png
 *.tar
 *.tar.gz
 liquipedia-remote-deploy.sh
+.tesseract-cache/

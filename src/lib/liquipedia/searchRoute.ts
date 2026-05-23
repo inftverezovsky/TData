@@ -4,6 +4,7 @@ import { getSearchCacheTtlMs } from "@/lib/config/env";
 import { filterLiquipediaSearchResultsForQuery, searchTournamentPages } from "@/lib/liquipedia/client";
 import { classifyParserError, emptyValidIfNoItems } from "@/lib/proxy/parserErrors";
 import { getClientRateLimitKey } from "@/lib/http/clientIp";
+import { getLiquipediaResponseStatus, toLiquipediaUserFacingError } from "@/lib/liquipedia/userFacingErrors";
 import crypto from "crypto";
 
 type DisciplineLoader = () => Promise<{ id: string; baseApiUrl: string | null }>;
@@ -60,7 +61,8 @@ async function handleSearchRequest(config: {
     }
 
     if (isSearchRateLimited(getClientRateLimitKey(request, "liquipedia-search"))) {
-      return NextResponse.json({ error: "Too many search requests" }, { status: 429 });
+      const userMessage = "Слишком много поисковых запросов. Подождите пару минут и повторите.";
+      return NextResponse.json({ error: userMessage, userMessage, errorClass: "rate_limited" }, { status: 429 });
     }
 
     const discipline = await config.getDiscipline();
@@ -108,6 +110,7 @@ async function handleSearchRequest(config: {
     try {
       results = await searchTournamentPages(query, apiUrl, config.disciplineSlug);
     } catch (error) {
+      const userFacingError = toLiquipediaUserFacingError(error);
       if (staleRequest) {
         const staleResults = filterLiquipediaSearchResultsForQuery(query, staleRequest.results, new Date().getFullYear(), { futureWindowDays });
         if (staleResults.length === 0) {
@@ -120,13 +123,15 @@ async function handleSearchRequest(config: {
           cacheHit: true,
           cacheLayer: "db-stale",
           matchesCount: staleResults.length,
-          errorClass: classifyParserError({ message: error instanceof Error ? error.message : String(error) }),
+          errorClass: userFacingError.errorClass,
         });
         return NextResponse.json({
           query,
           cacheHit: true,
           stale: true,
-          warning: error instanceof Error ? error.message : "Search failed, returned stale cache",
+          warning: userFacingError.userMessage,
+          userMessage: userFacingError.userMessage,
+          errorClass: userFacingError.errorClass,
           results: staleResults.map((result) => ({
             pageId: result.pageId,
             title: result.title,
@@ -170,17 +175,18 @@ async function handleSearchRequest(config: {
 
     return NextResponse.json({ query, cacheHit: false, results });
   } catch (error) {
+    const userFacingError = toLiquipediaUserFacingError(error);
     await logSearchRouteRequest({
       disciplineSlug: config.disciplineSlug,
       query,
       cacheHit: false,
       cacheLayer: null,
-      errorClass: classifyParserError({ message: error instanceof Error ? error.message : String(error) }),
+      errorClass: userFacingError.errorClass,
     });
     console.error(error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Не удалось выполнить поиск" },
-      { status: 500 }
+      { error: userFacingError.userMessage, userMessage: userFacingError.userMessage, errorClass: userFacingError.errorClass },
+      { status: getLiquipediaResponseStatus(userFacingError.errorClass) }
     );
   }
 }

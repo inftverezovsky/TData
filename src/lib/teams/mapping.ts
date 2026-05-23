@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db/db";
 import { normalizeTeamName, isPlaceholderTeam } from "@/lib/teams/teams";
-import levenshtein from "fast-levenshtein";
+import { scorePlatformTeamCandidate } from "@/lib/teams/fuzzyMatch";
 
 export async function ensureTeamMappingsForTournament(tournamentId: string, disciplineSlug: string = "dota2") {
   const tournament = await prisma.tournament.findUnique({
@@ -74,9 +74,10 @@ export async function runAutoMappingForDiscipline(disciplineSlug: string) {
     let candidates: any[] = [];
 
     for (const admin of adminTeams) {
-      const distance = levenshtein.get(liqName, admin.normalizedName);
-      const maxLength = Math.max(liqName.length, admin.normalizedName.length);
-      const score = maxLength === 0 ? 100 : (1 - distance / maxLength) * 100;
+      const score = Math.max(
+        scorePlatformTeamCandidate(mapping.liquipediaName, admin),
+        scorePlatformTeamCandidate(liqName, admin)
+      ) * 100;
       candidates.push({ admin, score });
     }
 
@@ -92,7 +93,7 @@ export async function runAutoMappingForDiscipline(disciplineSlug: string) {
       if (bestScore - secondBestScore < 3 && secondBestScore >= 90) {
         await prisma.teamMapping.update({
           where: { id: mapping.id },
-          data: { status: 'ambiguous', confidenceScore: bestScore, matchMethod: 'levenshtein' }
+          data: { status: 'ambiguous', confidenceScore: bestScore, matchMethod: 'token_fuzzy' }
         });
         ambiguousCount++;
       } else {
@@ -102,7 +103,7 @@ export async function runAutoMappingForDiscipline(disciplineSlug: string) {
             platformId: bestAdminTeam.platformId,
             canonicalName: bestAdminTeam.platformName,
             confidenceScore: bestScore,
-            matchMethod: 'levenshtein',
+            matchMethod: 'token_fuzzy',
             status: 'auto_mapped'
           }
         });

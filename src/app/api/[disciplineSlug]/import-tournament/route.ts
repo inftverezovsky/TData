@@ -6,6 +6,7 @@ import { getNormalizer } from "@/lib/normalizers/registry";
 import { importTournamentRecursive } from "@/lib/liquipedia/importer";
 import { dedupeTournamentMatches } from "@/lib/matches/dedupe";
 import { importHltvTournament } from "@/lib/importSources/hltv";
+import { getLiquipediaResponseStatus, toLiquipediaUserFacingError } from "@/lib/liquipedia/userFacingErrors";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // 5 minutes for long scraping with retries
@@ -118,19 +119,20 @@ export async function POST(
       forceCleanupStats: importResult.forceCleanupStats,
     });
   } catch (error) {
+    const userFacingError = toLiquipediaUserFacingError(error);
     console.error(error);
     await prisma.tournamentImport.update({
       where: { id: tournamentImport.id },
       data: {
         status: "FAILED",
         finishedAt: new Date(),
-        errorMessage: error instanceof Error ? error.message : "Unknown import error"
+        errorMessage: userFacingError.userMessage
       }
     });
 
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Не удалось загрузить турнир" },
-      { status: 500 }
+      { error: userFacingError.userMessage, userMessage: userFacingError.userMessage, errorClass: userFacingError.errorClass },
+      { status: getLiquipediaResponseStatus(userFacingError.errorClass) }
     );
   }
 }

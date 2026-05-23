@@ -9,6 +9,10 @@ import {
 import { collectTournamentTeamNames } from "../src/lib/teams/tournamentTeamNames";
 import { buildTeamMappingLookup, findTeamMapping } from "../src/lib/teams/mappingLookup";
 import { isPlaceholderTeam } from "../src/lib/teams/teams";
+import {
+  findClosestPlatformTeamFromCandidates,
+  getNameMatchScore,
+} from "../src/lib/teams/fuzzyMatch";
 
 test("G2 is treated as a real team, not a bracket seed", () => {
   assert.equal(isPlaceholderTeam("G2"), false);
@@ -148,4 +152,27 @@ test("team mapping lookup prefers saved platform IDs over stale unmapped duplica
 
   assert.equal(findTeamMapping(lookup, "Spirit")?.platformId, "257215");
   assert.equal(findTeamMapping(lookup, "Team Spirit")?.platformId, "257215");
+});
+
+test("fuzzy platform matching accepts swapped Russian first and last names", () => {
+  assert.equal(getNameMatchScore("Волин Лев", "Лев Волин"), 1);
+
+  const match = findClosestPlatformTeamFromCandidates(
+    [
+      {
+        platformId: "1001",
+        platformName: "Лев Волин",
+        normalizedName: "лев волин",
+      },
+      {
+        platformId: "1002",
+        platformName: "Арсений Гусев",
+        normalizedName: "арсений гусев",
+      },
+    ],
+    "Волин Лев",
+    0.9
+  );
+
+  assert.equal(match?.platformId, "1001");
 });

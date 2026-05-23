@@ -43,6 +43,8 @@ export async function searchTournamentPages(
 
   const allTitlesSet = new Set<string>();
   const titleToUrl = new Map<string, string>();
+  let successfulSearchRequests = 0;
+  let lastSearchError: unknown = null;
 
   for (const v of variations) {
     if (isBudgetExpired()) {
@@ -57,6 +59,7 @@ export async function searchTournamentPages(
         search: v,
         limit: "20"
       }, false, 0, searchRequestOptions);
+      successfulSearchRequests += 1;
       const openTitles = openResponse[1] ?? [];
       const openUrls = openResponse[3] ?? [];
       openTitles.forEach((t, i) => {
@@ -68,6 +71,7 @@ export async function searchTournamentPages(
         break;
       }
     } catch (err) {
+      lastSearchError = err;
       console.error(`Search variation "${v}" failed:`, err);
     }
   }
@@ -88,12 +92,18 @@ export async function searchTournamentPages(
           srlimit: "20",
           format: "json"
         }, false, 0, searchRequestOptions);
+        successfulSearchRequests += 1;
         const searchTitles = searchResponse.query?.search?.map(s => s.title) ?? [];
         searchTitles.forEach(t => allTitlesSet.add(t));
       } catch (err) {
+        lastSearchError = err;
         console.error(`Full-text search variation "${v}" failed:`, err);
       }
     }
+  }
+
+  if (allTitlesSet.size === 0 && successfulSearchRequests === 0 && lastSearchError) {
+    throw lastSearchError;
   }
 
   const allTitles = Array.from(allTitlesSet)
@@ -311,6 +321,7 @@ export async function searchTournamentPages(
       return fallbackResults;
     } catch (err) {
       console.error("Failed to filter search results:", err);
+      throw err;
     }
   }
 

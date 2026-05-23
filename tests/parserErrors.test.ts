@@ -7,6 +7,7 @@ import {
   shouldCooldownProxyForError,
 } from "../src/lib/proxy/parserErrors";
 import { getHltvSearchErrorMessage } from "../src/lib/hltv/userFacingErrors";
+import { getLiquipediaUserMessage, toLiquipediaUserFacingError } from "../src/lib/liquipedia/userFacingErrors";
 
 test("classifyParserError maps proxy tunnel failures", () => {
   assert.equal(classifyParserError({ message: "net::ERR_TUNNEL_CONNECTION_FAILED" }), "proxy_tunnel");
@@ -46,5 +47,24 @@ test("HLTV user-facing errors hide technical scraper messages", () => {
   assert.equal(
     getHltvSearchErrorMessage(null, "page.goto: net::ERR_TIMED_OUT at https://www.hltv.org/search"),
     "HLTV не успел ответить через текущий прокси. Попробуйте обновить поиск или сменить прокси.",
+  );
+});
+
+test("Liquipedia user-facing errors hide raw 429 HTML", () => {
+  const html429 = "Liquipedia API error 429: <!DOCTYPE html><html><body>Too many requests</body></html>";
+  const userMessage = getLiquipediaUserMessage(null, html429);
+
+  assert.equal(
+    userMessage,
+    "Liquipedia временно ограничила запросы. Подождите несколько минут или смените прокси.",
+  );
+  assert.equal(userMessage.includes("<html>"), false);
+
+  assert.deepEqual(
+    toLiquipediaUserFacingError(new Error(html429)),
+    {
+      errorClass: "rate_limited",
+      userMessage,
+    },
   );
 });

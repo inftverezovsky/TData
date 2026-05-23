@@ -20,8 +20,12 @@ Background crawler → generated HTML pages → DOM parsing → database
 
 - generic requests: `LIQUIPEDIA_GENERIC_MIN_INTERVAL_MS`, по умолчанию `2100 ms`;
 - parse requests: `LIQUIPEDIA_PARSE_MIN_INTERVAL_MS`, по умолчанию `31000 ms`.
+- random jitter: `LIQUIPEDIA_JITTER_MS`, по умолчанию `650 ms`;
+- cooldown after 429/Cloudflare blocks: `LIQUIPEDIA_COOLDOWN_MS`, по умолчанию `600000 ms`.
 
 Сейчас `action=parse` не используется, но отдельная переменная оставлена на будущее.
+
+HLTV Playwright tasks are queued and additionally spaced by `HLTV_QUEUE_DELAY_MS`, по умолчанию `1000 ms`.
 
 ## User-Agent
 
@@ -30,6 +34,8 @@ Background crawler → generated HTML pages → DOM parsing → database
 ```env
 LIQUIPEDIA_USER_AGENT="liquipedia-local-dev/0.1 (https://your-domain.example; your-email@example.com)"
 ```
+
+В production используйте стабильный contactable User-Agent; MediaWiki API запросы не должны маскироваться под браузер.
 
 ## Caching
 

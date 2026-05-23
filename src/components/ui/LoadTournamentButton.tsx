@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { detectTournamentSource, type TournamentSource } from "@/lib/utils/tournamentSource";
 import { dispatchTournamentDataUpdated } from "@/lib/utils/clientEvents";
+import { getLiquipediaUserMessage } from "@/lib/liquipedia/userFacingErrors";
 
 const IMPORT_CLIENT_TIMEOUT_MS = 180000;
 
@@ -52,10 +53,15 @@ export default function LoadTournamentButton({
       });
       clearTimeout(timeoutId);
 
-      const data = (await response.json()) as { tournament?: { id: string }; error?: string };
+      const data = (await response.json().catch(() => ({}))) as {
+        tournament?: { id: string };
+        error?: string;
+        userMessage?: string | null;
+        errorClass?: string | null;
+      };
 
       if (!response.ok || !data.tournament?.id) {
-        throw new Error(data.error ?? "Не удалось загрузить турнир");
+        throw new Error(data.userMessage || getLiquipediaUserMessage(data.errorClass, data.error ?? "Не удалось загрузить турнир"));
       }
 
       router.push(`/${disciplineSlug}/tournament/${data.tournament.id}`);
@@ -65,7 +71,7 @@ export default function LoadTournamentButton({
       if (err instanceof Error && err.name === "AbortError") {
         setError("Импорт длится больше 3 минут. Обычно это медленный прокси или слишком много подстраниц Liquipedia. Попробуйте другой прокси и повторите.");
       } else {
-        setError(err instanceof Error ? err.message : "Неизвестная ошибка");
+        setError(getLiquipediaUserMessage(null, err instanceof Error ? err.message : "Неизвестная ошибка"));
       }
     } finally {
       setLoading(false);

@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db/db";
 import { normalizeTeamName } from "@/lib/teams/teams";
 import { runAutoMappingForDiscipline } from "@/lib/teams/mapping";
 import { queueIdentitySync } from "@/lib/sync/identitySync";
-import levenshtein from "fast-levenshtein";
+import { scorePlatformTeamCandidate } from "@/lib/teams/fuzzyMatch";
 
 export const dynamic = "force-dynamic";
 
@@ -42,9 +42,10 @@ export async function POST(request: Request) {
     let candidates: any[] = [];
     
     for (const admin of adminTeams) {
-      const distance = levenshtein.get(liqName, admin.normalizedName);
-      const maxLength = Math.max(liqName.length, admin.normalizedName.length);
-      const score = maxLength === 0 ? 100 : (1 - distance / maxLength) * 100;
+      const score = Math.max(
+        scorePlatformTeamCandidate(mapping.liquipediaName, admin),
+        scorePlatformTeamCandidate(liqName, admin)
+      ) * 100;
       candidates.push({ admin, score });
     }
     
@@ -60,7 +61,7 @@ export async function POST(request: Request) {
 
     let dataToUpdate: any = {
       confidenceScore: bestScore,
-      matchMethod: 'levenshtein',
+      matchMethod: 'token_fuzzy',
       isLockedFromAutoMapping: false
     };
 

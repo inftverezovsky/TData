@@ -157,13 +157,13 @@ export default function HltvTournamentsWidget({ disciplineSlug }: { disciplineSl
 
       <div className="p-6 border-t border-slate-100">
         <Link 
-          href={`/${disciplineSlug}?tab=hltv`}
+          href="/manual-import"
           className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-indigo-200 bg-indigo-50/50 px-4 py-3.5 text-[10px] font-black uppercase tracking-widest text-indigo-600 hover:border-indigo-300 hover:bg-indigo-50 transition-all group shadow-sm"
         >
           <svg className="w-4 h-4 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 4v16m8-8H4" />
           </svg>
-          Перейти к ручному импорту
+          Ручной импорт
         </Link>
       </div>
       <div className="p-4 border-t border-slate-100 text-center">

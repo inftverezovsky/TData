@@ -2,30 +2,13 @@ import { NextResponse } from "next/server";
 import { readSheet } from "read-excel-file/node";
 import { prisma } from "@/lib/db/db";
 import { normalizeTeamName } from "@/lib/teams/teams";
-import levenshtein from "fast-levenshtein";
 import { requireAdmin } from "@/lib/auth/adminAuth";
 import { queueIdentitySync } from "@/lib/sync/identitySync";
+import { parseAdminTeamImportRows } from "@/lib/adminTeams/importSpreadsheet";
+import { scorePlatformTeamCandidate } from "@/lib/teams/fuzzyMatch";
 
 const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
 const REMOTE_FETCH_TIMEOUT_MS = 15000;
-
-function findColumns(headers: string[]) {
-  const normalizedHeaders = headers.map((h) => h.toLowerCase().trim());
-
-  const idCandidates = ["platformid", "id", "team_id", "teamid"];
-  const nameCandidates = ["teamname", "name", "team", "название", "team name", "команда"];
-
-  let idCol = -1;
-  let nameCol = -1;
-
-  for (let i = 0; i < normalizedHeaders.length; i++) {
-    const h = normalizedHeaders[i];
-    if (idCol === -1 && idCandidates.includes(h)) idCol = i;
-    if (nameCol === -1 && nameCandidates.includes(h)) nameCol = i;
-  }
-
-  return { idCol, nameCol };
-}
 
 async function runAutoMapping(disciplineSlug: string) {
   const adminTeams = await prisma.adminTeam.findMany({
@@ -45,6 +28,7 @@ async function runAutoMapping(disciplineSlug: string) {
   let autoMappedCount = 0;
   let ambiguousCount = 0;
   let unmappedCount = 0;
+  const newlyMappedNames: string[] = [];
 
   for (const mapping of mappings) {
     const liqName =
@@ -55,12 +39,13 @@ async function runAutoMapping(disciplineSlug: string) {
     let bestScore = 0;
     let secondBestScore = 0;
     let bestAdminTeam: any = null;
-    let candidates: any[] = [];
+    const candidates: any[] = [];
 
     for (const admin of adminTeams) {
-      const distance = levenshtein.get(liqName, admin.normalizedName);
-      const maxLength = Math.max(liqName.length, admin.normalizedName.length);
-      const score = maxLength === 0 ? 100 : (1 - distance / maxLength) * 100;
+      const score = Math.max(
+        scorePlatformTeamCandidate(mapping.liquipediaName, admin),
+        scorePlatformTeamCandidate(liqName, admin)
+      ) * 100;
 
       candidates.push({ admin, score });
     }
@@ -79,7 +64,7 @@ async function runAutoMapping(disciplineSlug: string) {
       if (bestScore - secondBestScore < 3 && secondBestScore >= 90) {
         await prisma.teamMapping.update({
           where: { id: mapping.id },
-          data: { status: "ambiguous" },
+          data: { status: "ambiguous", confidenceScore: bestScore, matchMethod: "token_fuzzy" },
         });
         ambiguousCount++;
       } else {
@@ -89,11 +74,19 @@ async function runAutoMapping(disciplineSlug: string) {
             platformId: bestAdminTeam.platformId,
             canonicalName: bestAdminTeam.platformName,
             confidenceScore: bestScore,
-            matchMethod: "levenshtein",
+            matchMethod: "token_fuzzy",
             status: "auto_mapped",
           },
         });
+        await prisma.tournamentParticipant.updateMany({
+          where: {
+            name: mapping.liquipediaName,
+            tournament: { disciplineSlug },
+          },
+          data: { platformId: bestAdminTeam.platformId },
+        });
         autoMappedCount++;
+        newlyMappedNames.push(mapping.liquipediaName);
       }
     } else {
       unmappedCount++;
@@ -106,6 +99,7 @@ async function runAutoMapping(disciplineSlug: string) {
     autoMappedCount,
     ambiguousCount,
     unmappedCount,
+    newlyMappedNames,
   };
 }
 
@@ -163,55 +157,43 @@ export async function POST(request: Request) {
     }
 
     const data = await readSheet(buffer);
-    if (data.length < 2) {
+    if (data.length < 1) {
       return NextResponse.json({ error: "Source has no data" }, { status: 400 });
     }
 
-    const headers = data[0].map((cell) => String(cell ?? ""));
-    const { idCol, nameCol } = findColumns(headers);
-
-    if (idCol === -1 || nameCol === -1) {
+    const { layout, records, skippedCount } = parseAdminTeamImportRows(data);
+    if (!layout) {
       return NextResponse.json(
         {
-          error: `Could not determine columns. Found headers: ${headers.join(
-            ", "
-          )}. Need ID and Name columns.`,
+          error: "Could not determine ID and Name columns in the source sheet.",
         },
         { status: 400 }
       );
     }
 
-    let importedCount = 0;
-
-    for (let i = 1; i < data.length; i++) {
-      const row = data[i];
-      if (!row || row.length === 0) continue;
-
-      const id = row[idCol] ? String(row[idCol]).trim() : "";
-      const name = row[nameCol] ? String(row[nameCol]).trim() : "";
-
-      if (!id || !name) continue;
-
-      const normalizedName = normalizeTeamName(name);
-
-      await prisma.adminTeam.upsert({
-        where: { id: `admin_${disciplineSlug}_${id}` },
-        update: {
-          platformName: name,
-          normalizedName,
-          sourceFileName: fileName,
-        },
-        create: {
-          id: `admin_${disciplineSlug}_${id}`,
-          disciplineSlug,
-          platformId: id,
-          platformName: name,
-          normalizedName,
-          sourceFileName: fileName,
-        },
-      });
-      importedCount++;
+    if (records.length === 0) {
+      return NextResponse.json({ error: "No teams with IDs were found in the source sheet." }, { status: 400 });
     }
+
+    await prisma.$transaction([
+      prisma.adminTeam.deleteMany({
+        where: {
+          disciplineSlug,
+          sourceFileName: fileName,
+        },
+      }),
+      prisma.adminTeam.createMany({
+        data: records.map((record) => ({
+          id: `admin_${disciplineSlug}_${record.platformId}`,
+          disciplineSlug,
+          platformId: record.platformId,
+          platformName: record.platformName,
+          normalizedName: record.normalizedName,
+          sourceFileName: fileName,
+        })),
+        skipDuplicates: true,
+      }),
+    ]);
 
     // Run auto-mapping after import
     const mappingResult = await runAutoMapping(disciplineSlug);
@@ -220,7 +202,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      importedCount,
+      importedCount: records.length,
+      skippedCount,
+      detectedLayout: layout,
       mappingResult,
       identitySync,
     });

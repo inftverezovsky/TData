@@ -1,6 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, History, Search, Settings, ShieldCheck } from "lucide-react";
+import { ArrowRight, History, Search, Settings, ShieldCheck, WandSparkles } from "lucide-react";
 
 const disciplines = [
   {
@@ -34,6 +34,7 @@ const disciplines = [
 ];
 
 const quickLinks = [
+  { href: "/manual-import", label: "Ручной импорт", icon: WandSparkles },
   { href: "/history", label: "История загрузок", icon: History },
   { href: "/settings", label: "API и прокси", icon: Settings },
 ];
@@ -63,13 +64,22 @@ export default function HomePage() {
                 Быстрый вход в поиск турниров, импорт матчей, проверку ID команд и отправку расписания в админку.
               </p>
             </div>
-            <Link
-              href="/counterstrike"
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-slate-950 px-6 text-xs font-black uppercase tracking-widest text-white transition-all duration-300 hover:bg-indigo-600 hover:shadow-lg hover:shadow-indigo-600/20 active:scale-[0.95] will-change-transform"
-            >
-              <Search className="h-4 w-4" />
-              Начать поиск
-            </Link>
+            <div className="flex flex-wrap gap-3">
+              <Link
+                href="/manual-import"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 text-xs font-black uppercase tracking-widest text-white transition-all duration-300 hover:bg-indigo-700 hover:shadow-lg hover:shadow-indigo-600/20 active:scale-[0.95] will-change-transform"
+              >
+                <WandSparkles className="h-4 w-4" />
+                Ручной импорт
+              </Link>
+              <Link
+                href="/counterstrike"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-slate-950 px-6 text-xs font-black uppercase tracking-widest text-white transition-all duration-300 hover:bg-indigo-600 hover:shadow-lg hover:shadow-indigo-600/20 active:scale-[0.95] will-change-transform"
+              >
+                <Search className="h-4 w-4" />
+                Начать поиск
+              </Link>
+            </div>
           </div>
         </section>
 
