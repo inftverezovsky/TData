@@ -95,6 +95,13 @@ function buildFormatGroups(matches: Match[]) {
     .map(([format, groupMatches]) => ({ format, matches: groupMatches }));
 }
 
+function getMatchStatusDotClass(match: Match) {
+  if (match.syncedAt) return "bg-emerald-500";
+  if (isMatchPlaceholder(match)) return "bg-amber-400";
+  if (match.platformId) return "bg-emerald-500";
+  return "bg-rose-500 animate-pulse";
+}
+
 export default function MatchList({
   matches,
   mappings,
@@ -111,6 +118,7 @@ export default function MatchList({
   mutate?: () => void;
 }) {
   const [groupByFormat, setGroupByFormat] = useState(false);
+  const [hideUploaded, setHideUploaded] = useState(false);
 
   useEffect(() => {
     const handleSuccess = () => {
@@ -121,7 +129,7 @@ export default function MatchList({
     return () => window.removeEventListener('admin-upload-success', handleSuccess);
   }, [mutate, setSelectedIds]);
 
-  const displayMatches = useMemo(() => {
+  const baseDisplayMatches = useMemo(() => {
     return [...matches]
       .filter(m => {
         // Liquipedia crosstable rows are schedule matrix hints, not exact
@@ -145,7 +153,13 @@ export default function MatchList({
       });
   }, [matches]);
 
-  const selectableMatches = displayMatches;
+  const displayMatches = useMemo(() => {
+    return hideUploaded
+      ? baseDisplayMatches.filter((match) => !match.syncedAt)
+      : baseDisplayMatches;
+  }, [baseDisplayMatches, hideUploaded]);
+
+  const selectableMatches = displayMatches.filter((match) => !match.syncedAt);
   const allSelected = selectableMatches.length > 0 && selectableMatches.every(m => selectedIds.has(getSelectionId(m)));
   const groupedMatches = useMemo(() => buildFormatGroups(displayMatches), [displayMatches]);
 
@@ -163,15 +177,39 @@ export default function MatchList({
     setSelectedIds(newIds);
   }
 
+  function toggleHideUploaded(checked: boolean) {
+    setHideUploaded(checked);
+
+    if (!checked) return;
+
+    const uploadedIds = new Set(
+      matches
+        .filter((match) => match.syncedAt)
+        .map((match) => getSelectionId(match))
+    );
+    if (uploadedIds.size === 0) return;
+
+    const newIds = new Set(selectedIds);
+    let changed = false;
+    for (const id of uploadedIds) {
+      if (newIds.delete(id)) changed = true;
+    }
+    if (changed) setSelectedIds(newIds);
+  }
+
   function isGroupSelected(groupMatches: Match[]) {
-    return groupMatches.length > 0 && groupMatches.every(match => selectedIds.has(getSelectionId(match)));
+    const selectableGroupMatches = groupMatches.filter((match) => !match.syncedAt);
+    return selectableGroupMatches.length > 0 && selectableGroupMatches.every(match => selectedIds.has(getSelectionId(match)));
   }
 
   function toggleGroup(groupMatches: Match[]) {
-    const newIds = new Set(selectedIds);
-    const shouldDeselect = isGroupSelected(groupMatches);
+    const selectableGroupMatches = groupMatches.filter((match) => !match.syncedAt);
+    if (selectableGroupMatches.length === 0) return;
 
-    for (const match of groupMatches) {
+    const newIds = new Set(selectedIds);
+    const shouldDeselect = isGroupSelected(selectableGroupMatches);
+
+    for (const match of selectableGroupMatches) {
       const id = getSelectionId(match);
       if (shouldDeselect) newIds.delete(id);
       else newIds.add(id);
@@ -195,6 +233,7 @@ export default function MatchList({
 
   function MatchCard({ match }: { match: Match }) {
     const isPlaceholder = isMatchPlaceholder(match);
+    const isUploaded = Boolean(match.syncedAt);
     const selectionId = getSelectionId(match);
     const isSelected = selectedIds.has(selectionId);
     const bestOfLabel = getMatchBestOfLabel(match);
@@ -202,20 +241,24 @@ export default function MatchList({
     return (
       <div
         key={match.matchId || match.id}
-        onClick={() => toggleOne(selectionId)}
+        onClick={() => {
+          if (!isUploaded) toggleOne(selectionId);
+        }}
         className={`group relative flex flex-col overflow-hidden rounded-lg border bg-white px-4 py-1 transition-all duration-300 hover:-translate-y-0.5 active:scale-[0.99] will-change-transform cursor-pointer ${
-          isSelected
+          isUploaded
+            ? "border-emerald-200 bg-emerald-50/10 cursor-default hover:border-emerald-300"
+            : isSelected
             ? "border-indigo-600 ring-1 ring-indigo-600/10 shadow-sm shadow-indigo-600/5"
             : isPlaceholder
               ? "border-amber-200 bg-amber-50/20 hover:border-amber-300 hover:bg-amber-50/30"
               : "border-slate-200 hover:border-indigo-300 hover:bg-slate-50/40 hover:shadow-sm"
         }`}
       >
-        {isSelected && <div className="absolute inset-0 shimmer pointer-events-none" />}
+        {isSelected && !isUploaded && <div className="absolute inset-0 shimmer pointer-events-none" />}
 
         <div className="mb-0 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-center gap-2">
-            <div className={`h-1.5 w-1.5 rounded-full ${isPlaceholder ? "bg-amber-400" : match.platformId ? "bg-emerald-500" : "bg-rose-500 animate-pulse"}`} />
+            <div className={`h-1.5 w-1.5 rounded-full ${getMatchStatusDotClass(match)}`} />
             {match.platformId && (
               <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">
                 ID: <span className="text-slate-900">{match.platformId}</span>
@@ -244,9 +287,9 @@ export default function MatchList({
               {formatNeutralDate(match)}
             </span>
             <div className={`h-3.5 w-3.5 rounded-md border transition-all flex items-center justify-center ${
-              isSelected ? "bg-indigo-600 border-indigo-600" : "bg-white border-slate-200"
+              isSelected && !isUploaded ? "bg-indigo-600 border-indigo-600" : "bg-white border-slate-200"
             }`}>
-              {isSelected && <CheckCircle2 className="h-3 w-3 text-white" />}
+              {isSelected && !isUploaded && <CheckCircle2 className="h-3 w-3 text-white" />}
             </div>
           </div>
         </div>
@@ -306,7 +349,7 @@ export default function MatchList({
           </div>
         </div>
 
-        {displayMatches.length > 0 && (
+        {baseDisplayMatches.length > 0 && (
           <div className="flex flex-wrap items-center justify-end gap-3">
             <label className="flex cursor-pointer items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500 transition-colors hover:border-indigo-200 hover:text-indigo-600">
               <span className={`h-4 w-4 rounded border transition-all flex items-center justify-center ${
@@ -321,6 +364,20 @@ export default function MatchList({
                 className="sr-only"
               />
               Группировка по формату
+            </label>
+            <label className="flex cursor-pointer items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500 transition-colors hover:border-emerald-200 hover:text-emerald-600">
+              <span className={`h-4 w-4 rounded border transition-all flex items-center justify-center ${
+                hideUploaded ? "bg-emerald-500 border-emerald-500" : "bg-white border-slate-200"
+              }`}>
+                {hideUploaded && <CheckCircle2 className="h-3 w-3 text-white" />}
+              </span>
+              <input
+                type="checkbox"
+                checked={hideUploaded}
+                onChange={(event) => toggleHideUploaded(event.target.checked)}
+                className="sr-only"
+              />
+              Скрыть залитые
             </label>
             <button
               onClick={toggleAll}
@@ -341,12 +398,24 @@ export default function MatchList({
       {displayMatches.length === 0 ? (
           <div className="rounded-lg border-2 border-dashed border-slate-200 bg-white/70 p-12 text-center">
             <Clock className="w-12 h-12 text-slate-200 mx-auto mb-4" />
-            <p className="text-sm font-medium text-slate-400">Нет предстоящих матчей.</p>
+            <p className="text-sm font-medium text-slate-400">
+              {hideUploaded && baseDisplayMatches.length > 0 ? "Все залитые матчи скрыты." : "Нет предстоящих матчей."}
+            </p>
+            {hideUploaded && baseDisplayMatches.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setHideUploaded(false)}
+                className="mt-4 rounded-lg border border-slate-200 bg-white px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 transition-colors hover:border-emerald-200 hover:text-emerald-600"
+              >
+                Показать залитые
+              </button>
+            )}
           </div>
         ) : groupByFormat ? (
           <div className="grid gap-5">
             {groupedMatches.map((group) => {
               const groupSelected = isGroupSelected(group.matches);
+              const groupSelectableCount = group.matches.filter((match) => !match.syncedAt).length;
 
               return (
                 <section key={group.format} className="grid gap-2">
@@ -358,7 +427,8 @@ export default function MatchList({
                     <button
                       type="button"
                       onClick={() => toggleGroup(group.matches)}
-                      className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-slate-500 transition-colors hover:border-indigo-200 hover:text-indigo-600"
+                      disabled={groupSelectableCount === 0}
+                      className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-slate-500 transition-colors hover:border-indigo-200 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       <span className={`flex h-3.5 w-3.5 items-center justify-center rounded border transition-all ${
                         groupSelected ? "border-indigo-600 bg-indigo-600" : "border-slate-200 bg-white"

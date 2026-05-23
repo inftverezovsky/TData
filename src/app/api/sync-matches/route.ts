@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/db";
+import { requireAdmin } from "@/lib/auth/adminAuth";
 import { dedupeTournamentMatches } from "@/lib/matches/dedupe";
 import { buildTeamMappingLookup, findTeamMapping } from "@/lib/teams/mappingLookup";
 import { validateOutboundUrl } from "@/lib/http/outboundPolicy";
@@ -9,6 +10,9 @@ const MAX_ERROR_BYTES = 4096;
 
 export async function POST(request: Request) {
   try {
+    const unauthorized = await requireAdmin(request);
+    if (unauthorized) return unauthorized;
+
     const { matchIds, disciplineSlug } = await request.json();
 
     if (!matchIds || !Array.isArray(matchIds)) {

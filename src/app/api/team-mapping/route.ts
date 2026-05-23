@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/db";
+import { requireAdmin } from "@/lib/auth/adminAuth";
 import { queueIdentitySync } from "@/lib/sync/identitySync";
 import { normalizeTeamName } from "@/lib/teams/teams";
 import {
@@ -12,6 +13,9 @@ export const dynamic = "force-dynamic";
 
 // GET — все маппинги или по списку имён
 export async function GET(request: Request) {
+  const unauthorized = await requireAdmin(request);
+  if (unauthorized) return unauthorized;
+
   const { searchParams } = new URL(request.url);
   const names = searchParams.get("names");
   const disciplineSlug = searchParams.get("discipline") || "counterstrike";
@@ -36,6 +40,9 @@ export async function GET(request: Request) {
 
 // POST — создать или обновить маппинг
 export async function POST(request: Request) {
+  const unauthorized = await requireAdmin(request);
+  if (unauthorized) return unauthorized;
+
   const body = await request.json();
   const { liquipediaName, disciplineSlug, alias, platformId, canonicalName, status, logoUrl, isManual, isLockedFromAutoMapping, mappings } = body as any;
 
@@ -118,6 +125,9 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  const unauthorized = await requireAdmin(request);
+  if (unauthorized) return unauthorized;
+
   const { searchParams } = new URL(request.url);
   const name = searchParams.get("name");
   const disciplineSlug = searchParams.get("discipline") || "counterstrike";

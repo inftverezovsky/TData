@@ -122,6 +122,16 @@ export async function importTournamentRecursive(params: {
   if (allMatches.length > 0) {
     console.log(`[Importer] Performing final bulk insert of ${allMatches.length} matches...`);
     await canonicalizeMatchesWithTournamentTeams(allMatches, mainResult.tournament.id, disciplineSlug);
+    const existingSyncedByMatchId = new Map(
+      existingBeforeFinal
+        .filter((match: any) => match.syncedAt)
+        .map((match: any) => [match.matchId, match.syncedAt])
+    );
+    const existingSyncedByIdentity = new Map(
+      existingBeforeFinal
+        .filter((match: any) => match.syncedAt)
+        .map((match: any) => [buildSyncedIdentityKey(match, buildMatchIdentity(match)), match.syncedAt])
+    );
     
     // RE-ASSIGN matchIds consistently using the FULL tournament title
     const mainTournamentKey = title.trim();
@@ -146,6 +156,7 @@ export async function importTournamentRecursive(params: {
       m.hasPlaceholderTeams = hasPlaceholderTeams(m);
       m.sourceConfidence = getMatchSourceConfidence(m);
       m.sourceBreakdown = buildMatchCandidateMetadata(m, "liquipedia") as Prisma.InputJsonValue;
+      m.syncedAt = m.syncedAt || existingSyncedByMatchId.get(m.matchId) || existingSyncedByIdentity.get(buildSyncedIdentityKey(m, identity)) || null;
       (m as any)._identity = identity;
     }
 
@@ -211,4 +222,22 @@ export async function importTournamentRecursive(params: {
     qualityGateKeptPrevious,
     forceCleanupStats,
   };
+}
+
+function buildSyncedIdentityKey(match: any, identity: ReturnType<typeof buildMatchIdentity>) {
+  const teams = [
+    match.teamAId || match.teamAName || "unknownA",
+    match.teamBId || match.teamBName || "unknownB",
+  ].map((value) => String(value).toLowerCase().trim()).sort();
+
+  return [
+    identity.date,
+    identity.time,
+    teams[0],
+    teams[1],
+    identity.stage,
+    identity.round,
+    identity.format,
+    identity.sourceSlot,
+  ].join("|");
 }

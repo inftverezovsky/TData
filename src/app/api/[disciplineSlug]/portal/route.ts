@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { fetchDisciplinePortal } from "@/lib/liquipedia/portal";
+import { requireAdmin } from "@/lib/auth/adminAuth";
 import { prisma } from "@/lib/db/db";
 import { getLiquipediaResponseStatus, toLiquipediaUserFacingError } from "@/lib/liquipedia/userFacingErrors";
 
@@ -12,6 +13,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ disc
   try {
     const { searchParams } = new URL(request.url);
     const force = searchParams.has("t");
+    if (force) {
+      const unauthorized = await requireAdmin(request);
+      if (unauthorized) return unauthorized;
+    }
     
     const data = await fetchDisciplinePortal(slug, force);
 

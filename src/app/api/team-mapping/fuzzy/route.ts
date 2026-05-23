@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/auth/adminAuth";
 import { findClosestPlatformTeam } from "@/lib/teams/fuzzyMatch";
 
 export const dynamic = "force-dynamic";
@@ -10,6 +11,9 @@ type RequestBody = {
 
 export async function POST(request: Request) {
   try {
+    const unauthorized = await requireAdmin(request);
+    if (unauthorized) return unauthorized;
+
     const body = (await request.json().catch(() => ({}))) as RequestBody;
     const disciplineSlug = typeof body.disciplineSlug === "string" ? body.disciplineSlug.trim() : "";
     const teamNames = Array.isArray(body.teamNames) ? body.teamNames.filter((t): t is string => typeof t === "string") : [];

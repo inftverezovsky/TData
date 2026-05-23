@@ -371,6 +371,7 @@ model AdminUploadLog {
   requestMode         String
   timezone            String
   dateFormat          String
+  payloadHash         String?
   phpArrayJson        Json
   serializedFixt      String   @db.Text
   readyMatchesCount   Int
@@ -384,4 +385,5 @@ model AdminUploadLog {
 
   @@index([disciplineSlug])
   @@index([tournamentId])
+  @@unique([disciplineSlug, tournamentId, payloadHash])
 }

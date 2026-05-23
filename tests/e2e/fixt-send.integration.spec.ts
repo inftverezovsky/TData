@@ -4,9 +4,12 @@ import { expect, test } from "@playwright/test";
 import type { APIRequestContext } from "@playwright/test";
 
 const runDbE2E = process.env.RUN_DB_E2E === "1" || process.env.RUN_DB_E2E === "true";
+const databaseUrl = process.env.DATABASE_URL || "";
+const dbLooksExplicitlyTest = /(?:test|e2e)/i.test(databaseUrl);
 
 test.describe("FIxt upload integration", () => {
   test.skip(!runDbE2E, "Set RUN_DB_E2E=1 and point DATABASE_URL at a test database.");
+  test.skip(runDbE2E && !dbLooksExplicitlyTest, "DATABASE_URL must explicitly contain test or e2e for DB integration tests.");
 
   test("builds, sends, logs and blocks duplicate FIxt payloads", async ({ request }, testInfo) => {
     const prisma = new PrismaClient();
@@ -103,6 +106,7 @@ test.describe("FIxt upload integration", () => {
       await expect(await send.json()).toMatchObject({
         ok: true,
         status: "success_like",
+        markedMatchesCount: 1,
         rawResponse: "1",
       });
 
@@ -121,9 +125,28 @@ test.describe("FIxt upload integration", () => {
       expect(duplicate.status()).toBe(409);
       await expect(await duplicate.json()).toMatchObject({
         ok: false,
-        error: "This payload was already sent successfully. Use force option to override.",
+        error: "This payload was already sent or is currently being sent. Use force option to override.",
       });
       expect(mock.requests).toHaveLength(1);
+
+      const duplicateWithStringForce = await request.post(`/api/${disciplineSlug}/tournament/${tournamentId}/admin-fixt-send`, {
+        headers: { cookie },
+        data: { selectedMatchIds: [matchId], force: "false" },
+      });
+      expect(duplicateWithStringForce.status()).toBe(409);
+      expect(mock.requests).toHaveLength(1);
+
+      const syncedMatch = await prisma.tournamentMatch.findUnique({
+        where: { matchId },
+        select: { syncedAt: true },
+      });
+      expect(syncedMatch?.syncedAt).toBeTruthy();
+
+      const placeholderMatch = await prisma.tournamentMatch.findUnique({
+        where: { matchId: placeholderMatchId },
+        select: { syncedAt: true },
+      });
+      expect(placeholderMatch?.syncedAt).toBeNull();
 
       const uploadLog = await prisma.adminUploadLog.findFirst({
         where: { disciplineSlug, tournamentId },

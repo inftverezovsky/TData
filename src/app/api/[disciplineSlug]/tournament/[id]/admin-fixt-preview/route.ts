@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { buildFixtPayload } from '@/lib/adminUpload/buildFixtPayload';
 import { phpSerialize } from '@/lib/adminUpload/phpSerialize';
-import { prisma } from '@/lib/db/db';
+import { requireAdmin } from '@/lib/auth/adminAuth';
 
 export async function POST(
   request: Request,
@@ -9,20 +9,13 @@ export async function POST(
 ) {
   const { disciplineSlug: routeDisciplineSlug, id } = await params;
   try {
+    const unauthorized = await requireAdmin(request);
+    if (unauthorized) return unauthorized;
+
     const body = await request.json();
     const disciplineSlug = routeDisciplineSlug;
     const selectedMatchIds = body.selectedMatchIds;
-    
-    // 1. Get settings
-    const settings = await prisma.disciplineAdminSettings.findUnique({
-      where: { disciplineSlug },
-    });
 
-    if (!settings) {
-      return NextResponse.json({ ok: false, error: "Admin settings not found for " + disciplineSlug }, { status: 400 });
-    }
-
-    // 2. Build payload
     const buildResult = await buildFixtPayload(id, disciplineSlug, selectedMatchIds);
     
     let serialized = '';

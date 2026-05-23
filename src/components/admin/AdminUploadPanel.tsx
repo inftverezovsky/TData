@@ -49,6 +49,7 @@ export default function AdminUploadPanel({
   const [isEditing, setIsEditing] = useState(false);
   const [lastSavedId, setLastSavedId] = useState<string | null>(null);
   const [result, setResult] = useState<{ type: 'success' | 'error' | 'info'; text: string; raw?: string } | null>(null);
+  const selectedMatchKey = selectedMatchIds.join('\u0001');
 
   const loadAdminData = useCallback(async () => {
     const [mappingRes, settingsRes] = await Promise.all([
@@ -124,6 +125,10 @@ export default function AdminUploadPanel({
     return () => window.removeEventListener('trigger-admin-preview', handleTrigger);
   }, [handlePreview]);
 
+  useEffect(() => {
+    setPreview(null);
+  }, [selectedMatchKey]);
+
   const handleSaveMapping = useCallback(async () => {
     setActionLoading(true);
     setResult(null);
@@ -171,9 +176,10 @@ export default function AdminUploadPanel({
       if (data.ok) {
         setResult({ 
           type: 'success', 
-          text: `Данные успешно залиты в платформу. Статус: ${data.status}`,
+          text: `Данные успешно залиты в платформу. Статус: ${data.status}. Отмечено матчей: ${data.markedMatchesCount ?? readyCount}`,
           raw: data.rawResponse 
         });
+        setPreview(null);
         // Dispatch custom event to refresh MatchList history
         window.dispatchEvent(new CustomEvent('admin-upload-success'));
         dispatchTournamentDataUpdated({ tournamentId, disciplineSlug });
@@ -203,7 +209,33 @@ export default function AdminUploadPanel({
     return baseUrl;
   };
 
-  const handleServiceUpload = () => {
+  async function markSelectedMatchesUploaded() {
+    const res = await fetch(`/api/${disciplineSlug}/tournament/${tournamentId}/admin-fixt-mark-uploaded`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ selectedMatchIds, confirmed: true }),
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      throw new Error(data.error || 'Не удалось отметить матчи как залитые');
+    }
+    window.dispatchEvent(new CustomEvent('admin-upload-success'));
+    dispatchTournamentDataUpdated({ tournamentId, disciplineSlug });
+    router.refresh();
+    setPreview(null);
+    return data.markedMatchesCount as number;
+  }
+
+  const handleServiceUpload = async () => {
+    if (serviceDisabledReason) {
+      setResult({ type: 'error', text: serviceDisabledReason });
+      return;
+    }
+
+    setActionLoading(true);
+    setResult(null);
+
     const baseUrl = `/${disciplineSlug}/tournament/${tournamentId}/json`;
     const idsQuery = selectedMatchIds.length > 0 ? `?ids=${selectedMatchIds.join(',')}` : '';
     const absoluteJsonUrl = `${window.location.origin}${baseUrl}${idsQuery}`;
@@ -272,16 +304,30 @@ export default function AdminUploadPanel({
       fallbackCopyText(absoluteJsonUrl);
     }
 
-    // Open target page with query parameter
+    let openedWindow: Window | null = null;
     try {
       const targetUrl = `https://in.upzero.net/infotdel/results_fixtures/cyber/liquiped/?link=${encodeURIComponent(absoluteJsonUrl)}`;
-      window.open(targetUrl, '_blank', 'noopener,noreferrer');
+      openedWindow = window.open('', '_blank');
+      if (!openedWindow) {
+        throw new Error('Не удалось автоматически открыть окно. Разрешите всплывающие окна для этого сайта.');
+      }
+      openedWindow.opener = null;
+
+      const markedCount = await markSelectedMatchesUploaded();
+      openedWindow.location.href = targetUrl;
+      setResult({
+        type: 'success',
+        text: `Сервис открыт, ссылка на JSON подготовлена. Отмечено матчей: ${markedCount}.`
+      });
     } catch (openErr) {
-      console.error('Failed to open window: ', openErr);
+      console.error('Service upload failed: ', openErr);
+      if (openedWindow && !openedWindow.closed) openedWindow.close();
       setResult({
         type: 'error',
-        text: 'Не удалось автоматически открыть окно. Пожалуйста, разрешите всплывающие окна для этого сайта.'
+        text: openErr instanceof Error ? openErr.message : 'Не удалось открыть сервис или отметить матчи.'
       });
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -291,17 +337,19 @@ export default function AdminUploadPanel({
   const isSaved = mapping.adminShapkaId !== '' && mapping.adminShapkaId === lastSavedId;
   const selectedCount = selectedMatchIds.length;
   const readyCount = preview?.readyMatchesCount ?? selectedCount;
+  const uploadPayloadDisabledReason = !effectiveShapkaId
+    ? "Укажите ID шапки"
+    : !settings?.adminSportId
+      ? "Не настроен Sport ID"
+      : preview?.readyMatchesCount === 0
+        ? "Нет готовых матчей"
+        : selectedCount === 0
+          ? "Выберите матчи"
+          : null;
   const sendDisabledReason = !settings?.apiUrl
     ? "Не настроен API URL"
-    : !effectiveShapkaId
-      ? "Укажите ID шапки"
-      : !settings?.adminSportId
-        ? "Не настроен Sport ID"
-        : preview?.readyMatchesCount === 0
-          ? "Нет готовых матчей"
-          : selectedCount === 0
-            ? "Выберите матчи"
-            : null;
+    : uploadPayloadDisabledReason;
+  const serviceDisabledReason = uploadPayloadDisabledReason;
 
   return (
     <div className="space-y-6">
@@ -386,12 +434,16 @@ export default function AdminUploadPanel({
             <button
               type="button"
               onClick={handleServiceUpload}
-              className="min-h-[54px] rounded-lg bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 px-4 text-sm font-black uppercase tracking-widest text-white transition-all duration-300 flex items-center justify-center shadow-lg hover:shadow-indigo-500/20 active:scale-[0.98] text-center cursor-pointer"
+              disabled={actionLoading || Boolean(serviceDisabledReason)}
+              title={serviceDisabledReason ?? `Будет отмечено матчей: ${readyCount}`}
+              className="min-h-[54px] rounded-lg bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 px-4 text-sm font-black uppercase tracking-widest text-white transition-all duration-300 flex items-center justify-center shadow-lg hover:shadow-indigo-500/20 active:scale-[0.98] text-center cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Залить через сервис
             </button>
-            {sendDisabledReason && (
-              <p className="text-xs font-medium text-slate-500">{sendDisabledReason}</p>
+            {(sendDisabledReason || serviceDisabledReason) && (
+              <p className="text-xs font-medium text-slate-500">
+                {sendDisabledReason || serviceDisabledReason}
+              </p>
             )}
           </div>
         </div>

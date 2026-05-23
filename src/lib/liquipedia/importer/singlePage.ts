@@ -443,17 +443,21 @@ export async function processSinglePage(params: {
         ? []
         : await prisma.tournamentMatch.findMany({
             where: { tournamentId: tournament.id },
-            select: { matchId: true, platformId: true, lpNumericalId: true, teamAName: true, teamBName: true, matchDate: true }
+            select: { matchId: true, platformId: true, lpNumericalId: true, teamAName: true, teamBName: true, matchDate: true, syncedAt: true }
           });
       const matchPlatformMap = new Map(existingMatches.filter((em: any) => em.platformId).map((em: any) => [em.matchId, em.platformId]));
       const lpIdMap = new Map(existingMatches.filter((em: any) => em.lpNumericalId).map((em: any) => [em.matchId, em.lpNumericalId]));
+      const matchSyncedAtMap = new Map(existingMatches.filter((em: any) => em.syncedAt).map((em: any) => [em.matchId, em.syncedAt]));
       
       const fuzzyPlatformMap = new Map();
+      const fuzzySyncedAtMap = new Map();
       existingMatches.forEach((em: any) => {
-        if (em.platformId && em.teamAName && em.teamBName) {
+        if (em.teamAName && em.teamBName) {
            const teams = [em.teamAName.toLowerCase(), em.teamBName.toLowerCase()].sort();
            const dateStr = em.matchDate ? new Date(em.matchDate).toISOString().split('T')[0] : "";
-           fuzzyPlatformMap.set(`${dateStr}|${teams[0]}|${teams[1]}`, em.platformId);
+           const fuzzyKey = `${dateStr}|${teams[0]}|${teams[1]}`;
+           if (em.platformId) fuzzyPlatformMap.set(fuzzyKey, em.platformId);
+           if (em.syncedAt) fuzzySyncedAtMap.set(fuzzyKey, em.syncedAt);
         }
       });
 
@@ -488,6 +492,12 @@ export async function processSinglePage(params: {
             const dateStr = m.matchDate ? new Date(m.matchDate).toISOString().split('T')[0] : "";
             platformId = fuzzyPlatformMap.get(`${dateStr}|${teams[0]}|${teams[1]}`) || null;
           }
+          let syncedAt = matchSyncedAtMap.get(matchId) || null;
+          if (!syncedAt && m.teamAName && m.teamBName) {
+            const teams = [m.teamAName.toLowerCase(), m.teamBName.toLowerCase()].sort();
+            const dateStr = m.matchDate ? new Date(m.matchDate).toISOString().split('T')[0] : "";
+            syncedAt = fuzzySyncedAtMap.get(`${dateStr}|${teams[0]}|${teams[1]}`) || null;
+          }
 
           return {
             ...m,
@@ -495,7 +505,7 @@ export async function processSinglePage(params: {
             tournamentId: tournament.id,
             platformId,
             lpNumericalId: lpIdMap.get(matchId) || m.lpNumericalId || null,
-            syncedAt: null,
+            syncedAt,
             teamAId: m.teamAId,
             teamAName: m.teamAName,
             teamBId: m.teamBId,

@@ -23,6 +23,7 @@ export interface FixtPayload {
 export interface BuildResult {
   payload: FixtPayload | null;
   readyMatchesCount: number;
+  readyMatchIds: string[];
   skippedMatches: any[];
   warnings: string[];
 }
@@ -45,9 +46,25 @@ export async function buildFixtPayload(
   // 1. Fetch settings from Prisma (discipline-specific or global)
   const settings = await resolveAdminSettings(disciplineSlug);
 
-  const mapping = await prisma.tournamentAdminMapping.findUnique({
-    where: { tournamentId },
-  });
+  const [mapping, tournament] = await Promise.all([
+    prisma.tournamentAdminMapping.findUnique({
+      where: { tournamentId },
+    }),
+    prisma.tournament.findUnique({
+      where: { id: tournamentId },
+      select: { disciplineSlug: true },
+    }),
+  ]);
+
+  if (!tournament || tournament.disciplineSlug !== disciplineSlug) {
+    return {
+      payload: null,
+      readyMatchesCount: 0,
+      readyMatchIds: [],
+      skippedMatches,
+      warnings: ['Tournament was not found for the requested discipline.'],
+    };
+  }
 
   const shapkaId = mapping?.adminShapkaId || settings.defaultShapkaId;
   const sportId = settings.adminSportId;
@@ -74,6 +91,7 @@ export async function buildFixtPayload(
   const mappingMap = buildTeamMappingLookup(teamMappings);
 
   const readyMatches: FixtMatch[] = [];
+  const readyMatchIds: string[] = [];
 
   const dedupedMatches = dedupeTournamentMatches(matches);
 
@@ -158,9 +176,9 @@ export async function buildFixtPayload(
     }
 
     // Format date in Moscow
-    const moscowDate = DateTime.fromJSDate(matchDate)
-      .setZone('Europe/Moscow')
-      .toFormat('dd.MM.yyyy HH:mm:ss');
+    const configuredDate = DateTime.fromJSDate(matchDate).setZone(settings.timezone || 'Europe/Moscow');
+    const uploadDate = (configuredDate.isValid ? configuredDate : DateTime.fromJSDate(matchDate).setZone('Europe/Moscow'))
+      .toFormat(toLuxonDateFormat(settings.dateFormat || 'DD.MM.YYYY HH:mm:ss'));
 
     const team1 = parsePositiveInteger(platformIdA);
     const team2 = parsePositiveInteger(platformIdB);
@@ -175,10 +193,11 @@ export async function buildFixtPayload(
     }
 
     readyMatches.push({
-      date: moscowDate,
+      date: uploadDate,
       team1,
       team2,
     });
+    readyMatchIds.push(match.id);
   }
 
   const parsedShapkaId = parsePositiveInteger(shapkaId);
@@ -199,6 +218,7 @@ export async function buildFixtPayload(
   return {
     payload,
     readyMatchesCount: readyMatches.length,
+    readyMatchIds,
     skippedMatches,
     warnings,
   };
@@ -209,4 +229,11 @@ function parsePositiveInteger(value: string | number | null | undefined) {
 
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function toLuxonDateFormat(format: string) {
+  return format
+    .replace(/YYYY/g, 'yyyy')
+    .replace(/YY/g, 'yy')
+    .replace(/DD/g, 'dd');
 }

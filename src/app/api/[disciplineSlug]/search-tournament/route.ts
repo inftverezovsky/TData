@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/db";
 import { getKnownDisciplineApiUrl, isKnownDisciplineSlug } from "@/lib/config/disciplines";
 import { createSearchTournamentPostRoute } from "@/lib/liquipedia/searchRoute";
+import { requireAdmin } from "@/lib/auth/adminAuth";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -11,6 +12,9 @@ export async function POST(
 ) {
   const { disciplineSlug } = await params;
   const slug = disciplineSlug.trim().toLowerCase();
+  const unauthorized = await requireAdmin(request);
+  if (unauthorized) return unauthorized;
+
   if (!isKnownDisciplineSlug(slug)) {
     return NextResponse.json({ error: "Unsupported discipline" }, { status: 404 });
   }

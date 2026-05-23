@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/auth/adminAuth";
 import { prisma } from "@/lib/db/db";
 import { queueIdentitySync } from "@/lib/sync/identitySync";
 
@@ -11,6 +12,9 @@ export async function POST(
   const { disciplineSlug, id } = await params;
   const slug = disciplineSlug.trim().toLowerCase();
   try {
+    const unauthorized = await requireAdmin(request);
+    if (unauthorized) return unauthorized;
+
     const body = await request.json();
     const { platformId } = body;
 

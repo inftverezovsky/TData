@@ -20,6 +20,7 @@ test("admin auth protects settings endpoints and creates a usable session cookie
     () => request.post("/api/admin-teams/import"),
     () => request.post("/api/counterstrike/tournament/example/admin-fixt-preview"),
     () => request.post("/api/counterstrike/tournament/example/admin-fixt-send"),
+    () => request.post("/api/counterstrike/tournament/example/admin-fixt-mark-uploaded"),
     () => request.post("/api/counterstrike/hltv/admin-send"),
     () => request.post("/api/counterstrike/hltv/matches/manual"),
     () => request.post("/api/manual-import/parse"),
