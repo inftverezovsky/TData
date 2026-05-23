@@ -143,6 +143,7 @@ export default function ManualImportWorkbench() {
   const [teamUrl, setTeamUrl] = useState("");
   const [teamImporting, setTeamImporting] = useState(false);
   const [teamImportResult, setTeamImportResult] = useState<TeamImportResult | null>(null);
+  const [teamImportMessage, setTeamImportMessage] = useState<ResultMessage | null>(null);
   const activeRecognitionController = useRef<AbortController | null>(null);
 
   const readyCount =
@@ -187,6 +188,7 @@ export default function ManualImportWorkbench() {
 
     setTeamImporting(true);
     setTeamImportResult(null);
+    setTeamImportMessage(null);
     setMessage(null);
 
     const formData = new FormData();
@@ -206,12 +208,16 @@ export default function ManualImportWorkbench() {
       if (!response.ok) throw new Error(data.error || "Не удалось импортировать команды");
 
       setTeamImportResult(data);
-      setMessage({
+      const successMessage = {
         type: "success",
         text: `Источник обновлен: ${data.importedCount || 0} записей. Автомапинг: ${data.mappingResult?.autoMappedCount || 0}.`,
-      });
+      } as const;
+      setTeamImportMessage(successMessage);
+      setMessage(successMessage);
     } catch (error) {
-      setMessage({ type: "error", text: error instanceof Error ? error.message : "Ошибка импорта команд" });
+      const errorMessage = { type: "error", text: error instanceof Error ? error.message : "Ошибка импорта команд" } as const;
+      setTeamImportMessage(errorMessage);
+      setMessage(errorMessage);
     } finally {
       setTeamImporting(false);
     }
@@ -933,6 +939,20 @@ export default function ManualImportWorkbench() {
                 {teamImportResult.detectedLayout.source === "data" ? " (без шапки)" : ""}
               </p>
             ) : null}
+          </div>
+        )}
+
+        {teamImportMessage && (
+          <div
+            className={`mt-4 rounded-2xl border p-4 text-xs font-bold ${
+              teamImportMessage.type === "success"
+                ? "border-emerald-100 bg-emerald-50 text-emerald-800"
+                : teamImportMessage.type === "error"
+                  ? "border-rose-100 bg-rose-50 text-rose-800"
+                  : "border-sky-100 bg-sky-50 text-sky-800"
+            }`}
+          >
+            {teamImportMessage.text}
           </div>
         )}
       </section>

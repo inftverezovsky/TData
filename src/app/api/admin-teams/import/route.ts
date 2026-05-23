@@ -42,7 +42,7 @@ export async function POST(request: Request) {
     } else {
       const fetchUrl = toGoogleSheetsExportUrl(url);
       if (!fetchUrl) {
-        return NextResponse.json({ error: "Only Google Sheets spreadsheet URLs are allowed" }, { status: 400 });
+        return NextResponse.json({ error: "Укажите ссылку на Google Sheets таблицу." }, { status: 400 });
       }
 
       const controller = new AbortController();
@@ -50,7 +50,15 @@ export async function POST(request: Request) {
       const response = await fetch(fetchUrl, { signal: controller.signal }).finally(() => clearTimeout(timeout));
 
       if (!response.ok) {
-        throw new Error(`Failed to fetch from URL: ${response.statusText}`);
+        return NextResponse.json(
+          {
+            error:
+              response.status === 403 || response.status === 404
+                ? "Google Sheets не отдаёт таблицу. Проверьте, что ссылка открыта для просмотра всем, у кого есть ссылка."
+                : `Не удалось скачать Google Sheets: ${response.status} ${response.statusText}`,
+          },
+          { status: 400 }
+        );
       }
 
       const contentLength = Number(response.headers.get("content-length"));
@@ -64,6 +72,14 @@ export async function POST(request: Request) {
       }
 
       buffer = Buffer.from(bytes);
+      if (looksLikeHtml(buffer, response.headers.get("content-type"))) {
+        return NextResponse.json(
+          {
+            error: "Google Sheets вернул HTML-страницу вместо Excel. Откройте доступ к таблице по ссылке или используйте прямой Excel-файл.",
+          },
+          { status: 400 }
+        );
+      }
       fileName = "remote_url";
     }
 
@@ -125,7 +141,7 @@ export async function POST(request: Request) {
   }
 }
 
-function toGoogleSheetsExportUrl(rawUrl: string) {
+export function toGoogleSheetsExportUrl(rawUrl: string) {
   try {
     const parsed = new URL(rawUrl);
     if (parsed.hostname !== "docs.google.com" || !parsed.pathname.includes("/spreadsheets/")) {
@@ -135,8 +151,18 @@ function toGoogleSheetsExportUrl(rawUrl: string) {
     const match = parsed.pathname.match(/\/spreadsheets\/d\/([^/]+)/);
     if (!match) return null;
 
-    return `https://docs.google.com/spreadsheets/d/${match[1]}/export?format=xlsx`;
+    const gid = parsed.searchParams.get("gid") || parsed.hash.match(/gid=(\d+)/)?.[1] || "";
+    const exportUrl = new URL(`https://docs.google.com/spreadsheets/d/${match[1]}/export`);
+    exportUrl.searchParams.set("format", "xlsx");
+    if (gid) exportUrl.searchParams.set("gid", gid);
+    return exportUrl.toString();
   } catch {
     return null;
   }
+}
+
+function looksLikeHtml(buffer: Buffer, contentType: string | null) {
+  if (contentType?.toLowerCase().includes("text/html")) return true;
+  const head = buffer.subarray(0, 128).toString("utf8").trimStart().toLowerCase();
+  return head.startsWith("<!doctype html") || head.startsWith("<html");
 }
