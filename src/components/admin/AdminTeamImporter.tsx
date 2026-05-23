@@ -150,6 +150,7 @@ export function AdminTeamImporter() {
           <div className="mt-4 p-3 bg-emerald-50 border border-emerald-100 rounded-xl">
             <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-tight">
               ✓ Успешно: {result.importedCount} команд добавлено.
+              {result.mappingResult ? ` Автомаппинг: ${result.mappingResult.autoMappedCount || 0}, конфликтов: ${result.mappingResult.conflictCount || 0}.` : ""}
             </p>
           </div>
         )}

@@ -13,6 +13,6 @@ test("detectTournamentSource defaults to Liquipedia", () => {
 });
 
 test("getTournamentSourceLabel returns user-facing labels", () => {
-  assert.equal(getTournamentSourceLabel("hltv"), "HLTV Source");
-  assert.equal(getTournamentSourceLabel("liquipedia"), "Liquipedia Source");
+  assert.equal(getTournamentSourceLabel("hltv"), "Источник: HLTV");
+  assert.equal(getTournamentSourceLabel("liquipedia"), "Источник: Liquipedia");
 });

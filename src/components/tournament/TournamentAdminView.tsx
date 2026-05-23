@@ -82,7 +82,7 @@ export default function TournamentAdminView({ tournament: initialTournament, map
               <h2 className="text-xl font-bold text-slate-900">Расписание</h2>
             </div>
             <div className="rounded-full bg-slate-50 border border-slate-100 px-3 py-1 text-[10px] font-bold text-slate-400">
-              {tournament.matches?.length || 0} Matches
+              Матчей: {tournament.matches?.length || 0}
             </div>
           </div>
           {refreshError ? (

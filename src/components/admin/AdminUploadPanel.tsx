@@ -433,15 +433,15 @@ export default function AdminUploadPanel({
           <div className="mt-8 space-y-6 animate-in slide-in-from-top-4 duration-300 border-t border-slate-100 pt-8">
             <div className="grid grid-cols-3 gap-4">
               <div className="bg-emerald-50/50 border border-emerald-100 p-4 rounded-2xl text-center">
-                <div className="text-[9px] text-emerald-600 font-medium uppercase tracking-widest mb-1">Ready</div>
+                <div className="text-[9px] text-emerald-600 font-medium uppercase tracking-widest mb-1">Готово</div>
                 <div className="text-2xl font-medium text-emerald-700">{preview.readyMatchesCount}</div>
               </div>
               <div className="bg-amber-50/50 border border-amber-100 p-4 rounded-2xl text-center">
-                <div className="text-[9px] text-amber-600 font-medium uppercase tracking-widest mb-1">Skipped</div>
+                <div className="text-[9px] text-amber-600 font-medium uppercase tracking-widest mb-1">Пропущено</div>
                 <div className="text-2xl font-medium text-amber-700">{preview.skippedMatches.length}</div>
               </div>
               <div className="bg-rose-50/50 border border-rose-100 p-4 rounded-2xl text-center">
-                <div className="text-[9px] text-rose-600 font-medium uppercase tracking-widest mb-1">Warnings</div>
+                <div className="text-[9px] text-rose-600 font-medium uppercase tracking-widest mb-1">Предупреждения</div>
                 <div className="text-2xl font-medium text-rose-700">{preview.warnings.length}</div>
               </div>
             </div>
@@ -458,7 +458,7 @@ export default function AdminUploadPanel({
               <details className="group">
                 <summary className="cursor-pointer text-[10px] font-medium text-slate-400 uppercase tracking-widest hover:text-slate-900 transition-colors list-none flex items-center gap-2">
                   <svg className="h-4 w-4 group-open:rotate-90 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" /></svg>
-                  Skipped Matches Details ({preview.skippedMatches.length})
+                  Подробности по пропущенным матчам ({preview.skippedMatches.length})
                 </summary>
                 <div className="mt-4 space-y-2 max-h-48 overflow-auto custom-scrollbar pr-2">
                   {preview.skippedMatches.map((m, i) => (
@@ -482,8 +482,8 @@ export default function AdminUploadPanel({
               <div className="space-y-4 mt-6 animate-in fade-in slide-in-from-top-2">
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <label className="text-[9px] font-bold uppercase tracking-widest text-slate-400">PHP Array Equiv</label>
-                    <button onClick={() => navigator.clipboard.writeText(toPhpString(preview.phpArray))} className="text-[9px] font-bold text-slate-600 hover:underline">Copy PHP</button>
+                    <label className="text-[9px] font-bold uppercase tracking-widest text-slate-400">PHP-массив</label>
+                    <button onClick={() => navigator.clipboard.writeText(toPhpString(preview.phpArray))} className="text-[9px] font-bold text-slate-600 hover:underline">Копировать PHP</button>
                   </div>
                   <pre className="p-4 bg-slate-900 text-slate-200/50 text-[10px] rounded-2xl overflow-auto max-h-80 font-mono leading-relaxed scrollbar-hide">
                     {toPhpString(preview.phpArray)}

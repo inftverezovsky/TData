@@ -68,7 +68,7 @@ export default function DisciplinePlatformIdPanel({ disciplineSlug }: { discipli
             type="text"
             value={platformId}
             onChange={(e) => setPlatformId(e.target.value)}
-            placeholder="Platform ID"
+            placeholder="ID платформы"
             className="w-[200px] rounded-xl border border-indigo-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-950 focus:border-indigo-600 focus:outline-none focus:ring-4 focus:ring-indigo-600/5 tabular-nums placeholder:text-slate-300 shadow-sm"
           />
           <div className="flex gap-2">

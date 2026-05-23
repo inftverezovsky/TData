@@ -53,7 +53,7 @@ export default function HltvMatchesWidget() {
       <aside className="premium-card p-6 border-slate-200 shadow-sm">
         <div className="flex items-center gap-2 text-rose-500 mb-2">
           <AlertCircle className="w-4 h-4" />
-          <h2 className="text-xs font-black uppercase tracking-widest">HLTV Error</h2>
+          <h2 className="text-xs font-black uppercase tracking-widest">Ошибка HLTV</h2>
         </div>
         <p className="text-[10px] font-bold text-slate-400 uppercase leading-relaxed mb-4">
           {error.includes("Cloudflare") || error.includes("403") 
@@ -75,7 +75,7 @@ export default function HltvMatchesWidget() {
         <div>
           <h2 className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-950 flex items-center gap-2">
             <Zap className="w-4 h-4 text-indigo-600 fill-indigo-600" />
-            HLTV Live Feed
+            Лента HLTV
           </h2>
           <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest">Ближайшие матчи из HLTV</p>
         </div>
@@ -115,7 +115,7 @@ export default function HltvMatchesWidget() {
                   <div className="flex items-center gap-2 min-w-0">
                     {m.isLive && (
                       <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-rose-500 text-[7px] font-black text-white uppercase animate-pulse">
-                        <Zap className="w-2 h-2 fill-white" /> Live
+                        <Zap className="w-2 h-2 fill-white" /> Идёт
                       </span>
                     )}
                     <span className="text-[8px] font-black uppercase tracking-widest text-slate-400 truncate max-w-[120px]">
@@ -124,7 +124,7 @@ export default function HltvMatchesWidget() {
                   </div>
                   <span className="text-[9px] font-bold text-slate-900 tabular-nums flex items-center gap-1 shrink-0">
                     <Clock className="w-3 h-3 text-slate-300" />
-                    {m.isLive ? "LIVE" : m.date.split(' ')[1]}
+                    {m.isLive ? "Сейчас" : m.date.split(' ')[1]}
                   </span>
                 </div>
                 
@@ -132,7 +132,7 @@ export default function HltvMatchesWidget() {
                   <div className="flex-1 min-w-0 text-right">
                     <div className="text-[11px] font-black text-slate-900 truncate">{m.team1.name}</div>
                   </div>
-                  <div className="text-[8px] font-black text-slate-300">VS</div>
+                  <div className="text-[8px] font-black text-slate-300">против</div>
                   <div className="flex-1 min-w-0 text-left">
                     <div className="text-[11px] font-black text-slate-900 truncate">{m.team2.name}</div>
                   </div>
@@ -145,10 +145,10 @@ export default function HltvMatchesWidget() {
                    </div>
                    {m.isReady ? (
                      <span className="text-[8px] font-black text-emerald-600 uppercase flex items-center gap-1">
-                        <CheckCircle2 className="w-2.5 h-2.5" /> Ready
+                        <CheckCircle2 className="w-2.5 h-2.5" /> Готово
                      </span>
                    ) : (
-                     <span className="text-[8px] font-black text-rose-400 uppercase">Unmapped</span>
+                     <span className="text-[8px] font-black text-rose-400 uppercase">Без ID</span>
                    )}
                 </div>
               </li>

@@ -44,6 +44,24 @@ export type FuzzyMatchResult = {
   score: number;
 };
 
+const GENERIC_PREFIX_TOKENS = new Set(["the", "team"]);
+const GENERIC_SUFFIX_TOKENS = new Set(["team", "esports", "esport", "gaming", "club", "clan"]);
+const QUALIFIER_TOKENS = new Set([
+  "academy",
+  "junior",
+  "juniors",
+  "youth",
+  "youngsters",
+  "female",
+  "fe",
+  "red",
+  "blue",
+  "black",
+  "white",
+  "gold",
+  "challengers",
+]);
+
 /**
  * Returns a similarity score between 0.0 and 1.0.
  * It treats swapped human names as equal, e.g. "Волин Лев" and "Лев Волин".
@@ -104,6 +122,19 @@ export function getFuzzyNameVariants(value: string | null | undefined) {
 
   const sorted = sortNameTokens(normalized);
   if (sorted) variants.add(sorted);
+
+  const compact = getCompactNameKey(normalized);
+  if (compact && compact !== normalized && isSafeCompactNameKey(compact)) {
+    variants.add(compact);
+  }
+
+  for (const stripped of getGenericTeamNameVariants(normalized)) {
+    variants.add(stripped);
+    const strippedCompact = getCompactNameKey(stripped);
+    if (strippedCompact && strippedCompact !== stripped && isSafeCompactNameKey(strippedCompact)) {
+      variants.add(strippedCompact);
+    }
+  }
 
   return Array.from(variants).filter(Boolean);
 }
@@ -188,4 +219,67 @@ function sortNameTokens(value: string) {
   const tokens = normalizeFuzzyName(value).split(" ").filter(Boolean);
   if (tokens.length < 2) return "";
   return [...tokens].sort((a, b) => a.localeCompare(b, "ru")).join(" ");
+}
+
+function getGenericTeamNameVariants(value: string) {
+  const tokens = getComparableTokens(value);
+  if (tokens.length < 2) return [];
+  if (tokens.some((token) => QUALIFIER_TOKENS.has(token))) return [];
+
+  const variants = new Set<string>();
+
+  const withoutLeadingGeneric = [...tokens];
+  while (withoutLeadingGeneric.length > 1 && GENERIC_PREFIX_TOKENS.has(withoutLeadingGeneric[0])) {
+    withoutLeadingGeneric.shift();
+  }
+  addSafeGenericVariant(variants, withoutLeadingGeneric.join(" "));
+
+  const withoutTrailingGeneric = [...tokens];
+  while (
+    withoutTrailingGeneric.length > 1 &&
+    GENERIC_SUFFIX_TOKENS.has(withoutTrailingGeneric[withoutTrailingGeneric.length - 1])
+  ) {
+    withoutTrailingGeneric.pop();
+  }
+  addSafeGenericVariant(variants, withoutTrailingGeneric.join(" "));
+
+  const bothSides = [...withoutLeadingGeneric];
+  while (bothSides.length > 1 && GENERIC_SUFFIX_TOKENS.has(bothSides[bothSides.length - 1])) {
+    bothSides.pop();
+  }
+  addSafeGenericVariant(variants, bothSides.join(" "));
+
+  variants.delete(tokens.join(" "));
+  return Array.from(variants);
+}
+
+function getComparableTokens(value: string) {
+  return normalizeFuzzyName(value)
+    .replace(/\be\s+sports\b/g, "esports")
+    .split(" ")
+    .filter(Boolean);
+}
+
+function addSafeGenericVariant(variants: Set<string>, value: string) {
+  const normalized = normalizeFuzzyName(value);
+  if (!normalized) return;
+
+  const compact = getCompactNameKey(normalized);
+  if (isSafeGenericAlias(normalized) || isSafeCompactNameKey(compact)) {
+    variants.add(normalized);
+  }
+}
+
+function isSafeGenericAlias(value: string) {
+  if (!value || GENERIC_PREFIX_TOKENS.has(value) || GENERIC_SUFFIX_TOKENS.has(value)) return false;
+  const compact = getCompactNameKey(value);
+  return compact.length >= 4 || /\d/.test(compact);
+}
+
+function getCompactNameKey(value: string) {
+  return normalizeFuzzyName(value).replace(/\s+/g, "");
+}
+
+function isSafeCompactNameKey(value: string) {
+  return value.length >= 4 || (value.length >= 2 && /\d/.test(value));
 }

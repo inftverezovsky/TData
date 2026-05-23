@@ -12,13 +12,14 @@ export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
     const disciplineSlug = typeof body.disciplineSlug === "string" ? body.disciplineSlug.trim().toLowerCase() : "";
+    const disciplineId = typeof body.disciplineId === "string" || typeof body.disciplineId === "number" ? String(body.disciplineId).trim() : "";
     const matches = Array.isArray(body.matches) ? body.matches : [];
 
     if (!getManualImportDiscipline(disciplineSlug)) {
       return NextResponse.json({ ok: false, error: "Unsupported discipline" }, { status: 400 });
     }
 
-    const mappedMatches = await mapManualMatches(matches, disciplineSlug);
+    const mappedMatches = await mapManualMatches(matches, disciplineSlug, disciplineId);
     const readyMatchesCount = mappedMatches.filter((match) => match.isReady).length;
 
     return NextResponse.json({

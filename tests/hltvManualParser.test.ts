@@ -63,3 +63,51 @@ test("parseHltvCopiedText handles Russian table OCR lists", () => {
     ["Кондратьев Иван", "Тихонов Евгений", "23.05.2026 16:10:00"],
   ]);
 });
+
+test("parseHltvCopiedText handles English table schedules", () => {
+  const matches = parseHltvCopiedText(`
+Team Liquid
+G2 Esports
+23 May, 16:10 | Table 1
+NAVI
+FaZe Clan
+23 May, 18:30 | Table 2
+`);
+
+  assert.equal(matches.length, 2);
+  assert.deepEqual(matches.map((match) => [match.team1, match.team2, match.date]), [
+    ["Team Liquid", "G2 Esports", "23.05.2026 16:10:00"],
+    ["NAVI", "FaZe Clan", "23.05.2026 18:30:00"],
+  ]);
+});
+
+test("parseHltvCopiedText handles inline Team A vs Team B rows", () => {
+  const matches = parseHltvCopiedText(`
+May 24 2026
+16:10 Team Spirit vs Virtus.pro
+18:30 Team Falcons v. GamerLegion
+`);
+
+  assert.equal(matches.length, 2);
+  assert.deepEqual(matches.map((match) => [match.team1, match.team2, match.date]), [
+    ["Team Spirit", "Virtus.pro", "24.05.2026 16:10:00"],
+    ["Team Falcons", "GamerLegion", "24.05.2026 18:30:00"],
+  ]);
+});
+
+test("parseHltvCopiedText tolerates mixed OCR artifacts", () => {
+  const matches = parseHltvCopiedText(`
+● Sangal Esports ®
+□ 9INE
+May 25, 2026 14:00 | Tbl 3
+✓ Aurora Gaming
+© BetBoom Team
+15:30 | Table 4
+`);
+
+  assert.equal(matches.length, 2);
+  assert.deepEqual(matches.map((match) => [match.team1, match.team2, match.date]), [
+    ["Sangal Esports", "9INE", "25.05.2026 14:00:00"],
+    ["Aurora Gaming", "BetBoom Team", "25.05.2026 15:30:00"],
+  ]);
+});

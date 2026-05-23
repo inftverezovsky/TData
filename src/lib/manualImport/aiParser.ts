@@ -1,12 +1,13 @@
 import { parseHltvCopiedText } from "@/lib/hltv/manualTextParser";
 import { ARCCODEX_CHAT_COMPLETIONS_URL, ARCCODEX_RESPONSES_URL, MANUAL_IMPORT_MODEL } from "./config";
 import type { ManualImportRawMatch } from "./buildManualFixtPayload";
-import { resolve } from "node:path";
-import type { Worker } from "tesseract.js";
+import { extractManualImportOcr, type ManualImportOcrResult } from "./ocrPipeline";
 
 type AiParseInput = {
   text?: string;
   imageDataUrl?: string;
+  imageBuffer?: Buffer;
+  imageMime?: string;
   disciplineSlug: string;
 };
 
@@ -14,29 +15,76 @@ type AiParseResult = {
   ok: boolean;
   matches: ManualImportRawMatch[];
   normalizedText?: string;
+  ocrText?: string;
+  ocrConfidence?: number | null;
+  parseSource?: "local-text" | "local-ocr" | "ai" | "fallback";
+  warnings?: string[];
   error?: string;
   fallback?: boolean;
 };
 
-let ocrWorkerPromise: Promise<Worker> | null = null;
-
 export async function parseManualMatchesWithAi(input: AiParseInput): Promise<AiParseResult> {
-  if (input.text?.trim()) {
-    const directMatches = parseHltvCopiedText(input.text);
+  const warnings: string[] = [];
+  const rawText = input.text?.trim() || "";
+
+  if (rawText) {
+    const directMatches = parseHltvCopiedText(rawText);
     if (directMatches.length > 0) {
       return {
         ok: true,
         matches: directMatches,
         fallback: true,
-        normalizedText: input.text,
+        normalizedText: rawText,
+        parseSource: "local-text",
+        warnings,
       };
     }
   }
 
+  let ocrResult: ManualImportOcrResult | null = null;
+  if (input.imageDataUrl || input.imageBuffer?.length) {
+    ocrResult = await extractManualImportOcr({
+      imageDataUrl: input.imageDataUrl,
+      imageBuffer: input.imageBuffer,
+      imageMime: input.imageMime,
+    });
+    warnings.push(...ocrResult.warnings);
+
+    if (ocrResult.text.trim()) {
+      const ocrMatches = parseHltvCopiedText(ocrResult.text);
+      if (ocrMatches.length > 0) {
+        return {
+          ok: true,
+          matches: ocrMatches,
+          fallback: true,
+          normalizedText: ocrResult.text,
+          ocrText: ocrResult.text,
+          ocrConfidence: ocrResult.confidence,
+          parseSource: "local-ocr",
+          warnings,
+        };
+      }
+    }
+  }
+
+  if (input.text?.trim()) {
+    warnings.push("Локальный парсер не нашёл матчей в тексте.");
+  }
+
+  if (ocrResult?.text.trim()) {
+    warnings.push("OCR-текст извлечён, но локальный парсер не смог собрать матчи.");
+  }
+
   const apiKey = process.env.ARCCODEX_API_KEY;
   if (!apiKey) {
-    return fallbackParse(input, "ARCCODEX_API_KEY is not configured.");
+    return fallbackParse({ ...input, ocrText: ocrResult?.text || "" }, "ARCCODEX_API_KEY is not configured.", ocrResult, warnings);
   }
+
+  const aiInput = {
+    ...input,
+    ocrText: ocrResult?.text || "",
+    imageDataUrl: input.imageDataUrl || imageBufferToDataUrl(input.imageBuffer, input.imageMime),
+  };
 
   try {
     const response = await fetch(ARCCODEX_RESPONSES_URL, {
@@ -45,7 +93,7 @@ export async function parseManualMatchesWithAi(input: AiParseInput): Promise<AiP
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(buildResponsesPayload(input)),
+      body: JSON.stringify(buildResponsesPayload(aiInput)),
     });
 
     const bodyText = await response.text();
@@ -57,29 +105,47 @@ export async function parseManualMatchesWithAi(input: AiParseInput): Promise<AiP
     }
 
     if (!response.ok) {
-      return parseManualMatchesWithChatCompletions(input, apiKey, body?.error?.message || bodyText || "AI parse request failed.");
+      return parseManualMatchesWithChatCompletions(
+        aiInput,
+        apiKey,
+        body?.error?.message || bodyText || "AI parse request failed.",
+        ocrResult,
+        warnings
+      );
     }
 
     const outputText = extractResponsesText(body);
     const parsed = parseAiJson(outputText);
     if (!parsed.matches.length) {
-      return fallbackParse(input, "AI did not return matches.");
+      return fallbackParse(aiInput, "AI did not return matches.", ocrResult, warnings);
     }
 
     return {
       ok: true,
       matches: parsed.matches,
       normalizedText: parsed.normalizedText || outputText,
+      ocrText: ocrResult?.text || "",
+      ocrConfidence: ocrResult?.confidence ?? null,
+      parseSource: "ai",
+      warnings,
     };
   } catch (error) {
-    return parseManualMatchesWithChatCompletions(input, apiKey, error instanceof Error ? error.message : "AI parse request failed.");
+    return parseManualMatchesWithChatCompletions(
+      aiInput,
+      apiKey,
+      error instanceof Error ? error.message : "AI parse request failed.",
+      ocrResult,
+      warnings
+    );
   }
 }
 
 async function parseManualMatchesWithChatCompletions(
-  input: AiParseInput,
+  input: AiParseInput & { ocrText?: string },
   apiKey: string,
-  previousError: string
+  previousError: string,
+  ocrResult: ManualImportOcrResult | null,
+  warnings: string[]
 ): Promise<AiParseResult> {
   try {
     const response = await fetch(ARCCODEX_CHAT_COMPLETIONS_URL, {
@@ -100,26 +166,30 @@ async function parseManualMatchesWithChatCompletions(
     }
 
     if (!response.ok) {
-      return fallbackParse(input, body?.error?.message || bodyText || previousError);
+      return fallbackParse(input, body?.error?.message || bodyText || previousError, ocrResult, warnings);
     }
 
     const outputText = body?.choices?.[0]?.message?.content || "";
     const parsed = parseAiJson(outputText);
     if (!parsed.matches.length) {
-      return fallbackParse(input, "AI did not return matches.");
+      return fallbackParse(input, "AI did not return matches.", ocrResult, warnings);
     }
 
     return {
       ok: true,
       matches: parsed.matches,
       normalizedText: parsed.normalizedText || outputText,
+      ocrText: ocrResult?.text || "",
+      ocrConfidence: ocrResult?.confidence ?? null,
+      parseSource: "ai",
+      warnings,
     };
   } catch (error) {
-    return fallbackParse(input, error instanceof Error ? error.message : previousError);
+    return fallbackParse(input, error instanceof Error ? error.message : previousError, ocrResult, warnings);
   }
 }
 
-function buildResponsesPayload(input: AiParseInput) {
+function buildResponsesPayload(input: AiParseInput & { ocrText?: string }) {
   const content: any[] = [
     {
       type: "input_text",
@@ -133,6 +203,7 @@ function buildResponsesPayload(input: AiParseInput) {
         "Do not include completed match scores. Keep team names clean and remove OCR artifacts.",
         `Discipline slug: ${input.disciplineSlug}.`,
         input.text ? `Raw text:\n${input.text}` : "",
+        input.ocrText ? `Local OCR text:\n${input.ocrText}` : "",
       ]
         .filter(Boolean)
         .join("\n"),
@@ -185,7 +256,7 @@ function buildResponsesPayload(input: AiParseInput) {
   };
 }
 
-function buildChatCompletionsPayload(input: AiParseInput) {
+function buildChatCompletionsPayload(input: AiParseInput & { ocrText?: string }) {
   const content: any[] = [
     {
       type: "text",
@@ -199,6 +270,7 @@ function buildChatCompletionsPayload(input: AiParseInput) {
         "Do not include completed match scores. Keep team names clean and remove OCR artifacts.",
         `Discipline slug: ${input.disciplineSlug}.`,
         input.text ? `Raw text:\n${input.text}` : "",
+        input.ocrText ? `Local OCR text:\n${input.ocrText}` : "",
       ]
         .filter(Boolean)
         .join("\n"),
@@ -252,17 +324,32 @@ function parseAiJson(text: string): { matches: ManualImportRawMatch[]; normalize
   };
 }
 
-async function fallbackParse(input: AiParseInput, error: string): Promise<AiParseResult> {
+async function fallbackParse(
+  input: AiParseInput & { ocrText?: string },
+  error: string,
+  ocrResult: ManualImportOcrResult | null,
+  warnings: string[]
+): Promise<AiParseResult> {
   const candidates: string[] = [];
 
   if (input.text && input.text.trim()) {
     candidates.push(input.text);
   }
 
-  if (input.imageDataUrl) {
-    const ocrText = await extractTextFromImage(input.imageDataUrl);
-    if (ocrText.trim()) {
-      candidates.push(ocrText);
+  if (input.ocrText?.trim()) {
+    candidates.push(input.ocrText);
+  }
+
+  let finalOcrResult = ocrResult;
+  if (!finalOcrResult && (input.imageDataUrl || input.imageBuffer?.length)) {
+    finalOcrResult = await extractManualImportOcr({
+      imageDataUrl: input.imageDataUrl,
+      imageBuffer: input.imageBuffer,
+      imageMime: input.imageMime,
+    });
+    warnings.push(...finalOcrResult.warnings);
+    if (finalOcrResult.text.trim()) {
+      candidates.push(finalOcrResult.text);
     }
   }
 
@@ -274,6 +361,10 @@ async function fallbackParse(input: AiParseInput, error: string): Promise<AiPars
         matches,
         fallback: true,
         normalizedText: candidate,
+        ocrText: finalOcrResult?.text || "",
+        ocrConfidence: finalOcrResult?.confidence ?? null,
+        parseSource: "fallback",
+        warnings,
         error,
       };
     }
@@ -284,34 +375,16 @@ async function fallbackParse(input: AiParseInput, error: string): Promise<AiPars
     matches: [],
     fallback: true,
     normalizedText: candidates[0] || input.text || "",
+    ocrText: finalOcrResult?.text || "",
+    ocrConfidence: finalOcrResult?.confidence ?? null,
+    parseSource: "fallback",
+    warnings,
     error,
   };
 }
 
-async function extractTextFromImage(imageDataUrl: string) {
-  try {
-    const worker = await getOcrWorker();
-    const result = await worker.recognize(imageDataUrl);
-    return typeof result?.data?.text === "string" ? result.data.text : "";
-  } catch {
-    ocrWorkerPromise = null;
-    return "";
-  }
-}
-
-async function getOcrWorker() {
-  if (!ocrWorkerPromise) {
-    ocrWorkerPromise = createOcrWorker();
-  }
-
-  return ocrWorkerPromise;
-}
-
-async function createOcrWorker() {
-  const { createWorker } = await import("tesseract.js");
-  return createWorker(["rus", "eng"], 1, {
-    langPath: resolve(process.cwd(), "data", "tessdata").replace(/\\/g, "/"),
-    cachePath: resolve(process.cwd(), ".tesseract-cache").replace(/\\/g, "/"),
-    gzip: false,
-  });
+function imageBufferToDataUrl(buffer?: Buffer, mime?: string) {
+  if (!buffer?.length) return "";
+  const safeMime = mime?.startsWith("image/") ? mime : "image/png";
+  return `data:${safeMime};base64,${buffer.toString("base64")}`;
 }

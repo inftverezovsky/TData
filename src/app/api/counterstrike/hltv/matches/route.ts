@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/db";
 import { runHltvScript } from "@/lib/hltv/scraper";
+import { getBestOfLabel } from "@/lib/matches/format";
+import { applyDisciplineScheduleLead } from "@/lib/matches/scheduleOffset";
 import { classifyParserError, emptyValidIfNoItems } from "@/lib/proxy/parserErrors";
 import { getTeamAliasKey, getTeamMappingLookupKeys } from "@/lib/teams/canonicalize";
 import { normalizeTeamName } from "@/lib/teams/teams";
@@ -53,12 +55,14 @@ export async function GET(request: Request) {
       const teamB = findTeamMapping(m.team2);
 
       // Format date from unix timestamp
-      const date = new Date(m.unix_time * 1000);
-      const dateStr = date.toLocaleString('ru-RU', {
-        day: '2-digit', month: '2-digit', year: 'numeric',
-        hour: '2-digit', minute: '2-digit', second: '2-digit',
-        timeZone: 'Europe/Moscow'
-      }).replace(',', '');
+      const unixTime = Number(m.unix_time || 0);
+      const dateStr = unixTime > 0
+        ? applyDisciplineScheduleLead(new Date(unixTime * 1000), "counterstrike").toLocaleString('ru-RU', {
+            day: '2-digit', month: '2-digit', year: 'numeric',
+            hour: '2-digit', minute: '2-digit', second: '2-digit',
+            timeZone: 'Europe/Moscow'
+          }).replace(',', '')
+        : "Unknown";
 
       return {
         id: m.id,
@@ -72,6 +76,7 @@ export async function GET(request: Request) {
           platformId: teamB?.platformId || null,
         },
         date: dateStr,
+        format: getBestOfLabel(m.format || m.matchFormat || m.bestOf || m.rawText),
         isReady: !!teamA?.platformId && !!teamB?.platformId,
         isLive: !!m.isLive
       };

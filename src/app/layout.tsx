@@ -45,7 +45,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
               <div className="hidden shrink-0 items-center gap-3 sm:flex">
                 <div className="h-2 w-2 rounded-full bg-indigo-50 shadow-[0_0_8px_rgba(79,70,229,0.5)]" />
-                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Stable</span>
+                <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Стабильно</span>
               </div>
             </div>
           </header>
@@ -55,7 +55,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </main>
           
           <footer className="border-t border-slate-200/20 bg-transparent py-8 text-center text-sm font-medium text-slate-500">
-            &copy; {new Date().getFullYear()} TCyber Admin Hub. All rights reserved.
+            &copy; {new Date().getFullYear()} TCyber Admin Hub. Все права защищены.
           </footer>
         </div>
       </body>

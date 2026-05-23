@@ -315,6 +315,22 @@ model TeamMapping {
   @@index([alias])
 }
 
+model ManualImportTeamMapping {
+  id                 String   @id @default(cuid())
+  disciplineSlug     String
+  adminSportId       String
+  teamName           String
+  normalizedTeamName String
+  platformId         String
+  canonicalName      String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([disciplineSlug, adminSportId, normalizedTeamName])
+  @@index([disciplineSlug, adminSportId])
+  @@index([platformId])
+}
+
 model DisciplineAdminSettings {
   id                String   @id @default(cuid())
   disciplineSlug    String   @unique

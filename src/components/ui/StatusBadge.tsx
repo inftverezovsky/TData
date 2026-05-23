@@ -1,11 +1,11 @@
 import type { ImportStatus } from "@prisma/client";
 
 const labels: Record<string, string> = {
-  PENDING: "pending",
-  SUCCESS: "success",
-  PARTIAL: "partial",
-  FAILED: "failed",
-  MANUAL_REVIEW: "manual review"
+  PENDING: "ожидает",
+  SUCCESS: "успешно",
+  PARTIAL: "частично",
+  FAILED: "ошибка",
+  MANUAL_REVIEW: "проверить"
 };
 
 const styles: Record<string, string> = {

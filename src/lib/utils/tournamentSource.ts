@@ -12,5 +12,5 @@ export function detectTournamentSource(pageUrl?: string | null): TournamentSourc
 }
 
 export function getTournamentSourceLabel(source: TournamentSource) {
-  return source === "hltv" ? "HLTV Source" : "Liquipedia Source";
+  return source === "hltv" ? "Источник: HLTV" : "Источник: Liquipedia";
 }

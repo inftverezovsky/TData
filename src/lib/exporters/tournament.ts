@@ -1,3 +1,5 @@
+import { applyDisciplineScheduleLead } from "@/lib/matches/scheduleOffset";
+
 type ExportTournament = {
   name: string;
   sourceTitle: string;
@@ -35,7 +37,7 @@ type ExportTournament = {
   }>;
 };
 
-export function tournamentToMarkdown(tournament: ExportTournament) {
+export function tournamentToMarkdown(tournament: ExportTournament, disciplineSlug?: string) {
   const lines: string[] = [];
   lines.push(`# ${tournament.name}`);
   lines.push("");
@@ -73,7 +75,7 @@ export function tournamentToMarkdown(tournament: ExportTournament) {
     for (const match of tournament.matches) {
       const score = `${match.scoreA ?? "—"}:${match.scoreB ?? "—"}`;
       const id = match.matchId ? match.matchId.slice(0, 12) : "—";
-      lines.push(`| ${escapeMarkdown(id)} | ${match.matchDateTime ?? formatDate(match.matchDate) ?? "—"} | ${escapeMarkdown(match.teamAName ?? "TBD")} | ${escapeMarkdown(match.teamBName ?? "TBD")} | ${escapeMarkdown(match.court ?? "—")} | ${escapeMarkdown(match.stage ?? match.round ?? "—")} | ${score} | ${escapeMarkdown(match.status ?? "—")} |`);
+      lines.push(`| ${escapeMarkdown(id)} | ${formatDateTime(match.matchDate, disciplineSlug) ?? match.matchDateTime ?? "—"} | ${escapeMarkdown(match.teamAName ?? "TBD")} | ${escapeMarkdown(match.teamBName ?? "TBD")} | ${escapeMarkdown(match.court ?? "—")} | ${escapeMarkdown(match.stage ?? match.round ?? "—")} | ${score} | ${escapeMarkdown(match.status ?? "—")} |`);
     }
   } else {
     lines.push("No matches extracted.");
@@ -95,13 +97,13 @@ export function participantsToCsv(tournament: ExportTournament) {
   );
 }
 
-export function matchesToCsv(tournament: ExportTournament) {
+export function matchesToCsv(tournament: ExportTournament, disciplineSlug?: string) {
   return toCsv(
     ["match_id", "match_date_time", "date", "stage", "round", "team_a_id", "team_a_name", "team_b_id", "team_b_name", "court", "score_a", "score_b", "format", "status", "source_url"],
     tournament.matches.map((match) => [
       match.matchId ?? "",
       match.matchDateTime ?? "",
-      formatDate(match.matchDate) ?? "",
+      formatDate(match.matchDate, disciplineSlug) ?? "",
       match.stage ?? "",
       match.round ?? "",
       match.teamAId ?? "",
@@ -126,11 +128,18 @@ function csvCell(value: string) {
   return `"${value.replace(/"/g, '""')}"`;
 }
 
-function formatDate(value?: Date | string | null) {
+function formatDate(value?: Date | string | null, disciplineSlug?: string) {
   if (!value) return null;
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return null;
-  return date.toISOString().slice(0, 10);
+  return applyDisciplineScheduleLead(date, disciplineSlug).toISOString().slice(0, 10);
+}
+
+function formatDateTime(value?: Date | string | null, disciplineSlug?: string) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return applyDisciplineScheduleLead(date, disciplineSlug).toISOString();
 }
 
 function escapeMarkdown(value: string) {

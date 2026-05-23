@@ -25,12 +25,19 @@ export function generateInternalTeamId(name: string): string {
 /**
  * Checks if a team name is a placeholder (seed, winner of, TBD, etc.)
  */
+export function isTbdPlaceholderTeam(name: string | null | undefined): boolean {
+  const n = String(name ?? "").trim().toLowerCase();
+  return n === "tbd" || /^tbd\d+$/.test(n);
+}
+
 export function isPlaceholderTeam(name: string | null | undefined): boolean {
   if (!name) return true;
   const n = name.trim().toLowerCase();
   
+  if (isTbdPlaceholderTeam(n)) return true;
+
   // Basic placeholders
-  if (["tbd", "tba", "slot", "seed", "qualified team", "unknown", "placeholder"].includes(n)) return true;
+  if (["tba", "slot", "seed", "qualified team", "unknown", "placeholder"].includes(n)) return true;
 
   // Real Counter-Strike org. This conflicts with Liquipedia seed labels like A1/B2/G2.
   if (n === "g2") return false;
@@ -38,9 +45,6 @@ export function isPlaceholderTeam(name: string | null | undefined): boolean {
   // Bracket seeds (A1, B2, C12, etc.) - expanded range
   if (/^[a-h][1-9][0-9]?$/i.test(n)) return true;
 
-  // Numbered TBDs (TBD1, TBD2, etc.)
-  if (/^tbd\d+$/i.test(n)) return true;
-  
   // Dynamic placeholders
   if (n.startsWith("winner of")) return true;
   if (n.startsWith("loser of")) return true;

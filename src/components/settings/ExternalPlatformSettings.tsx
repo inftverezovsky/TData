@@ -64,7 +64,7 @@ export function ExternalPlatformSettings() {
 
           <div>
             <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">
-              Global Platform ID (Fallback)
+              Глобальный ID платформы (запасной)
             </label>
             <input
               type="text"

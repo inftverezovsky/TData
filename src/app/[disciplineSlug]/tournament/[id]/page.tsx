@@ -8,7 +8,10 @@ import { prisma } from "@/lib/db/db";
 
 import { formatDateTime } from "@/lib/utils/format";
 import { dedupeTournamentMatches } from "@/lib/matches/dedupe";
-import { getTeamMappingLookupKeys } from "@/lib/teams/canonicalize";
+import { getTeamAliasKey, getTeamMappingLookupKeys } from "@/lib/teams/canonicalize";
+import { buildTeamMappingLookup, findTeamMapping } from "@/lib/teams/mappingLookup";
+import { buildAdminTeamDisplayLookup, resolveTeamMappingDisplay } from "@/lib/teams/mappingDisplay";
+import { normalizeTeamName } from "@/lib/teams/teams";
 import { collectTournamentTeamNames } from "@/lib/teams/tournamentTeamNames";
 import { detectTournamentSource, getTournamentSourceLabel } from "@/lib/utils/tournamentSource";
 
@@ -52,19 +55,57 @@ export default async function TournamentPage({
   const mappings = await prisma.teamMapping.findMany({
     where: {
       disciplineSlug: slug,
-      liquipediaName: { in: teamNames }
+      OR: [
+        { liquipediaName: { in: teamNames } },
+        { platformId: { not: null } },
+      ],
     }
   });
+  const mappedPlatformIds = Array.from(new Set(mappings.map((mapping) => mapping.platformId).filter(Boolean) as string[]));
+  const adminTeams = mappedPlatformIds.length > 0
+    ? await prisma.adminTeam.findMany({
+        where: {
+          disciplineSlug: slug,
+          platformId: { in: mappedPlatformIds },
+        },
+        select: { platformId: true, platformName: true },
+      })
+    : [];
+  const adminTeamLookup = buildAdminTeamDisplayLookup(adminTeams);
+  const displayMappings = mappings.map((mapping) => ({
+    ...mapping,
+    ...resolveTeamMappingDisplay(
+      {
+        liquipediaName: mapping.liquipediaName,
+        canonicalName: mapping.canonicalName,
+        platformId: mapping.platformId,
+        status: mapping.status,
+      },
+      adminTeamLookup
+    ),
+    status: mapping.status,
+  }));
 
   const mappingMap: Record<string, { alias: string | null; platformId: string | null; logoUrl: string | null }> = {};
-  for (const m of mappings) {
+  const mappingLookup = buildTeamMappingLookup(displayMappings);
+  for (const teamName of teamNames) {
+    const m = findTeamMapping(mappingLookup, teamName);
+    if (!m) continue;
+
     const mapping = { 
       alias: m.alias, 
       platformId: m.platformId,
       logoUrl: m.logoUrl 
     };
-    for (const key of getTeamMappingLookupKeys(m)) {
-      mappingMap[key] = mapping;
+    const keys = new Set([
+      teamName,
+      teamName.toLowerCase(),
+      normalizeTeamName(teamName),
+      getTeamAliasKey(teamName),
+      ...getTeamMappingLookupKeys(m),
+    ]);
+    for (const key of keys) {
+      if (key && !mappingMap[key]) mappingMap[key] = mapping;
     }
   }
 
@@ -127,7 +168,7 @@ export default async function TournamentPage({
           </summary>
           <div className="mt-8 border-t border-slate-100 pt-8">
             <ClientErrorBoundary title="Маппинг команд временно недоступен">
-              <TeamMappingPanel teamNames={teamNames} initialMappings={mappings} disciplineSlug={slug} />
+              <TeamMappingPanel teamNames={teamNames} initialMappings={displayMappings} disciplineSlug={slug} />
             </ClientErrorBoundary>
           </div>
         </details>

@@ -1,7 +1,8 @@
 import { DateTime } from 'luxon';
 import { prisma } from '@/lib/db/db';
 import { dedupeTournamentMatches } from '@/lib/matches/dedupe';
-import { isPlaceholderTeam } from '@/lib/teams/teams';
+import { applyDisciplineScheduleLead } from '@/lib/matches/scheduleOffset';
+import { isPlaceholderTeam, isTbdPlaceholderTeam } from '@/lib/teams/teams';
 import { buildTeamMappingLookup, findTeamMapping } from '@/lib/teams/mappingLookup';
 import { resolveAdminSettings } from './resolveAdminSettings';
 
@@ -94,7 +95,21 @@ export async function buildFixtPayload(
       continue;
     }
 
-    if (match.hasPlaceholderTeams || isPlaceholderTeam(teamAName) || isPlaceholderTeam(teamBName)) {
+    const mappingA = findTeamMapping(mappingMap, teamAName);
+    const mappingB = findTeamMapping(mappingMap, teamBName);
+
+    let platformIdA = mappingA?.platformId || null;
+    let platformIdB = mappingB?.platformId || null;
+
+    const teamAIsPlaceholder = isPlaceholderTeam(teamAName);
+    const teamBIsPlaceholder = isPlaceholderTeam(teamBName);
+    const teamAIsUploadableTbd = isTbdPlaceholderTeam(teamAName);
+    const teamBIsUploadableTbd = isTbdPlaceholderTeam(teamBName);
+    const hasUnsupportedPlaceholder =
+      (teamAIsPlaceholder && !teamAIsUploadableTbd) ||
+      (teamBIsPlaceholder && !teamBIsUploadableTbd);
+
+    if (hasUnsupportedPlaceholder) {
       skippedMatches.push({
         matchId: match.matchId,
         reason: 'Placeholder/TBD teams are not upload-ready',
@@ -102,12 +117,6 @@ export async function buildFixtPayload(
       });
       continue;
     }
-
-    const mappingA = findTeamMapping(mappingMap, teamAName);
-    const mappingB = findTeamMapping(mappingMap, teamBName);
-
-    let platformIdA = mappingA?.platformId || null;
-    let platformIdB = mappingB?.platformId || null;
 
     const isMappedA = !!platformIdA;
     const isMappedB = !!platformIdB;
@@ -131,7 +140,7 @@ export async function buildFixtPayload(
       warnings.push(`Для матча ${teamAName} vs ${teamBName} отсутствует дата, использована дата начала турнира.`);
     }
 
-    const matchDate = match.matchDate || tournament?.startDate || new Date();
+    const matchDate = applyDisciplineScheduleLead(match.matchDate || tournament?.startDate || new Date(), disciplineSlug);
 
     // 2.3 Skip finished matches (with result)
     const hasScores = match.scoreA !== null || match.scoreB !== null;

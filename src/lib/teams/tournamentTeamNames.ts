@@ -1,4 +1,4 @@
-import { isPlaceholderTeam, normalizeTeamName } from "@/lib/teams/teams";
+import { isPlaceholderTeam, isTbdPlaceholderTeam, normalizeTeamName } from "@/lib/teams/teams";
 import {
   buildTeamNameCanonicalizer,
   type TeamNameSource,
@@ -62,7 +62,7 @@ function addTeamName(names: Set<string>, name: string | null | undefined) {
 function shouldExposeTeamName(name: string | null | undefined) {
   const value = String(name ?? "").trim();
   if (!value) return false;
-  return !isPlaceholderTeam(value) || /^TBD\d+$/i.test(value);
+  return !isPlaceholderTeam(value) || isTbdPlaceholderTeam(value);
 }
 
 function collapseObviousShortAliases(names: string[]) {

@@ -134,6 +134,19 @@ test("collectTournamentTeamNames hides stale one-letter aliases when full names 
   assert.deepEqual(names, ["G2", "K27", "magic", "The MongolZ"]);
 });
 
+test("collectTournamentTeamNames exposes mappable TBD names but hides bracket placeholders", () => {
+  const names = collectTournamentTeamNames({
+    matches: [
+      { teamAName: "Vitality", teamBName: "TBD" },
+      { teamAName: "TBD1", teamBName: "TBD2" },
+      { teamAName: "Winner of Match 1", teamBName: "A1" },
+    ],
+    participants: [],
+  });
+
+  assert.deepEqual(names, ["TBD", "TBD1", "TBD2", "Vitality"]);
+});
+
 test("team mapping lookup prefers saved platform IDs over stale unmapped duplicates", () => {
   const lookup = buildTeamMappingLookup([
     {
@@ -175,4 +188,39 @@ test("fuzzy platform matching accepts swapped Russian first and last names", () 
   );
 
   assert.equal(match?.platformId, "1001");
+});
+
+test("fuzzy platform matching accepts safe esports generic prefixes and suffixes", () => {
+  const candidates = [
+    { platformId: "1", platformName: "Team Liquid", normalizedName: "team liquid" },
+    { platformId: "2", platformName: "Sharks Esports", normalizedName: "sharks esports" },
+    { platformId: "3", platformName: "SINNERS Esports", normalizedName: "sinners esports" },
+    { platformId: "4", platformName: "Lynn Vision", normalizedName: "lynn vision" },
+    { platformId: "5", platformName: "G2 Esports", normalizedName: "g2 esports" },
+  ];
+
+  assert.equal(findClosestPlatformTeamFromCandidates(candidates, "Liquid", 0.9)?.platformId, "1");
+  assert.equal(findClosestPlatformTeamFromCandidates(candidates, "Sharks", 0.9)?.platformId, "2");
+  assert.equal(findClosestPlatformTeamFromCandidates(candidates, "SINNERS", 0.9)?.platformId, "3");
+  assert.equal(findClosestPlatformTeamFromCandidates(candidates, "Lynn Vision Gaming", 0.9)?.platformId, "4");
+  assert.equal(findClosestPlatformTeamFromCandidates(candidates, "G2", 0.9)?.platformId, "5");
+});
+
+test("fuzzy platform matching does not collapse qualifier rosters into main teams", () => {
+  assert.equal(
+    findClosestPlatformTeamFromCandidates(
+      [{ platformId: "1", platformName: "MIBR Academy", normalizedName: "mibr academy" }],
+      "MIBR",
+      0.9
+    ),
+    null
+  );
+  assert.equal(
+    findClosestPlatformTeamFromCandidates(
+      [{ platformId: "2", platformName: "Team One", normalizedName: "team one" }],
+      "One",
+      0.9
+    ),
+    null
+  );
 });

@@ -9,6 +9,9 @@ import {
   FileUp,
   ImageUp,
   Loader2,
+  RefreshCw,
+  Save,
+  ScanText,
   Send,
   Sparkles,
   Table2,
@@ -58,6 +61,8 @@ type ResultMessage = {
   raw?: string;
 };
 
+type ParseSource = "local-text" | "local-ocr" | "ai" | "fallback" | "";
+
 type TeamImportResult = {
   success: boolean;
   importedCount: number;
@@ -79,13 +84,32 @@ type TeamImportResult = {
   };
 };
 
+type ManualMappingConflict = {
+  teamName: string;
+  normalizedTeamName: string;
+  existingPlatformId: string;
+  incomingPlatformId: string;
+};
+
+type ManualMappingSaveSummary = {
+  savedCount: number;
+  skippedCount: number;
+  conflictCount: number;
+  overwrittenCount: number;
+};
+
 export default function ManualImportWorkbench() {
   const [disciplineSlug, setDisciplineSlug] = useState("counterstrike");
   const [disciplineId, setDisciplineId] = useState("73");
   const [shapkaId, setShapkaId] = useState("");
   const [rawText, setRawText] = useState("");
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [imageDataUrl, setImageDataUrl] = useState("");
   const [imageName, setImageName] = useState("");
+  const [ocrText, setOcrText] = useState("");
+  const [ocrConfidence, setOcrConfidence] = useState<number | null>(null);
+  const [parseSource, setParseSource] = useState<ParseSource>("");
+  const [parseWarnings, setParseWarnings] = useState<string[]>([]);
   const [matches, setMatches] = useState<ManualMatch[]>([]);
   const [mappedMatches, setMappedMatches] = useState<MappedMatch[]>([]);
   const [preview, setPreview] = useState<PreviewData | null>(null);
@@ -94,6 +118,9 @@ export default function ManualImportWorkbench() {
   const [previewing, setPreviewing] = useState(false);
   const [sending, setSending] = useState(false);
   const [autoMapping, setAutoMapping] = useState(false);
+  const [mappingSaving, setMappingSaving] = useState(false);
+  const [mappingConflicts, setMappingConflicts] = useState<ManualMappingConflict[]>([]);
+  const [mappingSaveSummary, setMappingSaveSummary] = useState<ManualMappingSaveSummary | null>(null);
 
   const [teamImportMode, setTeamImportMode] = useState<"file" | "url">("file");
   const [teamFile, setTeamFile] = useState<File | null>(null);
@@ -121,8 +148,15 @@ export default function ManualImportWorkbench() {
     if (!file) return;
 
     setImageName(file.name);
-    setImageDataUrl(await fileToDataUrl(file));
+    setImageFile(file);
+    setImageDataUrl("");
+    setOcrText("");
+    setOcrConfidence(null);
+    setParseSource("");
+    setParseWarnings([]);
     setPreview(null);
+    setMappingConflicts([]);
+    setMappingSaveSummary(null);
     setMessage(null);
   }
 
@@ -162,8 +196,11 @@ export default function ManualImportWorkbench() {
     }
   }
 
-  async function parseMatches() {
-    if (!rawText.trim() && !imageDataUrl) {
+  async function parseMatches(options: { useOcrText?: boolean } = {}) {
+    const textForParse = options.useOcrText ? ocrText : rawText;
+    const shouldUploadImage = !options.useOcrText && Boolean(imageFile || imageDataUrl);
+
+    if (!textForParse.trim() && !shouldUploadImage) {
       setMessage({ type: "error", text: "Добавьте текст или фото для распознавания." });
       return;
     }
@@ -171,12 +208,22 @@ export default function ManualImportWorkbench() {
     setParsing(true);
     setMessage(null);
     setPreview(null);
+    setParseWarnings([]);
 
     try {
+      const formData = new FormData();
+      formData.append("disciplineSlug", disciplineSlug);
+      formData.append("disciplineId", disciplineId);
+      formData.append("text", textForParse);
+      if (shouldUploadImage && imageFile) {
+        formData.append("image", imageFile);
+      } else if (shouldUploadImage && imageDataUrl) {
+        formData.append("imageDataUrl", imageDataUrl);
+      }
+
       const response = await fetch("/api/manual-import/parse", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ disciplineSlug, text: rawText, imageDataUrl }),
+        body: formData,
       });
       const data = await response.json();
       if (!response.ok || !data.ok) {
@@ -185,12 +232,22 @@ export default function ManualImportWorkbench() {
 
       setMatches(mergeMatchesWithMappedIds(data.rawMatches || [], data.mappedMatches || []));
       setMappedMatches(data.mappedMatches || []);
-      if (data.normalizedText && !rawText.trim()) setRawText(data.normalizedText);
+      setMappingConflicts([]);
+      setMappingSaveSummary(null);
+      setParseSource(data.parseSource || "");
+      setParseWarnings(Array.isArray(data.warnings) ? data.warnings : []);
+      setOcrConfidence(typeof data.ocrConfidence === "number" ? data.ocrConfidence : null);
+      if (typeof data.ocrText === "string" && data.ocrText.trim()) {
+        setOcrText(data.ocrText);
+      } else if (data.parseSource === "local-ocr" && typeof data.normalizedText === "string") {
+        setOcrText(data.normalizedText);
+      }
+      if (data.normalizedText && !rawText.trim() && !data.ocrText && data.parseSource !== "local-ocr") {
+        setRawText(data.normalizedText);
+      }
       setMessage({
         type: data.fallback ? "info" : "success",
-        text: data.fallback
-          ? `AI недоступен, использован локальный парсер. Найдено матчей: ${(data.rawMatches || []).length}.`
-          : `AI распознал матчей: ${(data.rawMatches || []).length}.`,
+        text: `${getParseSourceLabel(data.parseSource)}. Найдено матчей: ${(data.rawMatches || []).length}.`,
       });
     } catch (error) {
       setMessage({ type: "error", text: error instanceof Error ? error.message : "Ошибка распознавания" });
@@ -271,13 +328,15 @@ export default function ManualImportWorkbench() {
       const response = await fetch("/api/manual-import/automap", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ disciplineSlug, matches }),
+        body: JSON.stringify({ disciplineSlug, disciplineId, matches }),
       });
       const data = await response.json();
       if (!response.ok || !data.ok) throw new Error(data.error || "Автомапинг не выполнен");
 
       setMappedMatches(data.mappedMatches || []);
       setMatches((current) => mergeMatchesWithMappedIds(current, data.mappedMatches || []));
+      setMappingConflicts([]);
+      setMappingSaveSummary(null);
       setMessage({
         type: "success",
         text: `Автомапинг готов: ${data.readyMatchesCount || 0} строк с ID.`,
@@ -286,6 +345,55 @@ export default function ManualImportWorkbench() {
       setMessage({ type: "error", text: error instanceof Error ? error.message : "Ошибка автомапинга" });
     } finally {
       setAutoMapping(false);
+    }
+  }
+
+  async function saveManualTeamMappings(overwriteConflicts = false) {
+    if (matches.length === 0) {
+      setMessage({ type: "error", text: "Сначала добавьте или распознайте матчи." });
+      return;
+    }
+    if (!disciplineId.trim()) {
+      setMessage({ type: "error", text: "Укажите ID дисциплины перед сохранением ID команд." });
+      return;
+    }
+
+    setMappingSaving(true);
+    setMessage(null);
+
+    try {
+      const response = await fetch("/api/manual-import/team-mappings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ disciplineSlug, disciplineId, matches, overwriteConflicts }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.error || "Не удалось сохранить ID команд");
+
+      const conflicts = Array.isArray(data.conflicts) ? data.conflicts : [];
+      setMappingConflicts(conflicts);
+      setMappingSaveSummary({
+        savedCount: data.savedCount || 0,
+        skippedCount: data.skippedCount || 0,
+        conflictCount: data.conflictCount || conflicts.length,
+        overwrittenCount: data.overwrittenCount || 0,
+      });
+
+      if (conflicts.length > 0) {
+        setMessage({
+          type: "info",
+          text: `Есть конфликты ID: ${conflicts.length}. Без отдельного подтверждения они не перезаписаны.`,
+        });
+      } else {
+        setMessage({
+          type: "success",
+          text: `ID сохранены: ${data.savedCount || 0}. Пропущено: ${data.skippedCount || 0}.`,
+        });
+      }
+    } catch (error) {
+      setMessage({ type: "error", text: error instanceof Error ? error.message : "Ошибка сохранения ID команд" });
+    } finally {
+      setMappingSaving(false);
     }
   }
 
@@ -327,16 +435,22 @@ export default function ManualImportWorkbench() {
       },
     ]);
     setPreview(null);
+    setMappingConflicts([]);
+    setMappingSaveSummary(null);
   }
 
   function updateMatch(index: number, field: keyof ManualMatch, value: string) {
     setMatches((current) => current.map((match, i) => (i === index ? { ...match, [field]: value } : match)));
     setPreview(null);
+    setMappingConflicts([]);
+    setMappingSaveSummary(null);
   }
 
   function removeMatch(index: number) {
     setMatches((current) => current.filter((_, i) => i !== index));
     setPreview(null);
+    setMappingConflicts([]);
+    setMappingSaveSummary(null);
   }
 
   return (
@@ -360,14 +474,21 @@ export default function ManualImportWorkbench() {
                 setDisciplineId("");
                 setShapkaId("");
                 setRawText("");
+                setImageFile(null);
                 setImageDataUrl("");
                 setImageName("");
+                setOcrText("");
+                setOcrConfidence(null);
+                setParseSource("");
+                setParseWarnings([]);
                 setPreview(null);
                 setMatches([]);
                 setMappedMatches([]);
                 setTeamImportResult(null);
                 setTeamFile(null);
                 setTeamUrl("");
+                setMappingConflicts([]);
+                setMappingSaveSummary(null);
                 setMessage(null);
               }}
               className="h-12 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm font-black text-slate-900 outline-none transition focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10"
@@ -386,6 +507,8 @@ export default function ManualImportWorkbench() {
               onChange={(event) => {
                 setDisciplineId(event.target.value.replace(/[^\d]/g, ""));
                 setPreview(null);
+                setMappingConflicts([]);
+                setMappingSaveSummary(null);
               }}
               inputMode="numeric"
               placeholder="73"
@@ -482,10 +605,10 @@ export default function ManualImportWorkbench() {
                 Автомапинг: <span className="text-slate-950">{teamImportResult.mappingResult?.autoMappedCount || 0}</span>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500">
-                Ambiguous: <span className="text-slate-950">{teamImportResult.mappingResult?.ambiguousCount || 0}</span>
+                Спорные: <span className="text-slate-950">{teamImportResult.mappingResult?.ambiguousCount || 0}</span>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500">
-                Unmapped: <span className="text-slate-950">{teamImportResult.mappingResult?.unmappedCount || 0}</span>
+                Без ID: <span className="text-slate-950">{teamImportResult.mappingResult?.unmappedCount || 0}</span>
               </div>
             </div>
             {teamImportResult.mappingResult?.newlyMappedNames?.length ? (
@@ -496,7 +619,7 @@ export default function ManualImportWorkbench() {
             ) : null}
             {teamImportResult.detectedLayout ? (
               <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                Колонки: ID {teamImportResult.detectedLayout.idCol + 1}, Name {teamImportResult.detectedLayout.nameCol + 1}
+                Колонки: ID {teamImportResult.detectedLayout.idCol + 1}, название {teamImportResult.detectedLayout.nameCol + 1}
                 {teamImportResult.detectedLayout.source === "data" ? " (без шапки)" : ""}
               </p>
             ) : null}
@@ -536,9 +659,57 @@ export default function ManualImportWorkbench() {
             </div>
           </div>
 
+          {(ocrText || parseSource || parseWarnings.length > 0) && (
+            <div className="mt-5 rounded-2xl border border-sky-100 bg-sky-50/70 p-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-sky-600 shadow-sm">
+                    <ScanText className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-slate-950">Диагностика распознавания</h3>
+                    <p className="mt-1 text-[10px] font-black uppercase tracking-widest text-sky-700">
+                      {getParseSourceLabel(parseSource)}
+                      {ocrConfidence !== null ? ` • confidence ${Math.round(ocrConfidence)}%` : ""}
+                    </p>
+                  </div>
+                </div>
+                {ocrText && (
+                  <button
+                    onClick={() => parseMatches({ useOcrText: true })}
+                    disabled={parsing || !ocrText.trim()}
+                    className="flex h-10 items-center justify-center gap-2 rounded-xl border border-sky-200 bg-white px-4 text-[10px] font-black uppercase tracking-widest text-sky-700 transition hover:bg-sky-100 disabled:border-slate-100 disabled:bg-slate-50 disabled:text-slate-300"
+                  >
+                    {parsing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                    Повторить по OCR
+                  </button>
+                )}
+              </div>
+
+              {ocrText && (
+                <textarea
+                  value={ocrText}
+                  onChange={(event) => {
+                    setOcrText(event.target.value);
+                    setPreview(null);
+                  }}
+                  className="mt-4 h-36 w-full resize-none rounded-xl border border-sky-100 bg-white p-3 text-xs font-semibold leading-relaxed text-slate-800 outline-none transition focus:border-sky-300 focus:ring-4 focus:ring-sky-300/20"
+                />
+              )}
+
+              {parseWarnings.length > 0 && (
+                <div className="mt-3 space-y-1 rounded-xl border border-amber-100 bg-white/70 p-3 text-[11px] font-bold text-amber-800">
+                  {parseWarnings.map((warning, index) => (
+                    <div key={`parse-warning-${index}`}>{warning}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="mt-5 flex flex-wrap gap-3">
             <button
-              onClick={parseMatches}
+              onClick={() => parseMatches()}
               disabled={parsing}
               className="flex h-12 items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 text-xs font-black uppercase tracking-widest text-white transition hover:bg-indigo-700 disabled:opacity-50"
             >
@@ -558,7 +729,7 @@ export default function ManualImportWorkbench() {
         <section className="rounded-3xl border border-slate-200 bg-slate-950 p-6 text-white shadow-soft">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-xl font-black">Payload</h2>
+              <h2 className="text-xl font-black">Данные для заливки</h2>
               <p className="mt-1 text-xs font-bold text-slate-400">JSON / PHP / сервис</p>
             </div>
             <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-right">
@@ -602,14 +773,14 @@ export default function ManualImportWorkbench() {
                   className="flex h-9 flex-1 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 text-[10px] font-black uppercase tracking-widest text-slate-300"
                 >
                   <Clipboard className="h-3 w-3" />
-                  Copy JSON
+                  Копировать JSON
                 </button>
                 <button
                   onClick={() => copyToClipboard(preview.phpArrayText)}
                   className="flex h-9 flex-1 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 text-[10px] font-black uppercase tracking-widest text-slate-300"
                 >
                   <Clipboard className="h-3 w-3" />
-                  Copy PHP
+                  Копировать PHP
                 </button>
               </div>
               <pre className="max-h-72 overflow-auto rounded-xl border border-white/10 bg-black/20 p-4 text-[10px] leading-relaxed text-slate-300">
@@ -635,12 +806,53 @@ export default function ManualImportWorkbench() {
               {autoMapping ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
               Авто-мапинг
             </button>
+            <button
+              onClick={() => saveManualTeamMappings(false)}
+              disabled={mappingSaving || matches.length === 0}
+              className="flex h-10 items-center justify-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50 px-4 text-[10px] font-black uppercase tracking-widest text-emerald-700 transition hover:bg-emerald-100 disabled:border-slate-100 disabled:bg-slate-50 disabled:text-slate-300"
+            >
+              {mappingSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Запомнить ID
+            </button>
             <div className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500">
               <Bot className="h-4 w-4 text-indigo-500" />
               {mappedMatches.length || matches.length} строк
             </div>
           </div>
         </div>
+
+        {(mappingSaveSummary || mappingConflicts.length > 0) && (
+          <div className="mb-5 rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4">
+            {mappingSaveSummary && (
+              <div className="grid gap-2 text-[10px] font-black uppercase tracking-widest text-emerald-800 sm:grid-cols-4">
+                <div>Сохранено: {mappingSaveSummary.savedCount}</div>
+                <div>Пропущено: {mappingSaveSummary.skippedCount}</div>
+                <div>Конфликты: {mappingSaveSummary.conflictCount}</div>
+                <div>Заменено: {mappingSaveSummary.overwrittenCount}</div>
+              </div>
+            )}
+            {mappingConflicts.length > 0 && (
+              <div className="mt-3 space-y-3">
+                <div className="space-y-1 text-xs font-bold text-amber-800">
+                  {mappingConflicts.slice(0, 8).map((conflict) => (
+                    <div key={`${conflict.normalizedTeamName}-${conflict.incomingPlatformId}`}>
+                      {conflict.teamName}: сохранён {conflict.existingPlatformId}, введён {conflict.incomingPlatformId}
+                    </div>
+                  ))}
+                  {mappingConflicts.length > 8 && <div>И ещё конфликтов: {mappingConflicts.length - 8}</div>}
+                </div>
+                <button
+                  onClick={() => saveManualTeamMappings(true)}
+                  disabled={mappingSaving}
+                  className="flex h-10 items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 text-[10px] font-black uppercase tracking-widest text-white transition hover:bg-amber-600 disabled:bg-slate-100 disabled:text-slate-400"
+                >
+                  {mappingSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  Заменить конфликтующие
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {matches.length === 0 ? (
           <div className="rounded-2xl border-2 border-dashed border-slate-200 p-10 text-center text-sm font-bold text-slate-400">
@@ -688,7 +900,7 @@ export default function ManualImportWorkbench() {
                           value={team1PlatformId}
                           onChange={(event) => updateMatch(index, "team1PlatformId", event.target.value.replace(/[^\d]/g, ""))}
                           inputMode="numeric"
-                          placeholder="NO ID"
+                          placeholder="НЕТ ID"
                           className="h-9 w-28 rounded-lg border border-slate-200 px-3 text-xs font-black text-slate-900 outline-none focus:border-indigo-400"
                         />
                       </td>
@@ -704,7 +916,7 @@ export default function ManualImportWorkbench() {
                           value={team2PlatformId}
                           onChange={(event) => updateMatch(index, "team2PlatformId", event.target.value.replace(/[^\d]/g, ""))}
                           inputMode="numeric"
-                          placeholder="NO ID"
+                          placeholder="НЕТ ID"
                           className="h-9 w-28 rounded-lg border border-slate-200 px-3 text-xs font-black text-slate-900 outline-none focus:border-indigo-400"
                         />
                       </td>
@@ -712,11 +924,11 @@ export default function ManualImportWorkbench() {
                         {isReady ? (
                           <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-emerald-700">
                             <CheckCircle2 className="h-3 w-3" />
-                            Ready
+                            Готово
                           </span>
                         ) : (
                           <span className="rounded-full bg-rose-50 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-rose-600">
-                            Needs ID
+                            Нужен ID
                           </span>
                         )}
                       </td>
@@ -771,13 +983,19 @@ export default function ManualImportWorkbench() {
   );
 }
 
-function fileToDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(new Error("Не удалось прочитать файл"));
-    reader.readAsDataURL(file);
-  });
+function getParseSourceLabel(source?: string) {
+  switch (source) {
+    case "local-text":
+      return "Локальный парсер текста";
+    case "local-ocr":
+      return "Локальный OCR";
+    case "ai":
+      return "AI fallback";
+    case "fallback":
+      return "Fallback parser";
+    default:
+      return "Распознавание";
+  }
 }
 
 async function copyToClipboard(value: string) {

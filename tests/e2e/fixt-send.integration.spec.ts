@@ -38,10 +38,43 @@ test.describe("FIxt upload integration", () => {
         expect.arrayContaining([
           expect.objectContaining({
             matchId: placeholderMatchId,
-            reason: "Placeholder/TBD teams are not upload-ready",
+            reason: "Missing or unmapped team platform IDs",
           }),
         ])
       );
+
+      await prisma.teamMapping.createMany({
+        data: [
+          {
+            disciplineSlug,
+            liquipediaName: "TBD1",
+            platformId: "333",
+            status: "manual_mapped",
+            isManual: true,
+          },
+          {
+            disciplineSlug,
+            liquipediaName: "TBD2",
+            platformId: "444",
+            status: "manual_mapped",
+            isManual: true,
+          },
+        ],
+      });
+
+      const previewTbd = await request.post(`/api/${disciplineSlug}/tournament/${tournamentId}/admin-fixt-preview`, {
+        headers: { cookie },
+        data: { selectedMatchIds: [placeholderMatchId] },
+      });
+      await expect(previewTbd).toBeOK();
+
+      await expect(await previewTbd.json()).toMatchObject({
+        ok: true,
+        readyMatchesCount: 1,
+        phpArray: {
+          match: [{ team1: 333, team2: 444 }],
+        },
+      });
 
       const preview = await request.post(`/api/${disciplineSlug}/tournament/${tournamentId}/admin-fixt-preview`, {
         headers: { cookie },

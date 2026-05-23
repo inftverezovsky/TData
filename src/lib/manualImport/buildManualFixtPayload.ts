@@ -2,6 +2,8 @@ import { buildTeamMappingLookup, findTeamMapping } from "@/lib/teams/mappingLook
 import { prisma } from "@/lib/db/db";
 import { MANUAL_IMPORT_DISCIPLINES } from "./config";
 import { findClosestPlatformTeamFromCandidates } from "@/lib/teams/fuzzyMatch";
+import { normalizeTeamName } from "@/lib/teams/teams";
+import { loadManualImportTeamMappingLookup } from "./teamMappings";
 
 export type ManualImportRawMatch = {
   id?: unknown;
@@ -50,13 +52,42 @@ export type ManualFixtBuildResult = {
   mappedMatches: ManualImportMappedMatch[];
 };
 
-export async function mapManualMatches(rawMatches: ManualImportRawMatch[], disciplineSlug: string) {
+export function resolveManualTeamPlatformId({
+  explicitPlatformId,
+  embeddedPlatformId,
+  manualMappingPlatformId,
+  teamMappingPlatformId,
+  adminTeamPlatformId,
+}: {
+  explicitPlatformId?: string | null;
+  embeddedPlatformId?: string | null;
+  manualMappingPlatformId?: string | null;
+  teamMappingPlatformId?: string | null;
+  adminTeamPlatformId?: string | null;
+}) {
+  return (
+    explicitPlatformId ||
+    manualMappingPlatformId ||
+    teamMappingPlatformId ||
+    adminTeamPlatformId ||
+    embeddedPlatformId ||
+    null
+  );
+}
+
+export async function mapManualMatches(
+  rawMatches: ManualImportRawMatch[],
+  disciplineSlug: string,
+  adminSportId = ""
+) {
+  const normalizedDisciplineSlug = disciplineSlug.trim().toLowerCase();
   const mappings = await prisma.teamMapping.findMany({
-    where: { disciplineSlug },
+    where: { disciplineSlug: normalizedDisciplineSlug },
   });
   const mappingMap = buildTeamMappingLookup(mappings);
+  const manualMappingMap = await loadManualImportTeamMappingLookup(normalizedDisciplineSlug, adminSportId);
   const adminTeams = await prisma.adminTeam.findMany({
-    where: { disciplineSlug: disciplineSlug.trim().toLowerCase() },
+    where: { disciplineSlug: normalizedDisciplineSlug },
     select: { platformId: true, platformName: true, normalizedName: true },
   });
 
@@ -65,10 +96,26 @@ export async function mapManualMatches(rawMatches: ManualImportRawMatch[], disci
     const team2Name = readTeamName(match.team2) || "TBD";
     const mappingA = findTeamMapping(mappingMap, team1Name);
     const mappingB = findTeamMapping(mappingMap, team2Name);
-    const adminTeamA = mappingA?.platformId ? null : findClosestPlatformTeamFromCandidates(adminTeams, team1Name, 0.62);
-    const adminTeamB = mappingB?.platformId ? null : findClosestPlatformTeamFromCandidates(adminTeams, team2Name, 0.62);
-    const platformIdA = readString(match.team1PlatformId) || mappingA?.platformId || adminTeamA?.platformId || readTeamPlatformId(match.team1);
-    const platformIdB = readString(match.team2PlatformId) || mappingB?.platformId || adminTeamB?.platformId || readTeamPlatformId(match.team2);
+    const manualMappingA = manualMappingMap.get(normalizeTeamName(team1Name));
+    const manualMappingB = manualMappingMap.get(normalizeTeamName(team2Name));
+    const adminTeamA =
+      manualMappingA?.platformId || mappingA?.platformId ? null : findClosestPlatformTeamFromCandidates(adminTeams, team1Name, 0.62);
+    const adminTeamB =
+      manualMappingB?.platformId || mappingB?.platformId ? null : findClosestPlatformTeamFromCandidates(adminTeams, team2Name, 0.62);
+    const platformIdA = resolveManualTeamPlatformId({
+      explicitPlatformId: readString(match.team1PlatformId),
+      embeddedPlatformId: readTeamPlatformId(match.team1),
+      manualMappingPlatformId: manualMappingA?.platformId,
+      teamMappingPlatformId: mappingA?.platformId,
+      adminTeamPlatformId: adminTeamA?.platformId,
+    });
+    const platformIdB = resolveManualTeamPlatformId({
+      explicitPlatformId: readString(match.team2PlatformId),
+      embeddedPlatformId: readTeamPlatformId(match.team2),
+      manualMappingPlatformId: manualMappingB?.platformId,
+      teamMappingPlatformId: mappingB?.platformId,
+      adminTeamPlatformId: adminTeamB?.platformId,
+    });
     const fallbackId = `manual-${stableMatchKey(team1Name, team2Name, readString(match.date) || String(index)).slice(0, 10)}`;
 
     return {
@@ -102,7 +149,7 @@ export async function buildManualFixtPayload({
   const warnings: string[] = [];
   const skippedMatches: ManualFixtBuildResult["skippedMatches"] = [];
   const discipline = MANUAL_IMPORT_DISCIPLINES[disciplineSlug as keyof typeof MANUAL_IMPORT_DISCIPLINES];
-  const mappedMatches = await mapManualMatches(matches, disciplineSlug);
+  const mappedMatches = await mapManualMatches(matches, disciplineSlug, disciplineId);
   const readyMatches: ManualFixtMatch[] = [];
 
   if (!discipline) warnings.push("Дисциплина для ручного импорта не поддерживается.");

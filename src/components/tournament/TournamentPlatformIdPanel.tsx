@@ -97,7 +97,7 @@ export default function TournamentPlatformIdPanel({
             disabled={saving}
             className="rounded-xl bg-slate-100 px-4 py-2.5 text-[10px] font-black uppercase tracking-widest text-slate-900 transition-all hover:bg-slate-200 disabled:opacity-50"
           >
-            {saving ? "..." : saved ? "Готово ✓" : "Save ID"}
+            {saving ? "..." : saved ? "Готово ✓" : "Сохранить ID"}
           </button>
           
           <button

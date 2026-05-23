@@ -60,7 +60,7 @@ export async function GET(
   if (format === "csv") {
     const csv = type === "participants"
       ? participantsToCsv(dedupedTournament as any)
-      : matchesToCsv(dedupedTournament as any);
+      : matchesToCsv(dedupedTournament as any, disciplineSlug);
 
     return new Response(csv, {
       headers: {
@@ -71,7 +71,7 @@ export async function GET(
   }
 
   if (format === "markdown" || format === "md") {
-    const markdown = tournamentToMarkdown(dedupedTournament as any);
+    const markdown = tournamentToMarkdown(dedupedTournament as any, disciplineSlug);
     return new Response(markdown, {
       headers: {
         "Content-Type": "text/markdown; charset=utf-8",

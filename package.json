@@ -43,6 +43,7 @@
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "read-excel-file": "^9.0.9",
+    "sharp": "^0.34.5",
     "socks-proxy-agent": "^10.0.0",
     "swr": "^2.4.1",
     "tailwind-merge": "^3.5.0",

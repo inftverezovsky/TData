@@ -451,6 +451,14 @@ async function scrapeHltv() {
           .trim()
           .replace(/\s+\d{1,2}$/, '')
           .trim();
+        const cleanBestOfFormat = (value) => {
+          const text = String(value || '').replace(/\u00a0/g, ' ').trim();
+          if (!text) return '';
+          const explicit = text.match(/\bbo\s*[-:]?\s*([1-9]\d?)\b/i)
+            || text.match(/\bbest\s*[-\s]?of\s*[-:]?\s*([1-9]\d?)\b/i)
+            || text.match(/\bbestof\s*([1-9]\d?)\b/i);
+          return explicit?.[1] ? `BO${Number(explicit[1])}` : '';
+        };
         const normalizeUnixTime = (value, isLive) => {
           const parsed = parseInt(value || "0", 10);
           if (!parsed) return isLive ? Math.floor(Date.now() / 1000) : 0;
@@ -459,7 +467,7 @@ async function scrapeHltv() {
         const now = Math.floor(Date.now() / 1000);
         
         els.forEach(el => {
-          let team1 = "", team2 = "", tournament = "Upcoming", unixTime = "0", id = "", isLive = false;
+          let team1 = "", team2 = "", tournament = "Upcoming", unixTime = "0", id = "", isLive = false, format = "";
 
           isLive = el.classList.contains('liveMatch') ||
             el.classList.contains('live-match') ||
@@ -485,6 +493,16 @@ async function scrapeHltv() {
           tournament = eventEl?.getAttribute('data-event-headline') ||
             eventEl?.textContent?.trim() ||
             "Upcoming";
+
+          const formatCandidates = [
+            el.querySelector('.matchMeta, .match-meta, .match-meta-type, [class*="matchMeta"], [class*="match-meta"]')?.textContent,
+            ...Array.from(el.querySelectorAll('[class*="meta"], [class*="format"], [class*="best"]')).map(node => node.textContent),
+            el.textContent
+          ];
+          for (const candidate of formatCandidates) {
+            format = cleanBestOfFormat(candidate);
+            if (format) break;
+          }
           
           const timeEl = el.querySelector('[data-unix], .matchTime, .time');
           unixTime = timeEl?.getAttribute('data-unix') || timeEl?.getAttribute('data-time') || "0";
@@ -507,6 +525,7 @@ async function scrapeHltv() {
               team1,
               team2,
               unix_time: normalizedUnixTime,
+              format,
               isLive
             });
           }

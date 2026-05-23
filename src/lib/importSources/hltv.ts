@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/db";
 import { dedupeTournamentMatches } from "@/lib/matches/dedupe";
+import { getBestOfLabel } from "@/lib/matches/format";
 import { applyTbdPairCycling } from "@/lib/matches/tbdCycling";
 import { classifyParserError } from "@/lib/proxy/parserErrors";
 import { getTeamMappingLookupKeys } from "@/lib/teams/canonicalize";
@@ -90,6 +91,7 @@ async function saveHltvTournamentMatches(params: {
     const hasPlaceholderTeams = isPlaceholderTeam(m.team1) || isPlaceholderTeam(m.team2);
     const teamAId = isPlaceholderTeam(m.team1) ? "tbd" : generateInternalTeamId(m.team1);
     const teamBId = isPlaceholderTeam(m.team2) ? "tbd" : generateInternalTeamId(m.team2);
+    const format = getBestOfLabel(m.format || m.matchFormat || m.bestOf || m.rawText);
     return {
       ...m,
       matchId: `hltv-${m.id}`,
@@ -99,8 +101,17 @@ async function saveHltvTournamentMatches(params: {
       teamBId,
       hasPlaceholderTeams,
       matchDate: m.unix_time ? new Date(m.unix_time * 1000) : null,
+      format,
     };
   }));
+
+  const knownFormats = Array.from(new Set(hltvMatches.map((m: any) => m.format).filter(Boolean)));
+  const eventWideFormat = knownFormats.length === 1 ? knownFormats[0] : null;
+  if (eventWideFormat) {
+    for (const match of hltvMatches) {
+      if (!match.format) match.format = eventWideFormat;
+    }
+  }
 
   applyTbdPairCycling(hltvMatches, params.title);
 
@@ -117,6 +128,7 @@ async function saveHltvTournamentMatches(params: {
         teamBId: m.teamBId,
         hasPlaceholderTeams: m.hasPlaceholderTeams,
         matchDate,
+        format: m.format,
         sourceUrl: `https://www.hltv.org/matches/${m.id}/match`,
         status: "upcoming",
       },
@@ -127,6 +139,7 @@ async function saveHltvTournamentMatches(params: {
         teamBId: m.teamBId,
         hasPlaceholderTeams: m.hasPlaceholderTeams,
         matchDate,
+        ...(m.format ? { format: m.format } : {}),
       },
     });
   });

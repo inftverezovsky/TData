@@ -1,107 +1,13 @@
 import { NextResponse } from "next/server";
 import { readSheet } from "read-excel-file/node";
 import { prisma } from "@/lib/db/db";
-import { normalizeTeamName } from "@/lib/teams/teams";
 import { requireAdmin } from "@/lib/auth/adminAuth";
 import { queueIdentitySync } from "@/lib/sync/identitySync";
 import { parseAdminTeamImportRows } from "@/lib/adminTeams/importSpreadsheet";
-import { scorePlatformTeamCandidate } from "@/lib/teams/fuzzyMatch";
+import { runAutoMappingForDiscipline } from "@/lib/teams/mapping";
 
 const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
 const REMOTE_FETCH_TIMEOUT_MS = 15000;
-
-async function runAutoMapping(disciplineSlug: string) {
-  const adminTeams = await prisma.adminTeam.findMany({
-    where: { disciplineSlug },
-  });
-
-  const mappings = await prisma.teamMapping.findMany({
-    where: {
-      disciplineSlug,
-      status: {
-        in: ["unmapped", "ambiguous"],
-      },
-      isLockedFromAutoMapping: false,
-    },
-  });
-
-  let autoMappedCount = 0;
-  let ambiguousCount = 0;
-  let unmappedCount = 0;
-  const newlyMappedNames: string[] = [];
-
-  for (const mapping of mappings) {
-    const liqName =
-      mapping.liquipediaNormalizedName ||
-      normalizeTeamName(mapping.liquipediaName);
-    if (!liqName) continue;
-
-    let bestScore = 0;
-    let secondBestScore = 0;
-    let bestAdminTeam: any = null;
-    const candidates: any[] = [];
-
-    for (const admin of adminTeams) {
-      const score = Math.max(
-        scorePlatformTeamCandidate(mapping.liquipediaName, admin),
-        scorePlatformTeamCandidate(liqName, admin)
-      ) * 100;
-
-      candidates.push({ admin, score });
-    }
-
-    candidates.sort((a, b) => b.score - a.score);
-
-    if (candidates.length > 0) {
-      bestScore = candidates[0].score;
-      bestAdminTeam = candidates[0].admin;
-      if (candidates.length > 1) {
-        secondBestScore = candidates[1].score;
-      }
-    }
-
-    if (bestScore >= 90) {
-      if (bestScore - secondBestScore < 3 && secondBestScore >= 90) {
-        await prisma.teamMapping.update({
-          where: { id: mapping.id },
-          data: { status: "ambiguous", confidenceScore: bestScore, matchMethod: "token_fuzzy" },
-        });
-        ambiguousCount++;
-      } else {
-        await prisma.teamMapping.update({
-          where: { id: mapping.id },
-          data: {
-            platformId: bestAdminTeam.platformId,
-            canonicalName: bestAdminTeam.platformName,
-            confidenceScore: bestScore,
-            matchMethod: "token_fuzzy",
-            status: "auto_mapped",
-          },
-        });
-        await prisma.tournamentParticipant.updateMany({
-          where: {
-            name: mapping.liquipediaName,
-            tournament: { disciplineSlug },
-          },
-          data: { platformId: bestAdminTeam.platformId },
-        });
-        autoMappedCount++;
-        newlyMappedNames.push(mapping.liquipediaName);
-      }
-    } else {
-      unmappedCount++;
-    }
-  }
-
-  return {
-    adminTeamsCount: adminTeams.length,
-    liquipediaTeamsFound: mappings.length,
-    autoMappedCount,
-    ambiguousCount,
-    unmappedCount,
-    newlyMappedNames,
-  };
-}
 
 export async function POST(request: Request) {
   const unauthorized = await requireAdmin(request);
@@ -196,7 +102,7 @@ export async function POST(request: Request) {
     ]);
 
     // Run auto-mapping after import
-    const mappingResult = await runAutoMapping(disciplineSlug);
+    const mappingResult = await runAutoMappingForDiscipline(disciplineSlug);
 
     const identitySync = queueIdentitySync(`admin-teams:import:${disciplineSlug}`);
 
