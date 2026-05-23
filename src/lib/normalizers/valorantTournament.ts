@@ -12,6 +12,7 @@ import {
 import { createHash } from "crypto";
 import { generateInternalTeamId, isPlaceholderTeam } from "@/lib/teams/teams";
 import { applyTbdPairCycling } from "@/lib/matches/tbdCycling";
+import { getBestOfLabel } from "@/lib/matches/format";
 
 // applyTbdPairCycling is now imported from @/lib/matches/tbdCycling
 
@@ -240,14 +241,17 @@ function extractMatchesFromParsedHtml(html: string, pageUrl: string): Normalized
       if (!isNaN(ts)) matchDate = new Date(ts * 1000);
     }
 
+    const rawText = $.html(matchEl)?.slice(0, 1000) || null;
+
     matches.push({
       matchDate,
       teamAName,
       teamBName,
       scoreA: scoreAText ? parseInt(scoreAText, 10) : null,
       scoreB: scoreBText ? parseInt(scoreBText, 10) : null,
+      format: getBestOfLabel(rawText),
       sourceUrl: pageUrl,
-      rawText: $.html(matchEl)?.slice(0, 1000)
+      rawText
     });
   });
 
@@ -270,12 +274,15 @@ function extractMatchesFromWikitext(wikitext: string): NormalizedMatch[] {
     const rawTeamB = firstClean(params.team2, params.opponent2, params.p2);
     if (!rawTeamA && !rawTeamB) continue;
 
+    const formatText = firstClean(params.bestof, params.bo, params.format);
+
     matches.push({
       matchDate: parseWikiDate(params.date ?? params.time ?? params.datetime),
       teamAName: rawTeamA,
       teamBName: rawTeamB,
       scoreA: parseInteger(params.score1 ?? params.games1),
       scoreB: parseInteger(params.score2 ?? params.games2),
+      format: getBestOfLabel(formatText) || getBestOfLabel(template),
       rawText: template.slice(0, 1000)
     });
   }

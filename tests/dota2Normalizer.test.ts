@@ -132,3 +132,24 @@ test("Dota2 normalizer preserves repeated pair in different rounds without dates
   assert.equal(normalized.matches.length, 2);
   assert.deepEqual(normalized.matches.map((match) => match.round), ["Group A", "Group B"]);
 });
+
+test("Dota2 normalizer derives BO format from Liquipedia map slots", () => {
+  const normalized = normalizeDota2Tournament({
+    title: "Streamers Cup",
+    pageUrl: "https://liquipedia.net/dota2/Streamers_Cup",
+    wikitext: `
+      {{Infobox league|name=Streamers Cup|sdate=2026-05-23|edate=2026-05-24}}
+      {{Match
+      |opponent1={{TeamOpponent|Miposhka Team}}
+      |opponent2={{TeamOpponent|Stray Team}}
+      |date=May 23, 2026 - 12:15 {{Abbr/MSK}}
+      |map1={{Map}}
+      |map2={{Map}}
+      |map3={{Map|finished=skip}}
+      }}
+    `,
+  });
+
+  assert.equal(normalized.matches.length, 1);
+  assert.equal(normalized.matches[0].format, "BO3");
+});

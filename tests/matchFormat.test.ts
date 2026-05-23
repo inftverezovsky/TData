@@ -11,6 +11,12 @@ test("getBestOfLabel normalizes known map-count formats", () => {
   assert.equal(getBestOfLabel("3"), "BO3");
 });
 
+test("getBestOfLabel infers map count from Liquipedia map/game slots", () => {
+  assert.equal(getBestOfLabel("{{Match|map1={{Map}}|map2={{Map}}|map3={{Map|finished=skip}}}}"), "BO3");
+  assert.equal(getBestOfLabel("{{Match|game1={{Game}}|game2={{Game}}|game5={{Game}}}}"), "BO5");
+  assert.equal(getBestOfLabel("{{Match|map1={{Map}}|map2={{Map}}<!--|map3={{Map}}-->}}"), "BO2");
+});
+
 test("getBestOfLabel ignores non-map tournament formats", () => {
   assert.equal(getBestOfLabel("Round robin"), null);
   assert.equal(getBestOfLabel("Group Stage"), null);

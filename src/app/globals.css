@@ -5,7 +5,7 @@
 :root {
   --primary: 79, 70, 229;
   --bg-color: transparent;
-  --card-bg: rgba(255, 255, 255, 0.72);
+  --card-bg: rgba(255, 255, 255, 0.92);
   --card-border: rgba(226, 232, 240, 0.6);
   --text-main: #0f172a;
   --text-muted: #64748b;
@@ -24,7 +24,9 @@ body {
   color: var(--text-main);
   font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   min-height: 100vh;
-  -webkit-font-smoothing: antialiased;
+  -webkit-font-smoothing: subpixel-antialiased;
+  -moz-osx-font-smoothing: auto;
+  text-rendering: optimizeLegibility;
   position: relative;
   overflow-x: hidden;
 }
@@ -50,9 +52,9 @@ body {
 
 /* Glassmorphism Panel */
 .glass-panel {
-  background: rgba(255, 255, 255, 0.72);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   border: 1px solid rgba(226, 232, 240, 0.55);
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 14px 36px rgba(15, 23, 42, 0.07);
 }
@@ -64,47 +66,47 @@ body {
 /* Settings & discipline page section blocks */
 section.rounded-3xl,
 section[class*="rounded-3xl"] {
-  background: rgba(255, 255, 255, 0.72) !important;
-  backdrop-filter: blur(14px) !important;
-  -webkit-backdrop-filter: blur(14px) !important;
+  background: rgba(255, 255, 255, 0.9) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
   border-color: rgba(226, 232, 240, 0.5) !important;
 }
 
 /* Discipline search + tournament list cards */
 section.premium-card,
 .premium-card {
-  background: rgba(255, 255, 255, 0.72) !important;
-  backdrop-filter: blur(14px) !important;
-  -webkit-backdrop-filter: blur(14px) !important;
+  background: rgba(255, 255, 255, 0.9) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 /* Upcoming tournaments widget aside card — same glass as search */
 aside.premium-card {
-  background: rgba(255, 255, 255, 0.72) !important;
-  backdrop-filter: blur(14px) !important;
-  -webkit-backdrop-filter: blur(14px) !important;
+  background: rgba(255, 255, 255, 0.9) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
   border-color: rgba(226, 232, 240, 0.6) !important;
 }
 
 /* Individual match cards */
 .group.relative.flex.flex-col.overflow-hidden.rounded-lg {
-  background: rgba(255, 255, 255, 0.78) !important;
-  backdrop-filter: blur(10px) !important;
-  -webkit-backdrop-filter: blur(10px) !important;
+  background: rgba(255, 255, 255, 0.94) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 /* Individual match cards — scoped to exact match-card pattern */
 div.group.relative.overflow-hidden.rounded-lg[class*="border"] {
-  background: rgba(255, 255, 255, 0.78) !important;
-  backdrop-filter: blur(10px) !important;
-  -webkit-backdrop-filter: blur(10px) !important;
+  background: rgba(255, 255, 255, 0.94) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 /* Home page discipline portal cards */
 div.group.relative.flex.flex-col.overflow-hidden[class*="rounded-"] {
-  background: rgba(255, 255, 255, 0.74) !important;
-  backdrop-filter: blur(14px) !important;
-  -webkit-backdrop-filter: blur(14px) !important;
+  background: rgba(255, 255, 255, 0.92) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 /* Gradient Text */
@@ -223,6 +225,13 @@ details[open] summary ~ * {
 
 summary {
   transition: background-color 200ms ease, color 200ms ease;
+  outline: none;
+}
+
+summary:focus-visible {
+  border-radius: 1rem;
+  outline: 2px solid rgba(79, 70, 229, 0.35);
+  outline-offset: 4px;
 }
 
 summary:active {

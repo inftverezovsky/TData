@@ -178,6 +178,41 @@ export default function TeamMappingPanel({
     }
   }
 
+  async function applySafeAutoMapAll() {
+    setGlobalLoading(true);
+    setNotice(null);
+    setAutoPreview(null);
+    try {
+      const res = await fetch("/api/team-mapping/auto", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ disciplineSlug, teamNames, apply: true }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setNotice({ type: "error", text: data.error || "Не удалось применить авто-маппинг" });
+        return;
+      }
+
+      const appliedCount = data.result?.appliedCount || 0;
+      const adminTeamsCount = data.result?.preview?.adminTeamsCount || 0;
+      if (adminTeamsCount === 0) {
+        setNotice({ type: "error", text: "Для этой дисциплины справочник админ-команд не импортирован. Используйте ручной ввод ID." });
+        return;
+      }
+
+      setSelectedAutoMappings(new Set());
+      setNotice({ type: "success", text: `Авто-маппинг применён: ${appliedCount} ID.` });
+      dispatchTeamMappingsUpdated({ disciplineSlug });
+      router.refresh();
+    } catch {
+      setNotice({ type: "error", text: "Сетевая ошибка при применении авто-маппинга." });
+    } finally {
+      setGlobalLoading(false);
+    }
+  }
+
   async function previewAutoMap(names: string[]) {
     setNotice(null);
     setAutoPreview(null);
@@ -369,9 +404,16 @@ export default function TeamMappingPanel({
             Массовый ввод ID
           </button>
           <button
+            onClick={applySafeAutoMapAll}
+            disabled={globalLoading}
+            className="rounded-xl px-5 py-2.5 bg-indigo-600 text-white font-bold text-xs uppercase tracking-widest border border-indigo-600 hover:bg-indigo-700 transition-all disabled:bg-slate-200 disabled:border-slate-200 disabled:text-slate-400"
+          >
+            {globalLoading ? "Обработка..." : "Авто-маппинг"}
+          </button>
+          <button
             onClick={() => handleAutoMapAll()}
             disabled={globalLoading}
-            className="rounded-xl px-6 py-2.5 bg-slate-500/5 backdrop-blur-sm text-slate-600 font-medium text-xs uppercase tracking-widest border border-slate-200/50 hover:bg-slate-500/10 transition-all disabled:opacity-50"
+            className="rounded-xl px-6 py-2.5 bg-slate-50 text-slate-600 font-medium text-xs uppercase tracking-widest border border-slate-200 hover:bg-slate-100 transition-all disabled:opacity-50"
           >
             {globalLoading ? 'Обработка...' : 'Предпросмотр авто-маппинга'}
           </button>
@@ -432,7 +474,7 @@ export default function TeamMappingPanel({
             <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-black uppercase tracking-[0.15em] text-slate-400">
               <tr>
                 <th className="py-4 px-6">Команда TCyber</th>
-                <th className="py-4 px-6">Название в админке</th>
+                <th className="py-4 px-6">Название в админе</th>
                 <th className="py-4 px-6">ID платформы</th>
                 <th className="py-4 px-6">Статус / способ</th>
                 <th className="py-4 px-6 text-right">Действия</th>
@@ -450,19 +492,21 @@ export default function TeamMappingPanel({
                       <span className="font-bold text-slate-900 group-hover:text-slate-600 transition-colors">{name}</span>
                     </td>
                     <td className="py-4 px-6">
-                      <input
-                        type="text"
-                        value={adminNameValue}
-                        disabled={entry.saved}
-                        onChange={(e) => handleChange(name, "canonicalName", e.target.value)}
-                        placeholder="—"
-                        className={`w-full rounded-lg border px-3 py-1.5 text-sm font-medium transition-all outline-none ${
-                          entry.saved 
-                            ? "bg-slate-50 border-slate-100 text-slate-400 cursor-not-allowed" 
-                            : "bg-white border-slate-200 text-slate-900 focus:border-slate-400 focus:ring-slate-400/5"
-                          }`}
-                      />
-                      <NameSourceBadge entry={entry} />
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={adminNameValue}
+                          disabled={entry.saved}
+                          onChange={(e) => handleChange(name, "canonicalName", e.target.value)}
+                          placeholder="—"
+                          className={`h-9 min-w-0 flex-1 rounded-lg border px-3 text-sm font-medium transition-all outline-none ${
+                            entry.saved
+                              ? "bg-slate-50 border-slate-100 text-slate-400 cursor-not-allowed"
+                              : "bg-white border-slate-200 text-slate-900 focus:border-slate-400 focus:ring-slate-400/5"
+                            }`}
+                        />
+                        <NameSourceIcon entry={entry} />
+                      </div>
                     </td>
                     <td className="py-4 px-6">
                       <input
@@ -471,7 +515,7 @@ export default function TeamMappingPanel({
                         disabled={entry.saved}
                         onChange={(e) => handleChange(name, "platformId", e.target.value)}
                         placeholder="—"
-                        className={`w-full rounded-lg border px-3 py-1.5 text-sm font-bold transition-all outline-none tabular-nums ${
+                        className={`h-9 w-full rounded-lg border px-3 text-sm font-bold transition-all outline-none tabular-nums ${
                           entry.saved 
                             ? "bg-slate-50 border-slate-100 text-slate-400 cursor-not-allowed" 
                             : "bg-white border-slate-200 text-slate-600 focus:border-slate-400 focus:ring-slate-400/5"
@@ -481,7 +525,7 @@ export default function TeamMappingPanel({
                     <td className="py-4 px-6">
                       <div className="flex flex-col gap-1">
                         <span className={`inline-flex w-max items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-tighter
-                          ${entry.status === 'auto_mapped' ? 'bg-slate-500/5 backdrop-blur-sm border border-slate-200/50 text-slate-600' : 
+                          ${entry.status === 'auto_mapped' ? 'bg-slate-50 border border-slate-200 text-slate-600' :
                             entry.status === 'manual_mapped' ? 'bg-emerald-50 text-emerald-600' :
                             entry.status === 'manual_unmapped' ? 'bg-rose-50 text-rose-600' :
                             entry.status === 'ambiguous' ? 'bg-amber-50 text-amber-600' :
@@ -504,7 +548,7 @@ export default function TeamMappingPanel({
                           className={`min-w-[100px] px-3 py-1.5 rounded-full text-[10px] font-medium uppercase tracking-widest transition-all ${
                             entry.saved
                               ? "text-emerald-600 bg-emerald-50 border border-emerald-100 cursor-default"
-                              : "bg-slate-500/5 backdrop-blur-sm text-slate-600 border border-slate-200/50 hover:bg-slate-500/10 rounded-lg"
+                              : "bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100 rounded-lg"
                           }`}
                         >
                           {isSaving ? "..." : entry.saved ? "Сохранено" : "Сохранить"}
@@ -512,7 +556,7 @@ export default function TeamMappingPanel({
                         <button
                           onClick={() => handleAutoMapSingle(name)}
                           disabled={isSaving}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-500/5 backdrop-blur-sm border border-slate-200/50 transition-all"
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 border border-slate-200 transition-all"
                           title="Подобрать ID автоматически"
                         >
                           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
@@ -649,23 +693,25 @@ function PreviewList({ title, items }: { title: string; items: AutoMappingPrevie
   );
 }
 
-function NameSourceBadge({ entry }: { entry: Partial<TeamMappingRecord> & { saved?: boolean } }) {
+function NameSourceIcon({ entry }: { entry: Partial<TeamMappingRecord> & { saved?: boolean } }) {
   if (!entry.platformId) return null;
+  if (entry.nameSource !== "admin" && entry.nameSource !== "manual") return null;
 
-  const label =
-    entry.nameSource === "admin"
-      ? "Имя из админки"
-      : entry.nameSource === "manual"
-        ? "Ручное имя"
-        : "ID не найден";
+  const label = entry.nameSource === "admin" ? "Имя из админа" : "Ручной ввод";
   const className =
     entry.nameSource === "admin"
-      ? "bg-emerald-50 text-emerald-600"
-      : entry.nameSource === "manual"
-        ? "bg-amber-50 text-amber-600"
-        : "bg-rose-50 text-rose-600";
+      ? "border-emerald-200 bg-emerald-50 text-emerald-600"
+      : "border-amber-300 bg-amber-50 text-amber-700";
 
-  return <div className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[9px] font-black uppercase tracking-widest ${className}`}>{label}</div>;
+  return (
+    <span
+      title={label}
+      aria-label={label}
+      className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${className}`}
+    >
+      <span className="h-2 w-2 rounded-full bg-current" />
+    </span>
+  );
 }
 
 function parseBulkManualMappings(value: string) {

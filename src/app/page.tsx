@@ -104,7 +104,7 @@ export default function HomePage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
-        {disciplines.map((discipline, index) => {
+        {disciplines.map((discipline) => {
           const shadowClass = hoverShadows[discipline.slug] || "";
           return (
             <Link 
@@ -117,7 +117,7 @@ export default function HomePage() {
                   src={discipline.bg}
                   alt={discipline.name}
                   fill
-                  priority={index === 0}
+                  priority
                   sizes="(min-width: 1280px) 25vw, (min-width: 768px) 50vw, 100vw"
                   className="object-cover transition-transform duration-500 group-hover:scale-105 group-hover:saturate-[1.10]"
                 />

@@ -12,6 +12,7 @@ import {
 import { createHash } from "crypto";
 import { generateInternalTeamId, isPlaceholderTeam } from "@/lib/teams/teams";
 import { applyTbdPairCycling } from "@/lib/matches/tbdCycling";
+import { getBestOfLabel } from "@/lib/matches/format";
 
 /* ───── Types ───── */
 
@@ -339,6 +340,8 @@ function extractMatchesFromParsedHtml(html: string, pageUrl: string): Normalized
     else if (teamAWon || teamBWon) matchStatus = "finished";
     else if (scoreAText && scoreBText) matchStatus = "in_progress";
 
+    const rawText = $.html(matchEl)?.slice(0, 2500) || null;
+
     matches.push({
       stage,
       round,
@@ -348,11 +351,11 @@ function extractMatchesFromParsedHtml(html: string, pageUrl: string): Normalized
       teamBName,
       scoreA: scoreAText ? parseInt(scoreAText, 10) : null,
       scoreB: scoreBText ? parseInt(scoreBText, 10) : null,
-      format: null,
+      format: getBestOfLabel(rawText),
       status: matchStatus,
       court: null,
       sourceUrl: pageUrl,
-      rawText: $.html(matchEl)?.slice(0, 2500)
+      rawText
     });
 
     if (matches.length >= 500) return false;
@@ -448,6 +451,7 @@ function extractMatchesFromParsedHtml(html: string, pageUrl: string): Normalized
     if (commentMatch) round = commentMatch[1];
 
     const formatText = $popup.find(".match-bm-lbl, .brkts-popup-header-dev-match-type").text().trim() || null;
+    const rawText = $.html(matchEl)?.slice(0, 2500) || null;
 
     let matchStatus: string | null = null;
     if (finished === "finished") matchStatus = "finished";
@@ -463,11 +467,11 @@ function extractMatchesFromParsedHtml(html: string, pageUrl: string): Normalized
       teamBName,
       scoreA: !isNaN(scoreA as number) ? scoreA : null,
       scoreB: !isNaN(scoreB as number) ? scoreB : null,
-      format: formatText,
+      format: getBestOfLabel(formatText) || getBestOfLabel(rawText),
       status: matchStatus,
       court: null,
       sourceUrl: pageUrl,
-      rawText: $.html(matchEl)?.slice(0, 2500)
+      rawText
     });
   });
 
@@ -504,6 +508,8 @@ function extractMatchesFromWikitext(wikitext: string): NormalizedMatch[] {
 
     const dateVal = parseWikiDate(params.date ?? params.time ?? params.datetime);
 
+    const formatText = firstClean(params.bestof, params.bo, params.format);
+
     matches.push({
       stage: firstClean(params.stage, params.section),
       round: firstClean(params.round, params.match, params.title),
@@ -513,7 +519,7 @@ function extractMatchesFromWikitext(wikitext: string): NormalizedMatch[] {
       teamBName,
       scoreA: parseInteger(params.score1 ?? params.team1score ?? params.p1score ?? params.games1),
       scoreB: parseInteger(params.score2 ?? params.team2score ?? params.p2score ?? params.games2),
-      format: firstClean(params.bestof, params.bo, params.format),
+      format: getBestOfLabel(formatText) || getBestOfLabel(template),
       status: firstClean(params.status, params.finished, params.walkover),
       court: firstClean(params.court, params.stream, params.twitch),
       rawText: template.slice(0, 2500)

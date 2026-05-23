@@ -26,5 +26,28 @@ export function getBestOfLabel(value: string | null | undefined) {
   const bareNumber = normalized.match(/^\s*([1-9]\d?)\s*$/);
   if (bareNumber?.[1]) return `BO${Number(bareNumber[1])}`;
 
+  const inferredFromMapSlots = inferBestOfFromMapSlots(normalized);
+  if (inferredFromMapSlots) return inferredFromMapSlots;
+
   return null;
+}
+
+function inferBestOfFromMapSlots(value: string) {
+  const uncommented = value.replace(/<!--[\s\S]*?-->/g, " ");
+  const slotNumbers = new Set<number>();
+  const patterns = [
+    /(?:^|\|)\s*(?:map|game)\s*([1-9]\d?)\s*=/gi,
+    /\bdata-(?:map|game)(?:-?(?:number|num|index))?\s*=\s*["']?([1-9]\d?)["']?/gi,
+  ];
+
+  for (const pattern of patterns) {
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(uncommented))) {
+      const number = Number(match[1]);
+      if (Number.isInteger(number) && number > 0) slotNumbers.add(number);
+    }
+  }
+
+  const maxSlot = Math.max(0, ...slotNumbers);
+  return maxSlot > 0 ? `BO${maxSlot}` : null;
 }

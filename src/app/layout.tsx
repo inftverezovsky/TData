@@ -4,13 +4,6 @@ import "./globals.css";
 import Navbar from "@/components/layout/Navbar";
 import DynamicTechBackground from "@/components/ui/DynamicTechBackground";
 import { ClientErrorBoundary } from "@/components/ui/ClientErrorBoundary";
-import { Plus_Jakarta_Sans } from "next/font/google";
-
-const plusJakartaSans = Plus_Jakarta_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   title: "TCyber",
@@ -20,7 +13,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ru">
-      <body className={`${plusJakartaSans.className} text-slate-900 selection:bg-indigo-100`}>
+      <body className="text-slate-900 selection:bg-indigo-100">
         <div className="flex min-h-screen flex-col relative z-0">
           {/* Dynamic dynamic circuit grid background */}
           <ClientErrorBoundary
