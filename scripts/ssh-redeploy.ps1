@@ -32,7 +32,7 @@ df -h /
 echo "=== PULLING IMAGE ==="
 docker compose pull "$Service"
 echo "=== RECREATING SERVICE ==="
-docker compose up -d --no-deps --force-recreate "$Service"
+docker compose up -d --no-deps --no-build --force-recreate "$Service"
 echo "=== SERVICE STATUS ==="
 docker compose ps "$Service"
 echo "=== SERVICE IMAGE ==="
