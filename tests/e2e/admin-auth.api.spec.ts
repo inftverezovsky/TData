@@ -22,7 +22,6 @@ test("admin auth protects settings endpoints and creates a usable session cookie
     () => request.post("/api/counterstrike/tournament/example/admin-fixt-mark-uploaded"),
     () => request.post("/api/counterstrike/hltv/admin-send"),
     () => request.post("/api/counterstrike/hltv/matches/manual"),
-    () => request.get("/api/counterstrike/search-hltv?query=test&force=true"),
     () => request.get("/api/counterstrike/hltv/events?force=true"),
     () => request.get("/api/counterstrike/hltv/matches?force=true"),
     () => request.get("/api/counterstrike/hltv/health?force=true"),
@@ -41,7 +40,6 @@ test("admin auth protects settings endpoints and creates a usable session cookie
     () => request.get("/api/counterstrike/tournament/example/raw"),
     () => request.get("/api/counterstrike/tournament/example/upload-history"),
     () => request.get("/api/imports"),
-    () => request.post("/api/dota2/search-tournament", { data: { query: "test", force: true } }),
   ];
 
   for (const makeRequest of protectedRequests) {
@@ -56,6 +54,14 @@ test("admin auth protects settings endpoints and creates a usable session cookie
     data: { title: "" },
   });
   expect(publicImportValidation.status()).toBe(400);
+
+  const publicLiquipediaSearchValidation = await request.post("/api/dota2/search-tournament", {
+    data: { query: "" },
+  });
+  expect(publicLiquipediaSearchValidation.status()).toBe(400);
+
+  const publicHltvSearchValidation = await request.get("/api/counterstrike/search-hltv?force=true");
+  expect(publicHltvSearchValidation.status()).toBe(400);
 
   const badLogin = await request.post("/api/admin-auth/login", {
     data: { password: "wrong-password" },

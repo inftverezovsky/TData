@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { runHltvScript } from "@/lib/hltv/scraper";
-import { requireAdmin } from "@/lib/auth/adminAuth";
 import { emptyValidIfNoItems } from "@/lib/proxy/parserErrors";
 import { getHltvSearchErrorMessage, normalizeHltvErrorClass } from "@/lib/hltv/userFacingErrors";
 
@@ -12,10 +11,6 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const query = searchParams.get("query");
     const force = searchParams.get("force") === "true";
-    if (force) {
-      const unauthorized = await requireAdmin(request);
-      if (unauthorized) return unauthorized;
-    }
     
     if (!query) {
       return NextResponse.json({ ok: false, error: "Query is required" }, { status: 400 });
