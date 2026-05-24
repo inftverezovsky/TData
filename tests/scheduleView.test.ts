@@ -4,6 +4,7 @@ import {
   buildScheduleFormatGroups,
   isAnnouncementScheduleMatch,
   isGeneratedScheduleMatrixRow,
+  isUploadableScheduleEntry,
   isUploadReadyScheduleMatch,
 } from "../src/lib/matches/scheduleView";
 
@@ -21,6 +22,7 @@ test("exact-time matches are upload-ready and not announcements", () => {
 
   assert.equal(isUploadReadyScheduleMatch(match), true);
   assert.equal(isAnnouncementScheduleMatch(match), false);
+  assert.equal(isUploadableScheduleEntry(match), true);
 });
 
 test("date-only schedule rows are announcements, not upload-ready matches", () => {
@@ -37,6 +39,7 @@ test("date-only schedule rows are announcements, not upload-ready matches", () =
 
   assert.equal(isUploadReadyScheduleMatch(match), false);
   assert.equal(isAnnouncementScheduleMatch(match), true);
+  assert.equal(isUploadableScheduleEntry(match), false);
 });
 
 test("exact-time TBD slots are announcements, not upload-ready matches", () => {
@@ -54,6 +57,25 @@ test("exact-time TBD slots are announcements, not upload-ready matches", () => {
 
   assert.equal(isUploadReadyScheduleMatch(match), false);
   assert.equal(isAnnouncementScheduleMatch(match), true);
+  assert.equal(isUploadableScheduleEntry(match), true);
+});
+
+test("exact-time non-TBD placeholders remain non-uploadable announcements", () => {
+  const match = {
+    id: "announcement-seed",
+    matchDate: new Date("2026-06-02T18:55:00.000Z"),
+    matchDateTime: "June 2, 2026 - 21:55 MSK",
+    rawText: "A1 vs B2 playoff slot",
+    scoreA: null,
+    scoreB: null,
+    teamAName: "A1",
+    teamBName: "B2",
+    hasPlaceholderTeams: true,
+  };
+
+  assert.equal(isUploadReadyScheduleMatch(match), false);
+  assert.equal(isAnnouncementScheduleMatch(match), true);
+  assert.equal(isUploadableScheduleEntry(match), false);
 });
 
 test("generated crosstable matrix rows are hidden from both schedule modes", () => {
@@ -72,6 +94,7 @@ test("generated crosstable matrix rows are hidden from both schedule modes", () 
   assert.equal(isGeneratedScheduleMatrixRow(match), true);
   assert.equal(isUploadReadyScheduleMatch(match), false);
   assert.equal(isAnnouncementScheduleMatch(match), false);
+  assert.equal(isUploadableScheduleEntry(match), false);
 });
 
 test("format groups work for announcement rows", () => {

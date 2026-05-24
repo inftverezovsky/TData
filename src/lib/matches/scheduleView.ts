@@ -1,6 +1,6 @@
 import { getBestOfLabel } from "@/lib/matches/format";
 import { hasExactMatchTime } from "@/lib/matches/time";
-import { isPlaceholderTeam } from "@/lib/teams/teams";
+import { isPlaceholderTeam, isTbdPlaceholderTeam } from "@/lib/teams/teams";
 
 export type ScheduleViewMatch = {
   format?: string | null;
@@ -37,6 +37,22 @@ export function isUploadReadyScheduleMatch(match: ScheduleViewMatch) {
   if (isSchedulePlaceholderMatch(match)) return false;
   if (!hasExactMatchTime(match)) return false;
   return !hasScore(match);
+}
+
+export function isUploadableScheduleEntry(match: ScheduleViewMatch) {
+  if (isGeneratedScheduleMatrixRow(match)) return false;
+  if (hasScore(match)) return false;
+  if (!hasExactMatchTime(match)) return false;
+
+  const teamAIsPlaceholder = isPlaceholderTeam(match.teamAName);
+  const teamBIsPlaceholder = isPlaceholderTeam(match.teamBName);
+  const teamAIsUploadableTbd = isTbdPlaceholderTeam(match.teamAName);
+  const teamBIsUploadableTbd = isTbdPlaceholderTeam(match.teamBName);
+
+  return (
+    (!teamAIsPlaceholder || teamAIsUploadableTbd) &&
+    (!teamBIsPlaceholder || teamBIsUploadableTbd)
+  );
 }
 
 export function isAnnouncementScheduleMatch(match: ScheduleViewMatch) {

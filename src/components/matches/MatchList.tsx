@@ -7,6 +7,7 @@ import {
   getScheduleMatchBestOfLabel,
   isAnnouncementScheduleMatch,
   isSchedulePlaceholderMatch,
+  isUploadableScheduleEntry,
   isUploadReadyScheduleMatch,
 } from "@/lib/matches/scheduleView";
 import { resolveExactMatchDate } from "@/lib/matches/time";
@@ -111,7 +112,12 @@ export default function MatchList({
   const baseAnnouncements = useMemo(() => {
     return [...matches]
       .filter(isAnnouncementScheduleMatch)
-      .sort((a, b) => a.id.localeCompare(b.id));
+      .sort((a, b) => {
+        const tsA = getMatchTimestamp(a) || Infinity;
+        const tsB = getMatchTimestamp(b) || Infinity;
+        if (tsA !== tsB) return tsA - tsB;
+        return a.id.localeCompare(b.id);
+      });
   }, [matches]);
 
   const displayMatches = useMemo(() => {
@@ -122,9 +128,7 @@ export default function MatchList({
       : baseMatches;
   }, [baseAnnouncements, baseMatches, hideUploaded, scheduleMode]);
 
-  const selectableMatches = scheduleMode === "matches"
-    ? displayMatches.filter((match) => !match.syncedAt)
-    : [];
+  const selectableMatches = displayMatches.filter((match) => !match.syncedAt && isUploadableScheduleEntry(match));
   const allSelected = selectableMatches.length > 0 && selectableMatches.every(m => selectedIds.has(getSelectionId(m)));
   const groupedMatches = useMemo(() => buildScheduleFormatGroups(displayMatches), [displayMatches]);
   const activeBaseCount = scheduleMode === "announcements" ? baseAnnouncements.length : baseMatches.length;
@@ -134,8 +138,6 @@ export default function MatchList({
   }
 
   function toggleAll() {
-    if (scheduleMode !== "matches") return;
-
     const newIds = new Set(selectedIds);
     if (allSelected) {
       selectableMatches.forEach(m => newIds.delete(getSelectionId(m)));
@@ -168,16 +170,12 @@ export default function MatchList({
   }
 
   function isGroupSelected(groupMatches: Match[]) {
-    if (scheduleMode !== "matches") return false;
-
-    const selectableGroupMatches = groupMatches.filter((match) => !match.syncedAt);
+    const selectableGroupMatches = groupMatches.filter((match) => !match.syncedAt && isUploadableScheduleEntry(match));
     return selectableGroupMatches.length > 0 && selectableGroupMatches.every(match => selectedIds.has(getSelectionId(match)));
   }
 
   function toggleGroup(groupMatches: Match[]) {
-    if (scheduleMode !== "matches") return;
-
-    const selectableGroupMatches = groupMatches.filter((match) => !match.syncedAt);
+    const selectableGroupMatches = groupMatches.filter((match) => !match.syncedAt && isUploadableScheduleEntry(match));
     if (selectableGroupMatches.length === 0) return;
 
     const newIds = new Set(selectedIds);
@@ -215,27 +213,30 @@ export default function MatchList({
     const isAnnouncement = variant === "announcements";
     const selectionId = getSelectionId(match);
     const isSelected = selectedIds.has(selectionId);
+    const isSelectable = !isUploaded && isUploadableScheduleEntry(match);
     const bestOfLabel = getScheduleMatchBestOfLabel(match);
 
     return (
       <div
         key={match.matchId || match.id}
         onClick={() => {
-          if (!isUploaded && !isAnnouncement) toggleOne(selectionId);
+          if (isSelectable) toggleOne(selectionId);
         }}
-        className={`group relative flex flex-col overflow-hidden rounded-lg border bg-white px-4 py-1 transition-all duration-300 hover:-translate-y-0.5 active:scale-[0.99] will-change-transform cursor-pointer ${
-          isAnnouncement
-            ? "cursor-default border-sky-200 bg-sky-50/20 hover:border-sky-300"
-            : isUploaded
+        className={`group relative flex flex-col overflow-hidden rounded-lg border bg-white px-4 py-1 transition-all duration-300 hover:-translate-y-0.5 active:scale-[0.99] will-change-transform ${
+          isUploaded
             ? "border-emerald-200 bg-emerald-50/10 cursor-default hover:border-emerald-300"
-            : isSelected
-            ? "border-indigo-600 ring-1 ring-indigo-600/10 shadow-sm shadow-indigo-600/5"
+            : isSelected && isSelectable
+            ? "cursor-pointer border-indigo-600 ring-1 ring-indigo-600/10 shadow-sm shadow-indigo-600/5"
+            : isAnnouncement
+            ? isSelectable
+              ? "cursor-pointer border-sky-200 bg-sky-50/20 hover:border-indigo-300 hover:bg-sky-50/40 hover:shadow-sm"
+              : "cursor-default border-sky-200 bg-sky-50/20 hover:border-sky-300"
             : isPlaceholder
-              ? "border-amber-200 bg-amber-50/20 hover:border-amber-300 hover:bg-amber-50/30"
-              : "border-slate-200 hover:border-indigo-300 hover:bg-slate-50/40 hover:shadow-sm"
+              ? "cursor-pointer border-amber-200 bg-amber-50/20 hover:border-amber-300 hover:bg-amber-50/30"
+              : "cursor-pointer border-slate-200 hover:border-indigo-300 hover:bg-slate-50/40 hover:shadow-sm"
         }`}
       >
-        {isSelected && !isUploaded && !isAnnouncement && <div className="absolute inset-0 shimmer pointer-events-none" />}
+        {isSelected && isSelectable && <div className="absolute inset-0 shimmer pointer-events-none" />}
 
         <div className="mb-0 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-center gap-2">
@@ -272,11 +273,11 @@ export default function MatchList({
             <span suppressHydrationWarning className="text-[10px] font-bold text-slate-900 tabular-nums">
               {isAnnouncement ? formatAnnouncementDate(match) : formatNeutralDate(match)}
             </span>
-            {!isAnnouncement && (
+            {isSelectable && (
               <div className={`h-3.5 w-3.5 rounded-md border transition-all flex items-center justify-center ${
-                isSelected && !isUploaded ? "bg-indigo-600 border-indigo-600" : "bg-white border-slate-200"
+                isSelected ? "bg-indigo-600 border-indigo-600" : "bg-white border-slate-200"
               }`}>
-                {isSelected && !isUploaded && <CheckCircle2 className="h-3 w-3 text-white" />}
+                {isSelected && <CheckCircle2 className="h-3 w-3 text-white" />}
               </div>
             )}
           </div>
@@ -375,22 +376,24 @@ export default function MatchList({
               />
               Группировка по формату
             </label>
-            {scheduleMode === "matches" && (
+            {(scheduleMode === "matches" || selectableMatches.length > 0) && (
               <>
-                <label className="flex cursor-pointer items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500 transition-colors hover:border-emerald-200 hover:text-emerald-600">
-                  <span className={`h-4 w-4 rounded border transition-all flex items-center justify-center ${
-                    hideUploaded ? "bg-emerald-500 border-emerald-500" : "bg-white border-slate-200"
-                  }`}>
-                    {hideUploaded && <CheckCircle2 className="h-3 w-3 text-white" />}
-                  </span>
-                  <input
-                    type="checkbox"
-                    checked={hideUploaded}
-                    onChange={(event) => toggleHideUploaded(event.target.checked)}
-                    className="sr-only"
-                  />
-                  Скрыть залитые
-                </label>
+                {scheduleMode === "matches" && (
+                  <label className="flex cursor-pointer items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500 transition-colors hover:border-emerald-200 hover:text-emerald-600">
+                    <span className={`h-4 w-4 rounded border transition-all flex items-center justify-center ${
+                      hideUploaded ? "bg-emerald-500 border-emerald-500" : "bg-white border-slate-200"
+                    }`}>
+                      {hideUploaded && <CheckCircle2 className="h-3 w-3 text-white" />}
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={hideUploaded}
+                      onChange={(event) => toggleHideUploaded(event.target.checked)}
+                      className="sr-only"
+                    />
+                    Скрыть залитые
+                  </label>
+                )}
                 <button
                   onClick={toggleAll}
                   disabled={selectableMatches.length === 0}
@@ -433,8 +436,9 @@ export default function MatchList({
           <div className="grid gap-5">
             {groupedMatches.map((group) => {
               const groupSelected = isGroupSelected(group.matches);
-              const groupSelectableCount =
-                scheduleMode === "matches" ? group.matches.filter((match) => !match.syncedAt).length : 0;
+              const groupSelectableCount = group.matches.filter(
+                (match) => !match.syncedAt && isUploadableScheduleEntry(match)
+              ).length;
 
               return (
                 <section key={group.format} className="grid gap-2">
@@ -443,7 +447,7 @@ export default function MatchList({
                       {group.format}
                     </div>
                     <div className="h-px min-w-8 flex-1 bg-slate-100" />
-                    {scheduleMode === "matches" && (
+                    {groupSelectableCount > 0 && (
                       <button
                         type="button"
                         onClick={() => toggleGroup(group.matches)}
