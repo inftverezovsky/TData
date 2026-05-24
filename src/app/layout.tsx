@@ -23,7 +23,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             <DynamicTechBackground />
           </ClientErrorBoundary>
 
-          <header className="sticky top-0 z-50 border-b border-white/30 bg-white/60 backdrop-blur-xl">
+          <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/95 shadow-sm">
             <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between md:px-6">
               <Link href="/" className="flex shrink-0 items-center gap-2 group">
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 font-bold text-white shadow-sm transition-colors group-hover:bg-indigo-700">
