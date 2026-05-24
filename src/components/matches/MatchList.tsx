@@ -4,11 +4,12 @@ import { useMemo, useEffect, useState } from "react";
 import { applyDisciplineScheduleLead } from "@/lib/matches/scheduleOffset";
 import {
   buildScheduleFormatGroups,
+  expandScheduleAnnouncements,
   getScheduleMatchBestOfLabel,
-  isAnnouncementScheduleMatch,
   isSchedulePlaceholderMatch,
   isUploadableScheduleEntry,
   isUploadReadyScheduleMatch,
+  type ScheduleAnnouncementEntry,
 } from "@/lib/matches/scheduleView";
 import { resolveExactMatchDate } from "@/lib/matches/time";
 import { normalizeTeamName } from "@/lib/teams/teams";
@@ -37,6 +38,7 @@ type Match = {
   sourceBreakdown?: unknown;
 };
 
+type DisplayMatch = ScheduleAnnouncementEntry<Match>;
 type MappingInfo = { alias: string | null; platformId: string | null; logoUrl?: string | null };
 type ScheduleMode = "matches" | "announcements";
 
@@ -50,20 +52,20 @@ const moscowDateFormatter = new Intl.DateTimeFormat("ru-RU", {
   hour12: false,
 });
 
-function getMatchDateObj(match: Match): Date | null {
+function getMatchDateObj(match: DisplayMatch): Date | null {
   return resolveExactMatchDate(match);
 }
 
-function getMatchTimestamp(match: Match): number | null {
+function getMatchTimestamp(match: DisplayMatch): number | null {
   const d = getMatchDateObj(match);
   return d ? d.getTime() : null;
 }
 
-function isMatchPlaceholder(match: Match) {
+function isMatchPlaceholder(match: DisplayMatch) {
   return isSchedulePlaceholderMatch(match);
 }
 
-function getMatchStatusDotClass(match: Match) {
+function getMatchStatusDotClass(match: DisplayMatch) {
   if (match.syncedAt) return "bg-emerald-500";
   if (isMatchPlaceholder(match)) return "bg-amber-400";
   if (match.platformId) return "bg-emerald-500";
@@ -98,7 +100,7 @@ export default function MatchList({
     return () => window.removeEventListener('admin-upload-success', handleSuccess);
   }, [mutate, setSelectedIds]);
 
-  const baseMatches = useMemo(() => {
+  const baseMatches = useMemo<DisplayMatch[]>(() => {
     return [...matches]
       .filter(isUploadReadyScheduleMatch)
       .sort((a, b) => {
@@ -109,9 +111,8 @@ export default function MatchList({
       });
   }, [matches]);
 
-  const baseAnnouncements = useMemo(() => {
-    return [...matches]
-      .filter(isAnnouncementScheduleMatch)
+  const baseAnnouncements = useMemo<DisplayMatch[]>(() => {
+    return expandScheduleAnnouncements(matches)
       .sort((a, b) => {
         const tsA = getMatchTimestamp(a) || Infinity;
         const tsB = getMatchTimestamp(b) || Infinity;
@@ -128,13 +129,18 @@ export default function MatchList({
       : baseMatches;
   }, [baseAnnouncements, baseMatches, hideUploaded, scheduleMode]);
 
-  const selectableMatches = displayMatches.filter((match) => !match.syncedAt && isUploadableScheduleEntry(match));
+  const selectableMatches = displayMatches.filter((match) => !match.syncedAt && isDisplayEntrySelectable(match));
   const allSelected = selectableMatches.length > 0 && selectableMatches.every(m => selectedIds.has(getSelectionId(m)));
   const groupedMatches = useMemo(() => buildScheduleFormatGroups(displayMatches), [displayMatches]);
   const activeBaseCount = scheduleMode === "announcements" ? baseAnnouncements.length : baseMatches.length;
 
-  function getSelectionId(match: Match) {
-    return match.matchId || "unknown";
+  function getSelectionId(match: DisplayMatch) {
+    return match.selectionId || match.matchId || "unknown";
+  }
+
+  function isDisplayEntrySelectable(match: DisplayMatch) {
+    if (match.isSingleTeamAnnouncement) return true;
+    return isUploadableScheduleEntry(match);
   }
 
   function toggleAll() {
@@ -169,13 +175,13 @@ export default function MatchList({
     if (changed) setSelectedIds(newIds);
   }
 
-  function isGroupSelected(groupMatches: Match[]) {
-    const selectableGroupMatches = groupMatches.filter((match) => !match.syncedAt && isUploadableScheduleEntry(match));
+  function isGroupSelected(groupMatches: DisplayMatch[]) {
+    const selectableGroupMatches = groupMatches.filter((match) => !match.syncedAt && isDisplayEntrySelectable(match));
     return selectableGroupMatches.length > 0 && selectableGroupMatches.every(match => selectedIds.has(getSelectionId(match)));
   }
 
-  function toggleGroup(groupMatches: Match[]) {
-    const selectableGroupMatches = groupMatches.filter((match) => !match.syncedAt && isUploadableScheduleEntry(match));
+  function toggleGroup(groupMatches: DisplayMatch[]) {
+    const selectableGroupMatches = groupMatches.filter((match) => !match.syncedAt && isDisplayEntrySelectable(match));
     if (selectableGroupMatches.length === 0) return;
 
     const newIds = new Set(selectedIds);
@@ -197,23 +203,24 @@ export default function MatchList({
     setSelectedIds(newIds);
   }
 
-  function formatNeutralDate(match: Match): string {
+  function formatNeutralDate(match: DisplayMatch): string {
     const d = getMatchDateObj(match);
     if (!d) return "—";
     return moscowDateFormatter.format(applyDisciplineScheduleLead(d, disciplineSlug)).replace(",", "");
   }
 
-  function formatAnnouncementDate(match: Match) {
+  function formatAnnouncementDate(match: DisplayMatch) {
     return match.matchDateTime?.trim() || "без точного времени";
   }
 
-  function MatchCard({ match, variant }: { match: Match; variant: ScheduleMode }) {
+  function MatchCard({ match, variant }: { match: DisplayMatch; variant: ScheduleMode }) {
     const isPlaceholder = isMatchPlaceholder(match);
     const isUploaded = Boolean(match.syncedAt);
     const isAnnouncement = variant === "announcements";
+    const isSingleAnnouncement = Boolean(match.isSingleTeamAnnouncement);
     const selectionId = getSelectionId(match);
     const isSelected = selectedIds.has(selectionId);
-    const isSelectable = !isUploaded && isUploadableScheduleEntry(match);
+    const isSelectable = !isUploaded && isDisplayEntrySelectable(match);
     const bestOfLabel = getScheduleMatchBestOfLabel(match);
 
     return (
@@ -283,29 +290,35 @@ export default function MatchList({
           </div>
         </div>
 
-        <div className="grid gap-1 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-center sm:gap-4">
-          <div className="min-w-0">
-            <TeamDisplay name={match.teamAName} side="left" />
+        {isSingleAnnouncement ? (
+          <div className="flex min-h-9 items-center justify-center py-1">
+            <TeamDisplay name={match.singleAnnouncementTeamName || match.teamAName} side="center" />
           </div>
+        ) : (
+          <div className="grid gap-1 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-center sm:gap-4">
+            <div className="min-w-0">
+              <TeamDisplay name={match.teamAName} side="left" />
+            </div>
 
-          <div className="flex shrink-0 flex-row items-center gap-2 sm:flex-col sm:gap-0.5">
-            <div className="rounded-full bg-slate-50 border border-slate-100 px-2 py-0 text-[7px] font-bold text-slate-300 uppercase tracking-[0.18em]">против</div>
-            {(match.scoreA != null || match.scoreB != null) && (
-              <div className="text-xl font-bold tabular-nums gradient-text">
-                {match.scoreA ?? "0"} <span className="text-slate-200">:</span> {match.scoreB ?? "0"}
-              </div>
-            )}
-          </div>
+            <div className="flex shrink-0 flex-row items-center gap-2 sm:flex-col sm:gap-0.5">
+              <div className="rounded-full bg-slate-50 border border-slate-100 px-2 py-0 text-[7px] font-bold text-slate-300 uppercase tracking-[0.18em]">против</div>
+              {(match.scoreA != null || match.scoreB != null) && (
+                <div className="text-xl font-bold tabular-nums gradient-text">
+                  {match.scoreA ?? "0"} <span className="text-slate-200">:</span> {match.scoreB ?? "0"}
+                </div>
+              )}
+            </div>
 
-          <div className="min-w-0">
-            <TeamDisplay name={match.teamBName} side="right" />
+            <div className="min-w-0">
+              <TeamDisplay name={match.teamBName} side="right" />
+            </div>
           </div>
-        </div>
+        )}
       </div>
     );
   }
 
-  function TeamDisplay({ name, side }: { name: string | null; side: "left" | "right" }) {
+  function TeamDisplay({ name, side }: { name: string | null; side: "left" | "right" | "center" }) {
     const isGenericTbd = !name || name.toLowerCase() === "tbd";
     const isNumberedTbd = name ? /^tbd\d+$/i.test(name) : false;
     const effectiveName = (isGenericTbd || isNumberedTbd) ? (name || "TBD") : name;
@@ -315,11 +328,11 @@ export default function MatchList({
       || mappings[getTeamAliasKey(effectiveName)];
     const pid = m?.platformId || "";
     return (
-      <div className={`flex flex-col min-w-0 ${side === "left" ? "text-left sm:text-right" : "text-left"}`}>
+      <div className={`flex flex-col min-w-0 ${side === "center" ? "items-center text-center" : side === "left" ? "text-left sm:text-right" : "text-left"}`}>
         <span className="truncate text-[13px] font-bold leading-tight text-slate-900 transition-colors group-hover:text-indigo-600 sm:text-[15px]">
           {effectiveName}
         </span>
-        <div className={`flex items-center gap-1 mt-0.5 ${side === "left" ? "justify-start sm:justify-end" : "justify-start"}`}>
+        <div className={`flex items-center gap-1 mt-0.5 ${side === "center" ? "justify-center" : side === "left" ? "justify-start sm:justify-end" : "justify-start"}`}>
           <span className={`text-[7px] font-black px-1 py-0 rounded-full border ${pid ? "bg-emerald-50 border-emerald-100 text-emerald-700" : "bg-rose-50 border-rose-100 text-rose-600"}`}>
             {pid || "НЕТ ID"}
           </span>
@@ -417,7 +430,7 @@ export default function MatchList({
             <Clock className="w-12 h-12 text-slate-200 mx-auto mb-4" />
             <p className="text-sm font-medium text-slate-400">
               {scheduleMode === "announcements"
-                ? "Анонсов без точного времени нет."
+                ? "Анонсов нет."
                 : hideUploaded && baseMatches.length > 0
                   ? "Все залитые матчи скрыты."
                   : "Нет предстоящих матчей."}
@@ -437,7 +450,7 @@ export default function MatchList({
             {groupedMatches.map((group) => {
               const groupSelected = isGroupSelected(group.matches);
               const groupSelectableCount = group.matches.filter(
-                (match) => !match.syncedAt && isUploadableScheduleEntry(match)
+                (match) => !match.syncedAt && isDisplayEntrySelectable(match)
               ).length;
 
               return (
@@ -468,7 +481,7 @@ export default function MatchList({
                   </div>
                 <div className="grid gap-2">
                   {group.matches.map((match) => (
-                    <MatchCard key={match.matchId || match.id} match={match} variant={scheduleMode} />
+                    <MatchCard key={getSelectionId(match)} match={match} variant={scheduleMode} />
                   ))}
                 </div>
               </section>
@@ -478,7 +491,7 @@ export default function MatchList({
         ) : (
           <div className="grid gap-2">
             {displayMatches.map((match) => (
-              <MatchCard key={match.matchId || match.id} match={match} variant={scheduleMode} />
+              <MatchCard key={getSelectionId(match)} match={match} variant={scheduleMode} />
             ))}
           </div>
         )}

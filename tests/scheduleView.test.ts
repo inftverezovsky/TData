@@ -2,10 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildScheduleFormatGroups,
+  buildTbdAnnouncementSelectionId,
+  expandScheduleAnnouncements,
   isAnnouncementScheduleMatch,
   isGeneratedScheduleMatrixRow,
   isUploadableScheduleEntry,
   isUploadReadyScheduleMatch,
+  parseScheduleSelectionId,
 } from "../src/lib/matches/scheduleView";
 
 test("exact-time matches are upload-ready and not announcements", () => {
@@ -58,6 +61,35 @@ test("exact-time TBD slots are announcements, not upload-ready matches", () => {
   assert.equal(isUploadReadyScheduleMatch(match), false);
   assert.equal(isAnnouncementScheduleMatch(match), true);
   assert.equal(isUploadableScheduleEntry(match), true);
+});
+
+test("exact-time TBD pairs expand into single-team announcement rows", () => {
+  const entries = expandScheduleAnnouncements([
+    {
+      id: "db-row-1",
+      matchId: "source-match-1",
+      matchDate: new Date("2026-06-02T18:55:00.000Z"),
+      matchDateTime: "June 2, 2026 - 21:55 MSK",
+      rawText: "TBD1 vs TBD2 playoff slot",
+      scoreA: null,
+      scoreB: null,
+      teamAName: "TBD1",
+      teamBName: "TBD2",
+      hasPlaceholderTeams: true,
+    },
+  ]);
+
+  assert.deepEqual(entries.map((entry) => entry.singleAnnouncementTeamName), ["TBD1", "TBD2"]);
+  assert.deepEqual(entries.map((entry) => entry.selectionId), [
+    buildTbdAnnouncementSelectionId("source-match-1", "teamA"),
+    buildTbdAnnouncementSelectionId("source-match-1", "teamB"),
+  ]);
+  assert.equal(entries.every((entry) => entry.isSingleTeamAnnouncement), true);
+});
+
+test("schedule selection parser preserves normal and virtual match IDs", () => {
+  assert.deepEqual(parseScheduleSelectionId("match-1"), { matchId: "match-1" });
+  assert.deepEqual(parseScheduleSelectionId("match-1::teamA"), { matchId: "match-1", side: "teamA" });
 });
 
 test("exact-time non-TBD placeholders remain non-uploadable announcements", () => {

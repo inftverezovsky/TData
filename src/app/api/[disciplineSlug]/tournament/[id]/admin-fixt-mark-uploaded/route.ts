@@ -34,13 +34,23 @@ export async function POST(
 
     const buildResult = await buildFixtPayload(id, disciplineSlug, selectedMatchIds);
 
-    if (!buildResult.payload || buildResult.readyMatchIds.length === 0) {
+    if (!buildResult.payload) {
       return NextResponse.json({
         ok: false,
         error: 'Нет готовых матчей для отметки.',
         warnings: buildResult.warnings,
         skippedMatches: buildResult.skippedMatches,
       }, { status: 400 });
+    }
+
+    if (buildResult.readyMatchIds.length === 0) {
+      return NextResponse.json({
+        ok: true,
+        markedMatchesCount: 0,
+        readyMatchesCount: buildResult.readyMatchesCount,
+        warnings: buildResult.warnings,
+        skippedMatches: buildResult.skippedMatches,
+      });
     }
 
     const updateResult = await prisma.tournamentMatch.updateMany({

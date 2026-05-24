@@ -9,6 +9,7 @@ test("phpSerialize serializes scalar values", () => {
   assert.equal(phpSerialize(42), "i:42;");
   assert.equal(phpSerialize(3.14), "d:3.14;");
   assert.equal(phpSerialize("test"), 's:4:"test";');
+  assert.equal(phpSerialize(""), 's:0:"";');
 });
 
 test("phpSerialize uses UTF-8 byte length for strings", () => {

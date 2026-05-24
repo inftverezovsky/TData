@@ -29,6 +29,10 @@ interface PreviewData {
   warnings: string[];
 }
 
+function buildSelectedIdsQuery(selectedMatchIds: string[]) {
+  return selectedMatchIds.map((id) => encodeURIComponent(id)).join(',');
+}
+
 export default function AdminUploadPanel({ 
   tournamentId, 
   disciplineSlug,
@@ -204,7 +208,7 @@ export default function AdminUploadPanel({
   const getJsonUrl = () => {
     const baseUrl = `/${disciplineSlug}/tournament/${tournamentId}/json`;
     if (selectedMatchIds.length > 0) {
-      return `${baseUrl}?ids=${selectedMatchIds.join(',')}`;
+      return `${baseUrl}?ids=${buildSelectedIdsQuery(selectedMatchIds)}`;
     }
     return baseUrl;
   };
@@ -237,7 +241,7 @@ export default function AdminUploadPanel({
     setResult(null);
 
     const baseUrl = `/${disciplineSlug}/tournament/${tournamentId}/json`;
-    const idsQuery = selectedMatchIds.length > 0 ? `?ids=${selectedMatchIds.join(',')}` : '';
+    const idsQuery = selectedMatchIds.length > 0 ? `?ids=${buildSelectedIdsQuery(selectedMatchIds)}` : '';
     const absoluteJsonUrl = `${window.location.origin}${baseUrl}${idsQuery}`;
 
     const fallbackCopyText = (text: string) => {

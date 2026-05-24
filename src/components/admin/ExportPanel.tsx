@@ -6,11 +6,15 @@ interface ExportPanelProps {
   selectedMatchIds?: string[];
 }
 
+function buildSelectedIdsQuery(selectedMatchIds: string[]) {
+  return selectedMatchIds.map((id) => encodeURIComponent(id)).join(',');
+}
+
 export default function ExportPanel({ tournamentId, disciplineSlug, selectedMatchIds = [] }: ExportPanelProps) {
   const getJsonUrl = () => {
     const baseUrl = `/${disciplineSlug}/tournament/${tournamentId}/json`;
     if (selectedMatchIds.length > 0) {
-      return `${baseUrl}?ids=${selectedMatchIds.join(',')}`;
+      return `${baseUrl}?ids=${buildSelectedIdsQuery(selectedMatchIds)}`;
     }
     return baseUrl;
   };
@@ -18,14 +22,14 @@ export default function ExportPanel({ tournamentId, disciplineSlug, selectedMatc
   const getExportUrl = (format: string, type: string = 'matches') => {
     let url = `/api/${disciplineSlug}/tournament/${tournamentId}/export?format=${format}`;
     if (format === 'csv') url += `&type=${type}`;
-    if (selectedMatchIds.length > 0) url += `&ids=${selectedMatchIds.join(',')}`;
+    if (selectedMatchIds.length > 0) url += `&ids=${buildSelectedIdsQuery(selectedMatchIds)}`;
     return url;
   };
 
   const getPhpUrl = () => {
     const baseUrl = `/${disciplineSlug}/tournament/${tournamentId}/php`;
     if (selectedMatchIds.length > 0) {
-      return `${baseUrl}?ids=${selectedMatchIds.join(',')}`;
+      return `${baseUrl}?ids=${buildSelectedIdsQuery(selectedMatchIds)}`;
     }
     return baseUrl;
   };

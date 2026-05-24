@@ -40,8 +40,8 @@ test.describe("FIxt upload integration", () => {
       expect(previewAllJson.skippedMatches).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            matchId: placeholderMatchId,
-            reason: "Missing or unmapped team platform IDs",
+            matchId: `${placeholderMatchId}::teamA`,
+            reason: "Missing or unmapped TBD announcement platform ID",
           }),
         ])
       );
@@ -73,11 +73,48 @@ test.describe("FIxt upload integration", () => {
 
       await expect(await previewTbd.json()).toMatchObject({
         ok: true,
-        readyMatchesCount: 1,
+        readyMatchesCount: 2,
         phpArray: {
-          match: [{ team1: 333, team2: 444 }],
+          match: [
+            { team1: 333, team2: "" },
+            { team1: 444, team2: "" },
+          ],
         },
       });
+
+      const previewTbdSide = await request.post(`/api/${disciplineSlug}/tournament/${tournamentId}/admin-fixt-preview`, {
+        headers: { cookie },
+        data: { selectedMatchIds: [`${placeholderMatchId}::teamA`] },
+      });
+      await expect(previewTbdSide).toBeOK();
+
+      const previewTbdSideJson = await previewTbdSide.json();
+      expect(previewTbdSideJson).toMatchObject({
+        ok: true,
+        readyMatchesCount: 1,
+        phpArray: {
+          match: [{ team1: 333, team2: "" }],
+        },
+      });
+      expect(previewTbdSideJson.serialized).toContain('s:5:"team2";s:0:"";');
+
+      const sendTbdSide = await request.post(`/api/${disciplineSlug}/tournament/${tournamentId}/admin-fixt-send`, {
+        headers: { cookie },
+        data: { selectedMatchIds: [`${placeholderMatchId}::teamA`] },
+      });
+      await expect(sendTbdSide).toBeOK();
+      await expect(await sendTbdSide.json()).toMatchObject({
+        ok: true,
+        status: "success_like",
+        markedMatchesCount: 0,
+        rawResponse: "1",
+      });
+
+      expect(mock.requests).toHaveLength(1);
+      const postedTbdForm = new URLSearchParams(mock.requests[0].body);
+      const serializedTbd = postedTbdForm.get("fixt") || "";
+      expect(serializedTbd).toContain("s:5:\"team1\";i:333");
+      expect(serializedTbd).toContain('s:5:"team2";s:0:"";');
 
       const preview = await request.post(`/api/${disciplineSlug}/tournament/${tournamentId}/admin-fixt-preview`, {
         headers: { cookie },
@@ -110,8 +147,8 @@ test.describe("FIxt upload integration", () => {
         rawResponse: "1",
       });
 
-      expect(mock.requests).toHaveLength(1);
-      const postedForm = new URLSearchParams(mock.requests[0].body);
+      expect(mock.requests).toHaveLength(2);
+      const postedForm = new URLSearchParams(mock.requests[1].body);
       const serialized = postedForm.get("fixt") || "";
       expect(serialized).toContain("s:6:\"shapka\";i:987");
       expect(serialized).toContain("s:5:\"sport\";i:73");
@@ -127,14 +164,14 @@ test.describe("FIxt upload integration", () => {
         ok: false,
         error: "This payload was already sent or is currently being sent. Use force option to override.",
       });
-      expect(mock.requests).toHaveLength(1);
+      expect(mock.requests).toHaveLength(2);
 
       const duplicateWithStringForce = await request.post(`/api/${disciplineSlug}/tournament/${tournamentId}/admin-fixt-send`, {
         headers: { cookie },
         data: { selectedMatchIds: [matchId], force: "false" },
       });
       expect(duplicateWithStringForce.status()).toBe(409);
-      expect(mock.requests).toHaveLength(1);
+      expect(mock.requests).toHaveLength(2);
 
       const syncedMatch = await prisma.tournamentMatch.findUnique({
         where: { matchId },

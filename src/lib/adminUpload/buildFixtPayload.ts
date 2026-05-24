@@ -2,6 +2,11 @@ import { DateTime } from 'luxon';
 import { prisma } from '@/lib/db/db';
 import { dedupeTournamentMatches } from '@/lib/matches/dedupe';
 import { applyDisciplineScheduleLead } from '@/lib/matches/scheduleOffset';
+import {
+  getUploadableTbdAnnouncementSides,
+  parseScheduleSelectionId,
+  type TbdAnnouncementSide,
+} from '@/lib/matches/scheduleView';
 import { resolveExactMatchDate } from '@/lib/matches/time';
 import { isPlaceholderTeam, isTbdPlaceholderTeam } from '@/lib/teams/teams';
 import { buildTeamMappingLookup, findTeamMapping } from '@/lib/teams/mappingLookup';
@@ -10,7 +15,7 @@ import { resolveAdminSettings } from './resolveAdminSettings';
 export interface FixtMatch {
   date: string;
   team1: number;
-  team2: number;
+  team2: number | "";
 }
 
 export interface FixtPayload {
@@ -39,8 +44,27 @@ export async function buildFixtPayload(
     ?.filter((id): id is string => typeof id === 'string')
     .map((id) => id.trim())
     .filter(Boolean);
-  const matchIdFilter = selectedMatchIds && selectedMatchIds.length > 0
-    ? { in: selectedMatchIds }
+
+  const selectedTokens = selectedMatchIds
+    ?.map(parseScheduleSelectionId)
+    .filter((token): token is { matchId: string; side?: TbdAnnouncementSide } => Boolean(token));
+  const hasExplicitSelection = Boolean(selectedTokens && selectedTokens.length > 0);
+  const selectedBaseMatchIds = selectedTokens && selectedTokens.length > 0
+    ? Array.from(new Set(selectedTokens.map((token) => token.matchId)))
+    : undefined;
+  const selectedFullMatchIds = new Set(
+    selectedTokens?.filter((token) => !token.side).map((token) => token.matchId) || []
+  );
+  const selectedSidesByMatchId = new Map<string, Set<TbdAnnouncementSide>>();
+  for (const token of selectedTokens || []) {
+    if (!token.side) continue;
+    const sides = selectedSidesByMatchId.get(token.matchId) || new Set<TbdAnnouncementSide>();
+    sides.add(token.side);
+    selectedSidesByMatchId.set(token.matchId, sides);
+  }
+
+  const matchIdFilter = selectedBaseMatchIds && selectedBaseMatchIds.length > 0
+    ? { in: selectedBaseMatchIds }
     : undefined;
 
   // 1. Fetch settings from Prisma (discipline-specific or global)
@@ -98,12 +122,82 @@ export async function buildFixtPayload(
   for (const match of dedupedMatches) {
     const teamAName = match.teamAName;
     const teamBName = match.teamBName;
+    const selectedSides = selectedSidesByMatchId.get(match.matchId);
+    const selectedFullMatch = !hasExplicitSelection || selectedFullMatchIds.has(match.matchId);
+    const exactMatchDate = resolveExactMatchDate(match);
+    const hasScores = match.scoreA !== null || match.scoreB !== null;
+    const isFinished = match.status?.toLowerCase().includes('finished') || match.status?.toLowerCase().includes('completed');
 
     if (!teamAName || !teamBName) {
       skippedMatches.push({
         matchId: match.matchId,
         reason: 'Missing team names',
         teams: `${teamAName} vs ${teamBName}`,
+      });
+      continue;
+    }
+
+    if (!exactMatchDate) {
+      warnings.push(`Матч ${teamAName} vs ${teamBName} пропущен: нет точного времени.`);
+      skippedMatches.push({
+        matchId: match.matchId,
+        reason: 'Missing exact match time',
+        teams: `${teamAName} vs ${teamBName}`,
+      });
+      continue;
+    }
+
+    if (hasScores || isFinished) {
+      skippedMatches.push({
+        matchId: match.matchId,
+        reason: 'Match already finished (has score or finished status)',
+        teams: `${teamAName} (${match.scoreA ?? 0}:${match.scoreB ?? 0}) ${teamBName}`,
+      });
+      continue;
+    }
+
+    const matchDate = applyDisciplineScheduleLead(exactMatchDate, disciplineSlug);
+    const uploadDate = formatUploadDate(matchDate, settings.timezone, settings.dateFormat);
+    const uploadableTbdSides = getUploadableTbdAnnouncementSides(match);
+    const requestedTbdSides = selectedSides
+      ? uploadableTbdSides.filter((side) => selectedSides.has(side))
+      : selectedFullMatch
+        ? uploadableTbdSides
+        : [];
+
+    if (requestedTbdSides.length > 0) {
+      for (const side of requestedTbdSides) {
+        const teamName = side === 'teamA' ? teamAName : teamBName;
+        const mapping = findTeamMapping(mappingMap, teamName);
+        const platformId = mapping?.platformId || null;
+        const team1 = parsePositiveInteger(platformId);
+        const virtualMatchId = `${match.matchId}::${side}`;
+
+        if (!team1) {
+          warnings.push(`Команда без ID: ${teamName}`);
+          skippedMatches.push({
+            matchId: virtualMatchId,
+            reason: 'Missing or unmapped TBD announcement platform ID',
+            teams: `${teamName} (${platformId || 'N/A'})`,
+          });
+          continue;
+        }
+
+        readyMatches.push({
+          date: uploadDate,
+          team1,
+          team2: "",
+        });
+      }
+      continue;
+    }
+
+    if (selectedSides && selectedSides.size > 0 && !selectedFullMatch) {
+      const unsupportedSides = Array.from(selectedSides).join(', ');
+      skippedMatches.push({
+        matchId: match.matchId,
+        reason: 'Selected TBD announcement side is not upload-ready',
+        teams: `${teamAName} vs ${teamBName} (${unsupportedSides})`,
       });
       continue;
     }
@@ -149,37 +243,6 @@ export async function buildFixtPayload(
       continue;
     }
 
-    const exactMatchDate = resolveExactMatchDate(match);
-    if (!exactMatchDate) {
-      warnings.push(`Матч ${teamAName} vs ${teamBName} пропущен: нет точного времени.`);
-      skippedMatches.push({
-        matchId: match.matchId,
-        reason: 'Missing exact match time',
-        teams: `${teamAName} vs ${teamBName}`,
-      });
-      continue;
-    }
-
-    const matchDate = applyDisciplineScheduleLead(exactMatchDate, disciplineSlug);
-
-    // 2.3 Skip finished matches (with result)
-    const hasScores = match.scoreA !== null || match.scoreB !== null;
-    const isFinished = match.status?.toLowerCase().includes('finished') || match.status?.toLowerCase().includes('completed');
-    
-    if (hasScores || isFinished) {
-      skippedMatches.push({
-        matchId: match.matchId,
-        reason: 'Match already finished (has score or finished status)',
-        teams: `${teamAName} (${match.scoreA ?? 0}:${match.scoreB ?? 0}) ${teamBName}`,
-      });
-      continue;
-    }
-
-    // Format date in Moscow
-    const configuredDate = DateTime.fromJSDate(matchDate).setZone(settings.timezone || 'Europe/Moscow');
-    const uploadDate = (configuredDate.isValid ? configuredDate : DateTime.fromJSDate(matchDate).setZone('Europe/Moscow'))
-      .toFormat(toLuxonDateFormat(settings.dateFormat || 'DD.MM.YYYY HH:mm:ss'));
-
     const team1 = parsePositiveInteger(platformIdA);
     const team2 = parsePositiveInteger(platformIdB);
 
@@ -222,6 +285,12 @@ export async function buildFixtPayload(
     skippedMatches,
     warnings,
   };
+}
+
+function formatUploadDate(matchDate: Date, timezone: string | null | undefined, dateFormat: string | null | undefined) {
+  const configuredDate = DateTime.fromJSDate(matchDate).setZone(timezone || 'Europe/Moscow');
+  return (configuredDate.isValid ? configuredDate : DateTime.fromJSDate(matchDate).setZone('Europe/Moscow'))
+    .toFormat(toLuxonDateFormat(dateFormat || 'DD.MM.YYYY HH:mm:ss'));
 }
 
 function parsePositiveInteger(value: string | number | null | undefined) {

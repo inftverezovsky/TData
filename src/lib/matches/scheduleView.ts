@@ -2,7 +2,11 @@ import { getBestOfLabel } from "@/lib/matches/format";
 import { hasExactMatchTime } from "@/lib/matches/time";
 import { isPlaceholderTeam, isTbdPlaceholderTeam } from "@/lib/teams/teams";
 
+export type TbdAnnouncementSide = "teamA" | "teamB";
+
 export type ScheduleViewMatch = {
+  id?: string;
+  matchId?: string;
   format?: string | null;
   rawText?: string | null;
   matchDate?: Date | string | number | null;
@@ -14,6 +18,16 @@ export type ScheduleViewMatch = {
   teamBName?: string | null;
   hasPlaceholderTeams?: boolean | null;
 };
+
+export type ScheduleAnnouncementEntry<T extends ScheduleViewMatch> = T & {
+  selectionId?: string;
+  sourceMatchId?: string;
+  singleAnnouncementSide?: TbdAnnouncementSide;
+  singleAnnouncementTeamName?: string;
+  isSingleTeamAnnouncement?: boolean;
+};
+
+const TBD_ANNOUNCEMENT_SELECTION_SEPARATOR = "::";
 
 export function isSchedulePlaceholderMatch(match: ScheduleViewMatch) {
   return Boolean(
@@ -60,6 +74,55 @@ export function isAnnouncementScheduleMatch(match: ScheduleViewMatch) {
   if (hasScore(match)) return false;
   if (isSchedulePlaceholderMatch(match)) return true;
   return !hasExactMatchTime(match);
+}
+
+export function buildTbdAnnouncementSelectionId(matchId: string, side: TbdAnnouncementSide) {
+  return `${matchId}${TBD_ANNOUNCEMENT_SELECTION_SEPARATOR}${side}`;
+}
+
+export function parseScheduleSelectionId(selectionId: string): { matchId: string; side?: TbdAnnouncementSide } | null {
+  const trimmed = selectionId.trim();
+  if (!trimmed) return null;
+
+  const match = trimmed.match(/^(.*)::(teamA|teamB)$/);
+  if (!match || !match[1]) return { matchId: trimmed };
+  return { matchId: match[1], side: match[2] as TbdAnnouncementSide };
+}
+
+export function getUploadableTbdAnnouncementSides(match: ScheduleViewMatch): TbdAnnouncementSide[] {
+  if (isGeneratedScheduleMatrixRow(match)) return [];
+  if (hasScore(match)) return [];
+  if (!hasExactMatchTime(match)) return [];
+
+  const sides: TbdAnnouncementSide[] = [];
+  if (isTbdPlaceholderTeam(match.teamAName)) sides.push("teamA");
+  if (isTbdPlaceholderTeam(match.teamBName)) sides.push("teamB");
+  return sides;
+}
+
+export function expandScheduleAnnouncementMatch<T extends ScheduleViewMatch>(
+  match: T
+): ScheduleAnnouncementEntry<T>[] {
+  if (!isAnnouncementScheduleMatch(match)) return [];
+
+  const sides = getUploadableTbdAnnouncementSides(match);
+  if (sides.length === 0) return [match];
+
+  const sourceMatchId = match.matchId || match.id;
+  if (!sourceMatchId) return [match];
+
+  return sides.map((side) => ({
+    ...match,
+    selectionId: buildTbdAnnouncementSelectionId(sourceMatchId, side),
+    sourceMatchId,
+    singleAnnouncementSide: side,
+    singleAnnouncementTeamName: side === "teamA" ? match.teamAName || "TBD" : match.teamBName || "TBD",
+    isSingleTeamAnnouncement: true,
+  }));
+}
+
+export function expandScheduleAnnouncements<T extends ScheduleViewMatch>(matches: T[]) {
+  return matches.flatMap(expandScheduleAnnouncementMatch);
 }
 
 export function getScheduleMatchBestOfLabel(match: ScheduleViewMatch) {
