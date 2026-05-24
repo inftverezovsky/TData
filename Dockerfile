@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/playwright:v1.59.1-noble AS deps
+FROM mcr.microsoft.com/playwright:v1.60.0-noble AS deps
 
 WORKDIR /app
 

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/db";
 import { getLiquipediaDota2ApiUrl, getLiquipediaCounterStrikeApiUrl, getLiquipediaLolApiUrl, getLiquipediaValorantApiUrl } from "@/lib/config/env";
+import { withPrismaConnectionRetry } from "@/lib/db/retry";
 
 export const KNOWN_DISCIPLINE_SLUGS = ["dota2", "counterstrike", "leagueoflegends", "valorant"] as const;
 export type KnownDisciplineSlug = (typeof KNOWN_DISCIPLINE_SLUGS)[number];
@@ -49,20 +50,23 @@ export async function getOrCreateDiscipline(slug: string) {
       baseApiUrl = `https://liquipedia.net/${normalizedSlug}/api.php`;
   }
 
-  return prisma.discipline.upsert({
-    where: { slug: normalizedSlug },
-    update: {
-      name,
-      baseApiUrl,
-      isEnabled: true
-    },
-    create: {
-      slug: normalizedSlug,
-      name,
-      baseApiUrl,
-      isEnabled: true
-    }
-  });
+  return withPrismaConnectionRetry(
+    () => prisma.discipline.upsert({
+      where: { slug: normalizedSlug },
+      update: {
+        name,
+        baseApiUrl,
+        isEnabled: true
+      },
+      create: {
+        slug: normalizedSlug,
+        name,
+        baseApiUrl,
+        isEnabled: true
+      }
+    }),
+    { label: `discipline.upsert(${normalizedSlug})` },
+  );
 }
 
 export async function getOrCreateDota2Discipline() {

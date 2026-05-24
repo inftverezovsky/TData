@@ -24,7 +24,7 @@ $sshOptions = @(
   "-o", "StrictHostKeyChecking=accept-new"
 )
 
-$remoteCommand = @"
+$remoteScript = @"
 set -eu
 cd "$RemoteDir"
 echo "=== REMOTE DISK SPACE ==="
@@ -32,17 +32,16 @@ df -h /
 echo "=== PULLING IMAGE ==="
 docker compose pull "$Service"
 echo "=== RECREATING SERVICE ==="
-docker compose up -d --force-recreate "$Service"
+docker compose up -d --no-deps --force-recreate "$Service"
 echo "=== SERVICE STATUS ==="
 docker compose ps "$Service"
 echo "=== SERVICE IMAGE ==="
 cid=`$(docker compose ps -q "$Service")
 docker inspect --format='{{.Image}}' "`$cid"
 "@
-$remoteCommand = $remoteCommand -replace "`r?`n", "; "
 
 Write-Host "==> Connecting to $sshTarget with key auth..." -ForegroundColor Yellow
-ssh @sshOptions $sshTarget $remoteCommand
+$remoteScript | ssh @sshOptions $sshTarget "bash -s"
 
 if ($LASTEXITCODE -ne 0) {
   Write-Error "Remote SSH deployment failed."
