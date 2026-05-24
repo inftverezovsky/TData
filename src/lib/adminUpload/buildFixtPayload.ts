@@ -11,7 +11,7 @@ import {
 import { resolveExactMatchDate } from '@/lib/matches/time';
 import { isPlaceholderTeam, isTbdPlaceholderTeam } from '@/lib/teams/teams';
 import { buildTeamMappingLookup, findTeamMapping } from '@/lib/teams/mappingLookup';
-import { detectTournamentSource, supportsStageAnnouncements } from '@/lib/utils/tournamentSource';
+import { detectTournamentSource } from '@/lib/utils/tournamentSource';
 import { resolveAdminSettings } from './resolveAdminSettings';
 
 export interface FixtMatch {
@@ -161,10 +161,8 @@ export async function buildFixtPayload(
 
     const matchDate = applyDisciplineScheduleLead(exactMatchDate, disciplineSlug);
     const uploadDate = formatUploadDate(matchDate, settings.timezone, settings.dateFormat);
-    const isStageAnnouncementSlot =
-      supportsStageAnnouncements(source) &&
-      isPlaceholderTeam(teamAName) &&
-      isPlaceholderTeam(teamBName);
+    const uploadableTbdSides = getUploadableTbdAnnouncementSides(match, { disciplineSlug, source });
+    const isStageAnnouncementSlot = uploadableTbdSides.includes('stage');
     if (isStageAnnouncementSlot) {
       const requestedStageAnnouncement =
         !hasExplicitSelection ||
@@ -204,7 +202,6 @@ export async function buildFixtPayload(
       continue;
     }
 
-    const uploadableTbdSides = getUploadableTbdAnnouncementSides(match, { disciplineSlug, source });
     const requestedTbdSides = selectedSides
       ? uploadableTbdSides.filter((side) => selectedSides.has(side))
       : selectedFullMatch
