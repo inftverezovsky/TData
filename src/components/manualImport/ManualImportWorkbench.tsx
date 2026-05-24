@@ -138,6 +138,7 @@ export default function ManualImportWorkbench() {
   const [mappingSaving, setMappingSaving] = useState(false);
   const [mappingConflicts, setMappingConflicts] = useState<ManualMappingConflict[]>([]);
   const [mappingSaveSummary, setMappingSaveSummary] = useState<ManualMappingSaveSummary | null>(null);
+  const [lastServiceJsonUrl, setLastServiceJsonUrl] = useState("");
 
   const [teamImportMode, setTeamImportMode] = useState<"file" | "url">("file");
   const [teamFile, setTeamFile] = useState<File | null>(null);
@@ -191,6 +192,7 @@ export default function ManualImportWorkbench() {
     setPreview(null);
     setMappingConflicts([]);
     setMappingSaveSummary(null);
+    setLastServiceJsonUrl("");
     setMessage(null);
   }
 
@@ -784,6 +786,7 @@ export default function ManualImportWorkbench() {
 
     setSending(true);
     setMessage(null);
+    setLastServiceJsonUrl("");
 
     try {
       const response = await fetch("/api/manual-import/service-link", {
@@ -796,11 +799,18 @@ export default function ManualImportWorkbench() {
         throw new Error(data.error || "Не удалось создать ссылку для сервиса");
       }
 
-      await copyToClipboard(data.jsonUrl);
+      const jsonUrl = typeof data.jsonUrl === "string" ? data.jsonUrl : "";
+      if (!jsonUrl) throw new Error("Сервис не вернул JSON-ссылку.");
+
+      setLastServiceJsonUrl(jsonUrl);
+      const copied = await copyToClipboard(jsonUrl);
       openedWindow.location.href = data.serviceUrl;
       setMessage({
-        type: "success",
-        text: `Сервис открыт, JSON-ссылка скопирована. Выбрано матчей: ${selectedMatches.length}.`,
+        type: copied ? "success" : "info",
+        text: copied
+          ? `Сервис открыт, JSON-ссылка скопирована. Выбрано матчей: ${selectedMatches.length}.`
+          : "Сервис открыт, но браузер запретил автокопирование. Скопируйте JSON-ссылку из поля ниже.",
+        raw: copied ? undefined : jsonUrl,
       });
     } catch (error) {
       if (!openedWindow.closed) openedWindow.close();
@@ -826,6 +836,7 @@ export default function ManualImportWorkbench() {
     setPreview(null);
     setMappingConflicts([]);
     setMappingSaveSummary(null);
+    setLastServiceJsonUrl("");
   }
 
   function updateMatch(index: number, field: keyof ManualMatch, value: string) {
@@ -833,6 +844,7 @@ export default function ManualImportWorkbench() {
     setPreview(null);
     setMappingConflicts([]);
     setMappingSaveSummary(null);
+    setLastServiceJsonUrl("");
   }
 
   function removeMatch(index: number) {
@@ -849,6 +861,7 @@ export default function ManualImportWorkbench() {
     setPreview(null);
     setMappingConflicts([]);
     setMappingSaveSummary(null);
+    setLastServiceJsonUrl("");
   }
 
   function toggleMatchSelection(index: number) {
@@ -862,6 +875,7 @@ export default function ManualImportWorkbench() {
       return next;
     });
     setPreview(null);
+    setLastServiceJsonUrl("");
   }
 
   function toggleAllMatchesSelection() {
@@ -869,6 +883,7 @@ export default function ManualImportWorkbench() {
       current.size === matches.length ? new Set() : createAllSelectedIndexes(matches.length)
     );
     setPreview(null);
+    setLastServiceJsonUrl("");
   }
 
   const visibleRecognitionStages = getVisibleRecognitionStages(recognitionStage, recognitionStepDetails);
@@ -893,6 +908,7 @@ export default function ManualImportWorkbench() {
                 setPreview(null);
                 setMappingConflicts([]);
                 setMappingSaveSummary(null);
+                setLastServiceJsonUrl("");
               }}
               inputMode="numeric"
               placeholder="73"
@@ -906,6 +922,7 @@ export default function ManualImportWorkbench() {
               onChange={(event) => {
                 setShapkaId(event.target.value.replace(/[^\d]/g, ""));
                 setPreview(null);
+                setLastServiceJsonUrl("");
               }}
               inputMode="numeric"
               placeholder="12345"
@@ -1246,6 +1263,38 @@ export default function ManualImportWorkbench() {
             )}
           </div>
 
+          {lastServiceJsonUrl && (
+            <div className="mt-5 rounded-xl border border-emerald-400/20 bg-emerald-400/10 p-3">
+              <div className="mb-2 text-[9px] font-black uppercase tracking-widest text-emerald-200">
+                JSON-ссылка для сервиса
+              </div>
+              <div className="flex gap-2">
+                <input
+                  readOnly
+                  value={lastServiceJsonUrl}
+                  onFocus={(event) => event.currentTarget.select()}
+                  className="min-w-0 flex-1 rounded-lg border border-white/10 bg-slate-900/70 px-3 py-2 text-[11px] font-bold text-white outline-none"
+                />
+                <button
+                  onClick={async () => {
+                    const copied = await copyToClipboard(lastServiceJsonUrl);
+                    setMessage({
+                      type: copied ? "success" : "info",
+                      text: copied
+                        ? "JSON-ссылка скопирована."
+                        : "Не удалось скопировать автоматически. Выделите ссылку в поле и скопируйте вручную.",
+                      raw: copied ? undefined : lastServiceJsonUrl,
+                    });
+                  }}
+                  className="flex h-10 items-center justify-center gap-2 rounded-lg bg-white px-3 text-[10px] font-black uppercase tracking-widest text-slate-950 transition hover:bg-emerald-50"
+                >
+                  <Clipboard className="h-3 w-3" />
+                  Копировать
+                </button>
+              </div>
+            </div>
+          )}
+
           {preview?.phpArray && (
             <div className="mt-5 space-y-3">
               <div className="flex gap-2">
@@ -1514,7 +1563,7 @@ function getParseSourceLabel(source?: string) {
 
 async function copyToClipboard(value: string) {
   try {
-    if (navigator.clipboard?.writeText) {
+    if (window.isSecureContext && navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(value);
       return true;
     }
@@ -1524,17 +1573,22 @@ async function copyToClipboard(value: string) {
 
   const textarea = document.createElement("textarea");
   textarea.value = value;
+  textarea.readOnly = true;
   textarea.style.position = "fixed";
+  textarea.style.top = "-1000px";
+  textarea.style.left = "-1000px";
   textarea.style.opacity = "0";
+  const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   document.body.appendChild(textarea);
-  textarea.focus();
-  textarea.select();
   try {
-    document.execCommand("copy");
+    textarea.focus({ preventScroll: true });
+    textarea.select();
+    textarea.setSelectionRange(0, value.length);
+    return document.execCommand("copy");
   } finally {
     document.body.removeChild(textarea);
+    activeElement?.focus({ preventScroll: true });
   }
-  return true;
 }
 
 function mergeMatchesWithMappedIds(matches: ManualMatch[], mappedMatches: MappedMatch[]) {

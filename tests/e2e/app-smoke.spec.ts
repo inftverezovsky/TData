@@ -371,6 +371,8 @@ test("manual import service upload sends only selected matches and opens popup",
   await popupPromise;
 
   await expect.poll(() => serviceRequestBody?.matches?.length).toBe(1);
+  await expect(page.getByText("JSON-ссылка для сервиса")).toBeVisible();
+  await expect(page.locator('input[readonly][value="http://localhost/api/manual-import/json/test-token"]')).toBeVisible();
   expect(serviceRequestBody.matches[0].team1).toBe("Team Alpha");
   expect(serviceRequestBody.matches[0].team2).toBe("Team Beta");
 });
