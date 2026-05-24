@@ -21,6 +21,14 @@ test("Liquipedia search builds year-aware page path variations", () => {
   assert.ok(buildLiquipediaSearchVariations("Source League 2026 Spring Promotion", 2026).includes("Source League/2026/Spring/Promotion"));
 });
 
+test("Liquipedia search treats roman tournament numbers as numeric path numbers", () => {
+  const variations = buildLiquipediaSearchVariations("BLAST Slam VII", 2026);
+
+  assert.ok(variations.includes("BLAST Slam 7"));
+  assert.ok(variations.includes("BLAST/Slam/7"));
+  assert.equal(isLiquipediaSearchTitleRelevant("BLAST Slam VII", "BLAST/Slam/7"), true);
+});
+
 test("Liquipedia search title relevance rejects unrelated MediaWiki matches", () => {
   assert.equal(isLiquipediaSearchTitleRelevant("Dream L", "DreamLeague/29"), true);
   assert.equal(isLiquipediaSearchTitleRelevant("Dream L", "The International/2014"), false);

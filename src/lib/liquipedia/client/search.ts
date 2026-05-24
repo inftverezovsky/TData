@@ -350,10 +350,18 @@ export function getCachedSearchPageMetadata(disciplineSlug: string, title: strin
 export function buildLiquipediaSearchVariations(query: string, currentYear = new Date().getFullYear()) {
   const cleanQuery = query.trim().replace(/\s+/g, " ");
   const variations = new Set<string>([cleanQuery]);
+  const numericQuery = replaceRomanNumeralsWithArabic(cleanQuery);
+  if (numericQuery !== cleanQuery) {
+    variations.add(numericQuery);
+  }
 
   if (cleanQuery.includes(" ")) {
     variations.add(cleanQuery.replace(/ /g, "/"));
     variations.add(cleanQuery.replace(/\s+/g, ""));
+  }
+  if (numericQuery !== cleanQuery && numericQuery.includes(" ")) {
+    variations.add(numericQuery.replace(/ /g, "/"));
+    variations.add(numericQuery.replace(/\s+/g, ""));
   }
 
   addYearPathVariations(cleanQuery, variations);
@@ -469,12 +477,51 @@ export function getMeaningfulSearchTokens(query: string, options: { includeYears
 }
 
 export function normalizeSearchText(value: string) {
-  return value
+  return replaceRomanNumeralsWithArabic(value)
     .toLowerCase()
     .replace(/&/g, " and ")
     .replace(/[^a-z0-9]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function replaceRomanNumeralsWithArabic(value: string) {
+  const romanToArabic: Record<string, string> = {
+    i: "1",
+    ii: "2",
+    iii: "3",
+    iv: "4",
+    v: "5",
+    vi: "6",
+    vii: "7",
+    viii: "8",
+    ix: "9",
+    x: "10",
+    xi: "11",
+    xii: "12",
+    xiii: "13",
+    xiv: "14",
+    xv: "15",
+    xvi: "16",
+    xvii: "17",
+    xviii: "18",
+    xix: "19",
+    xx: "20",
+    xxi: "21",
+    xxii: "22",
+    xxiii: "23",
+    xxiv: "24",
+    xxv: "25",
+    xxvi: "26",
+    xxvii: "27",
+    xxviii: "28",
+    xxix: "29",
+    xxx: "30",
+  };
+
+  return value.replace(/\b(?:I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII|XIII|XIV|XV|XVI|XVII|XVIII|XIX|XX|XXI|XXII|XXIII|XXIV|XXV|XXVI|XXVII|XXVIII|XXIX|XXX)\b/gi, (match) => {
+    return romanToArabic[match.toLowerCase()] || match;
+  });
 }
 
 export function queryHasExplicitYear(query: string) {
