@@ -34,14 +34,16 @@ export function isGeneratedScheduleMatrixRow(match: ScheduleViewMatch) {
 
 export function isUploadReadyScheduleMatch(match: ScheduleViewMatch) {
   if (isGeneratedScheduleMatrixRow(match)) return false;
+  if (isSchedulePlaceholderMatch(match)) return false;
   if (!hasExactMatchTime(match)) return false;
   return !hasScore(match);
 }
 
 export function isAnnouncementScheduleMatch(match: ScheduleViewMatch) {
   if (isGeneratedScheduleMatrixRow(match)) return false;
-  if (hasExactMatchTime(match)) return false;
-  return !hasScore(match);
+  if (hasScore(match)) return false;
+  if (isSchedulePlaceholderMatch(match)) return true;
+  return !hasExactMatchTime(match);
 }
 
 export function getScheduleMatchBestOfLabel(match: ScheduleViewMatch) {

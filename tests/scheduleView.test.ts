@@ -39,6 +39,23 @@ test("date-only schedule rows are announcements, not upload-ready matches", () =
   assert.equal(isAnnouncementScheduleMatch(match), true);
 });
 
+test("exact-time TBD slots are announcements, not upload-ready matches", () => {
+  const match = {
+    id: "announcement-tbd",
+    matchDate: new Date("2026-06-02T18:55:00.000Z"),
+    matchDateTime: "June 2, 2026 - 21:55 MSK",
+    rawText: "TBD vs TBD playoff slot",
+    scoreA: null,
+    scoreB: null,
+    teamAName: "TBD1",
+    teamBName: "TBD2",
+    hasPlaceholderTeams: true,
+  };
+
+  assert.equal(isUploadReadyScheduleMatch(match), false);
+  assert.equal(isAnnouncementScheduleMatch(match), true);
+});
+
 test("generated crosstable matrix rows are hidden from both schedule modes", () => {
   const match = {
     id: "matrix-1",
