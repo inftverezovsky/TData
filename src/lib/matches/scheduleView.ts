@@ -131,6 +131,7 @@ export function expandScheduleAnnouncementMatch<T extends ScheduleViewMatch>(
 ): ScheduleAnnouncementEntry<T>[] {
   if (!isAnnouncementScheduleMatch(match)) return [];
   if (isStageSlotAnnouncement(match, options)) {
+    const stageLabel = getExplicitStageSlotAnnouncementLabel(match) || getStageSlotAnnouncementLabel(match);
     const sourceMatchId = match.matchId || match.id;
     const selectionId = sourceMatchId
       ? buildTbdAnnouncementSelectionId(sourceMatchId, "stage")
@@ -140,7 +141,7 @@ export function expandScheduleAnnouncementMatch<T extends ScheduleViewMatch>(
       selectionId,
       sourceMatchId,
       singleAnnouncementSide: "stage",
-      singleAnnouncementTeamName: getStageSlotAnnouncementLabel(match),
+      singleAnnouncementTeamName: stageLabel,
       isSingleTeamAnnouncement: true,
       isStageAnnouncement: true,
     }];
@@ -215,14 +216,17 @@ function isStageSlotAnnouncement(match: ScheduleViewMatch, options: ScheduleView
   if (!supportsStageAnnouncements(options.source)) return false;
   const teamA = getScheduleTeamState(match.teamAName);
   const teamB = getScheduleTeamState(match.teamBName);
-  return teamA.placeholder && teamB.placeholder;
+  return teamA.placeholder && teamB.placeholder && Boolean(getExplicitStageSlotAnnouncementLabel(match));
 }
 
 export function getStageSlotAnnouncementLabel(match: ScheduleViewMatch) {
+  return getExplicitStageSlotAnnouncementLabel(match) || "Group Stage";
+}
+
+function getExplicitStageSlotAnnouncementLabel(match: ScheduleViewMatch) {
   return normalizeStageSlotLabel(match.round)
     || normalizeStageSlotLabel(match.stage)
-    || normalizeStageSlotLabel(match.rawText)
-    || "Group Stage";
+    || normalizeStageSlotLabel(match.rawText);
 }
 
 function normalizeStageSlotLabel(value: string | null | undefined) {

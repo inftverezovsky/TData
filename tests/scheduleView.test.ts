@@ -258,6 +258,31 @@ test("source-less TBD-vs-TBD slots keep numbered TBD announcements", () => {
   assert.deepEqual(entries.map((entry) => entry.singleAnnouncementTeamName), ["TBD1", "TBD2"]);
 });
 
+test("sourced TBD-vs-TBD slots without explicit stage keep numbered TBD announcements", () => {
+  const entries = expandScheduleAnnouncementsForDiscipline([
+    {
+      id: "liquipedia-placeholder-row",
+      matchId: "liquipedia-placeholder-1",
+      matchDate: new Date("2026-05-30T12:00:00.000Z"),
+      matchDateTime: "May 30, 2026 - 14:00 CEST",
+      rawText: "{{Match|opponent1={{LiteralOpponent|#8}}|opponent2={{LiteralOpponent|#9}}|date=May 30, 2026 - 14:00 CEST}}",
+      scoreA: null,
+      scoreB: null,
+      teamAName: "TBD1",
+      teamBName: "TBD2",
+      hasPlaceholderTeams: true,
+    },
+  ], "dota2", "liquipedia");
+
+  assert.equal(entries.length, 2);
+  assert.deepEqual(entries.map((entry) => entry.singleAnnouncementTeamName), ["TBD1", "TBD2"]);
+  assert.deepEqual(entries.map((entry) => entry.selectionId), [
+    buildTbdAnnouncementSelectionId("liquipedia-placeholder-1", "teamA"),
+    buildTbdAnnouncementSelectionId("liquipedia-placeholder-1", "teamB"),
+  ]);
+  assert.equal(entries.some((entry) => entry.isStageAnnouncement), false);
+});
+
 test("Team-vs-TBD stays an uploadable normal match for stage-supporting sources", () => {
   const match = {
     id: "dota-known-tbd",
