@@ -338,8 +338,14 @@ async function scrapeHltv() {
     } else if (MODE === 'events') {
       console.error('[HLTV Playwright] Scraping Ongoing and Upcoming Events...');
       await gotoHltvPage(page, 'https://www.hltv.org/events', 'events');
-      
-      await page.waitForSelector('.ongoing-events-holder, .events-holder', { timeout: 15000 });
+
+      await page.waitForFunction(() => {
+        const eventItems = document.querySelectorAll('.ongoing-event, .small-event, .big-event');
+        if (eventItems.length > 0) return true;
+
+        return Array.from(document.querySelectorAll('.ongoing-events-holder, .events-holder'))
+          .some((el) => (el.textContent || '').replace(/\s+/g, ' ').trim().length > 20);
+      }, { timeout: 15000 });
 
       const events = await page.evaluate(() => {
         const results = [];

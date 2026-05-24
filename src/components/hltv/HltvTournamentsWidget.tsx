@@ -23,7 +23,7 @@ export default function HltvTournamentsWidget({ disciplineSlug }: { disciplineSl
   const [tournaments, setTournaments] = useState<HltvTournament[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [health, setHealth] = useState<{ status: 'online' | 'error' | 'loading', isCloudflare?: boolean }>({ status: 'loading' });
+  const [health, setHealth] = useState<{ status: 'online' | 'error' | 'loading', errorClass?: string | null }>({ status: 'loading' });
   const [hasLoaded, setHasLoaded] = useState(false);
   const [showUpcoming, setShowUpcoming] = useState(false);
 
@@ -42,7 +42,12 @@ export default function HltvTournamentsWidget({ disciplineSlug }: { disciplineSl
       }
       const res = await fetch(`/api/${providerSlug}/hltv/events?${queryParams.toString()}`);
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Failed to fetch");
+      if (!res.ok) {
+        const errorClass = data.errorClass || "unknown";
+        setError(getHltvEventsErrorMessage(errorClass));
+        setHealth({ status: 'error', errorClass });
+        return;
+      }
       
       if (data.ok && data.events) {
         setTournaments(data.events);
@@ -50,7 +55,7 @@ export default function HltvTournamentsWidget({ disciplineSlug }: { disciplineSl
       }
     } catch (err: any) {
       setError("Не удалось загрузить HLTV турниры");
-      setHealth({ status: 'error', isCloudflare: err.message.includes("403") || err.message.includes("Cloudflare") });
+      setHealth({ status: 'error', errorClass: err.message?.includes("403") || err.message?.includes("Cloudflare") ? "cloudflare_block" : "network_error" });
     } finally {
       setLoading(false);
       setHasLoaded(true);
@@ -78,9 +83,11 @@ export default function HltvTournamentsWidget({ disciplineSlug }: { disciplineSl
                 <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">Прокси Активен</span>
               </div>
             ) : (
-              <div className="flex items-center gap-1.5" title={health.isCloudflare ? "Blocked by Cloudflare" : "Proxy Error"}>
+              <div className="flex items-center gap-1.5" title={getHltvHealthTitle(health.errorClass)}>
                 <div className="h-1.5 w-1.5 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.5)]" />
-                <span className="text-[9px] font-black text-rose-600 uppercase tracking-widest">Прокси Заблокирован</span>
+                <span className="text-[9px] font-black text-rose-600 uppercase tracking-widest">
+                  {getHltvHealthLabel(health.errorClass)}
+                </span>
               </div>
             )}
           </div>
@@ -171,6 +178,28 @@ export default function HltvTournamentsWidget({ disciplineSlug }: { disciplineSl
       </div>
     </aside>
   );
+}
+
+function getHltvHealthLabel(errorClass?: string | null) {
+  if (errorClass === "cloudflare_block" || errorClass === "rate_limited") return "HLTV заблокировал";
+  if (errorClass === "proxy_tunnel" || errorClass === "proxy_missing" || errorClass === "network_error") return "Прокси недоступен";
+  if (errorClass === "selector_changed" || errorClass === "parse_failed") return "Парсер HLTV";
+  return "HLTV ошибка";
+}
+
+function getHltvHealthTitle(errorClass?: string | null) {
+  if (errorClass === "selector_changed") return "HLTV changed page markup";
+  if (errorClass === "parse_failed") return "HLTV parser failed";
+  if (errorClass === "proxy_tunnel" || errorClass === "proxy_missing" || errorClass === "network_error") return "Proxy/network error";
+  if (errorClass === "cloudflare_block" || errorClass === "rate_limited") return "Blocked or rate limited by HLTV";
+  return "HLTV error";
+}
+
+function getHltvEventsErrorMessage(errorClass?: string | null) {
+  if (errorClass === "selector_changed") return "HLTV изменил блок турниров. Обновите список или используйте ручной импорт.";
+  if (errorClass === "cloudflare_block" || errorClass === "rate_limited") return "HLTV ограничил доступ через текущий прокси.";
+  if (errorClass === "proxy_tunnel" || errorClass === "proxy_missing" || errorClass === "network_error") return "Прокси не смог открыть HLTV.";
+  return "Не удалось загрузить HLTV турниры";
 }
 
 function TournamentRow({ 
