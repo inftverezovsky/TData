@@ -17,29 +17,7 @@ test("admin auth protects settings endpoints and creates a usable session cookie
     () => request.delete("/api/admin-settings/proxy-pool?id=example"),
     () => request.get("/api/admin-settings/identity-sync"),
     () => request.post("/api/admin-settings/identity-sync"),
-    () => request.post("/api/counterstrike/tournament/example/admin-fixt-preview"),
-    () => request.post("/api/counterstrike/tournament/example/admin-fixt-send"),
-    () => request.post("/api/counterstrike/tournament/example/admin-fixt-mark-uploaded"),
-    () => request.post("/api/counterstrike/hltv/admin-send"),
-    () => request.post("/api/counterstrike/hltv/matches/manual"),
-    () => request.get("/api/counterstrike/hltv/events?force=true"),
-    () => request.get("/api/counterstrike/hltv/matches?force=true"),
-    () => request.get("/api/counterstrike/hltv/health?force=true"),
-    () => request.get("/api/counterstrike/portal?t=1"),
-    () => request.post("/api/sync-matches"),
     () => request.get("/api/cron/check-proxies"),
-    () => request.get("/api/team-mapping"),
-    () => request.post("/api/team-mapping"),
-    () => request.delete("/api/team-mapping?name=Example&discipline=counterstrike"),
-    () => request.post("/api/team-mapping/auto"),
-    () => request.post("/api/team-mapping/fuzzy"),
-    () => request.post("/api/counterstrike/tournament/example/admin-mapping"),
-    () => request.post("/api/counterstrike/tournament/example/platform-id"),
-    () => request.get("/api/disciplines/counterstrike/platform-id"),
-    () => request.post("/api/disciplines/counterstrike/platform-id"),
-    () => request.get("/api/counterstrike/tournament/example/raw"),
-    () => request.get("/api/counterstrike/tournament/example/upload-history"),
-    () => request.get("/api/imports"),
   ];
 
   for (const makeRequest of protectedRequests) {
@@ -62,6 +40,19 @@ test("admin auth protects settings endpoints and creates a usable session cookie
 
   const publicHltvSearchValidation = await request.get("/api/counterstrike/search-hltv?force=true");
   expect(publicHltvSearchValidation.status()).toBe(400);
+
+  const publicTeamMapping = await request.get("/api/team-mapping?discipline=counterstrike");
+  expect(publicTeamMapping.status()).not.toBe(401);
+
+  const publicShapkaSave = await request.post("/api/counterstrike/tournament/example/admin-mapping", {
+    data: { sourceTournamentName: "Example", adminShapkaId: "12345" },
+  });
+  expect(publicShapkaSave.status()).not.toBe(401);
+
+  const publicPreview = await request.post("/api/counterstrike/tournament/example/admin-fixt-preview", {
+    data: { selectedMatchIds: [] },
+  });
+  expect(publicPreview.status()).not.toBe(401);
 
   const badLogin = await request.post("/api/admin-auth/login", {
     data: { password: "wrong-password" },

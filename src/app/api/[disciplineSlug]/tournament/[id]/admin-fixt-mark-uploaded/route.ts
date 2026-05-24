@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { requireAdmin } from '@/lib/auth/adminAuth';
 import { prisma } from '@/lib/db/db';
 import { buildFixtPayload } from '@/lib/adminUpload/buildFixtPayload';
 
@@ -10,9 +9,6 @@ export async function POST(
   const { disciplineSlug, id } = await params;
 
   try {
-    const unauthorized = await requireAdmin(request);
-    if (unauthorized) return unauthorized;
-
     const body = await request.json();
     if (body.confirmed !== true) {
       return NextResponse.json({

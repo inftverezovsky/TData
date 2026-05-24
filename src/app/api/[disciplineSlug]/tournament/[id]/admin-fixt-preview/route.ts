@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { buildFixtPayload } from '@/lib/adminUpload/buildFixtPayload';
 import { phpSerialize } from '@/lib/adminUpload/phpSerialize';
-import { requireAdmin } from '@/lib/auth/adminAuth';
 
 export async function POST(
   request: Request,
@@ -9,9 +8,6 @@ export async function POST(
 ) {
   const { disciplineSlug: routeDisciplineSlug, id } = await params;
   try {
-    const unauthorized = await requireAdmin(request);
-    if (unauthorized) return unauthorized;
-
     const body = await request.json();
     const disciplineSlug = routeDisciplineSlug;
     const selectedMatchIds = body.selectedMatchIds;

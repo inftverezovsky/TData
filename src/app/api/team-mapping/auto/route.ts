@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth/adminAuth";
 import {
   applyAutoMappingForDiscipline,
   buildAutoMappingPreviewForDiscipline,
@@ -11,9 +10,6 @@ import { queueIdentitySync } from "@/lib/sync/identitySync";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
-
   const body = await request.json();
   const { disciplineSlug, liquipediaName, teamNames, apply, selectedMappings, replaceConflicts } = body as {
     disciplineSlug: string;

@@ -2,7 +2,6 @@ import { createHash } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/db';
-import { requireAdmin } from '@/lib/auth/adminAuth';
 import { buildFixtPayload } from '@/lib/adminUpload/buildFixtPayload';
 import { phpSerialize } from '@/lib/adminUpload/phpSerialize';
 import { resolveAdminSettings } from '@/lib/adminUpload/resolveAdminSettings';
@@ -14,9 +13,6 @@ export async function POST(
 ) {
   const { disciplineSlug: routeDisciplineSlug, id } = await params;
   try {
-    const unauthorized = await requireAdmin(request);
-    if (unauthorized) return unauthorized;
-
     const body = await request.json();
     const disciplineSlug = routeDisciplineSlug;
     const selectedMatchIds = Array.isArray(body.selectedMatchIds)

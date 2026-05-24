@@ -1,16 +1,12 @@
 import { NextResponse } from 'next/server';
-import { requireAdmin } from '@/lib/auth/adminAuth';
 import { prisma } from '@/lib/db/db';
 
 export async function GET(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ disciplineSlug: string; id: string }> }
 ) {
   const { disciplineSlug, id } = await params;
   try {
-    const unauthorized = await requireAdmin(request);
-    if (unauthorized) return unauthorized;
-
     const logs = await prisma.adminUploadLog.findMany({
       where: {
         disciplineSlug,

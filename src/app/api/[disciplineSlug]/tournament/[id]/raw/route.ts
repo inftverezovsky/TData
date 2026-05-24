@@ -1,15 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/db";
-import { requireAdmin } from "@/lib/auth/adminAuth";
 
 export async function GET(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ disciplineSlug: string; id: string }> }
 ) {
   const { disciplineSlug, id } = await params;
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
-
   const tournament = await prisma.tournament.findFirst({
     where: {
       id,

@@ -1,19 +1,15 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth/adminAuth";
 import { prisma } from "@/lib/db/db";
 import { getOrCreateDiscipline } from "@/lib/config/disciplines";
 import { queueIdentitySync } from "@/lib/sync/identitySync";
 
 export async function GET(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ disciplineSlug: string }> }
 ) {
   const { disciplineSlug } = await params;
   const slug = disciplineSlug.trim().toLowerCase();
   try {
-    const unauthorized = await requireAdmin(request);
-    if (unauthorized) return unauthorized;
-
     const discipline = await getOrCreateDiscipline(slug);
     return NextResponse.json({ platformId: discipline.platformId || "" });
   } catch (error) {
@@ -28,9 +24,6 @@ export async function POST(
   const { disciplineSlug } = await params;
   const slug = disciplineSlug.trim().toLowerCase();
   try {
-    const unauthorized = await requireAdmin(request);
-    if (unauthorized) return unauthorized;
-
     const { platformId } = await request.json();
     const discipline = await getOrCreateDiscipline(slug);
     
