@@ -1,9 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { resolveManualTeamPlatformId } from "../src/lib/manualImport/buildManualFixtPayload";
+import { resolveManualTeamPlatformId, resolveManualTeamPlatformIdWithSource } from "../src/lib/manualImport/buildManualFixtPayload";
 import {
   buildManualImportTeamMappingSavePlan,
   collectManualImportTeamMappingCandidates,
+  collectSingleManualImportTeamMappingCandidate,
   normalizeAdminSportId,
 } from "../src/lib/manualImport/teamMappings";
 
@@ -30,6 +31,16 @@ test("resolveManualTeamPlatformId keeps explicit row ID as highest priority", ()
   );
 });
 
+test("resolveManualTeamPlatformIdWithSource marks saved manual mappings", () => {
+  assert.deepEqual(
+    resolveManualTeamPlatformIdWithSource({
+      manualMappingPlatformId: "73001",
+      teamMappingPlatformId: "10001",
+    }),
+    { platformId: "73001", source: "manual" }
+  );
+});
+
 test("collectManualImportTeamMappingCandidates extracts valid current table IDs and skips placeholders", () => {
   const result = collectManualImportTeamMappingCandidates([
     {
@@ -53,6 +64,34 @@ test("collectManualImportTeamMappingCandidates extracts valid current table IDs 
       ["virtuspro", "101"],
       ["team spirit", "303"],
     ]
+  );
+});
+
+test("collectSingleManualImportTeamMappingCandidate validates one manual team save", () => {
+  const result = collectSingleManualImportTeamMappingCandidate({
+    teamName: "Team Liquid",
+    platformId: "211608",
+  });
+
+  assert.equal(result.skippedCount, 0);
+  assert.deepEqual(result.candidates, [
+    {
+      teamName: "Team Liquid",
+      normalizedTeamName: "team liquid",
+      platformId: "211608",
+      canonicalName: "Team Liquid",
+    },
+  ]);
+});
+
+test("collectSingleManualImportTeamMappingCandidate rejects placeholders and invalid IDs", () => {
+  assert.equal(
+    collectSingleManualImportTeamMappingCandidate({ teamName: "TBD", platformId: "970685" }).skippedCount,
+    1
+  );
+  assert.equal(
+    collectSingleManualImportTeamMappingCandidate({ teamName: "Team Liquid", platformId: "abc" }).skippedCount,
+    1
   );
 });
 

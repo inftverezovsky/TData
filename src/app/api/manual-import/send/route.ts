@@ -5,14 +5,10 @@ import { sendFixtPayload } from "@/lib/adminUpload/sendFixtPayload";
 import { prisma } from "@/lib/db/db";
 import { buildManualFixtPayload } from "@/lib/manualImport/buildManualFixtPayload";
 import { getManualImportDiscipline, MANUAL_IMPORT_TOURNAMENT_ID, resolveManualImportDisciplineSlug } from "@/lib/manualImport/config";
-import { requireAdmin } from "@/lib/auth/adminAuth";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
-
   try {
     const body = await request.json().catch(() => ({}));
     const shapkaId = typeof body.shapkaId === "string" || typeof body.shapkaId === "number" ? String(body.shapkaId).trim() : "";

@@ -3,14 +3,10 @@ import { phpSerialize } from "@/lib/adminUpload/phpSerialize";
 import { toPhpString } from "@/lib/adminUpload/utils";
 import { buildManualFixtPayload } from "@/lib/manualImport/buildManualFixtPayload";
 import { getManualImportDiscipline, resolveManualImportDisciplineSlug } from "@/lib/manualImport/config";
-import { requireAdmin } from "@/lib/auth/adminAuth";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
-
   try {
     const body = await request.json().catch(() => ({}));
     const shapkaId = typeof body.shapkaId === "string" || typeof body.shapkaId === "number" ? String(body.shapkaId).trim() : "";

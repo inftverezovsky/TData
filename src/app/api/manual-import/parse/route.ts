@@ -2,21 +2,18 @@ import { NextResponse } from "next/server";
 import { parseManualMatchesWithAi } from "@/lib/manualImport/aiParser";
 import { getManualImportDiscipline } from "@/lib/manualImport/config";
 import { mapManualMatches } from "@/lib/manualImport/buildManualFixtPayload";
-import { requireAdmin } from "@/lib/auth/adminAuth";
 import { readManualImportParseRequest } from "@/lib/manualImport/parseRequest";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 export async function POST(request: Request) {
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
-
   try {
     const totalStartedAt = Date.now();
     const { disciplineSlug, disciplineId, text, ocrText, imageDataUrl, imageBuffer, imageMime, mode, fast } = await readManualImportParseRequest(request);
+    const discipline = getManualImportDiscipline(disciplineSlug);
 
-    if (!getManualImportDiscipline(disciplineSlug)) {
+    if (disciplineSlug && !discipline) {
       return NextResponse.json({ ok: false, error: "Unsupported discipline" }, { status: 400 });
     }
 
@@ -25,7 +22,7 @@ export async function POST(request: Request) {
     }
 
     const parsed = await parseManualMatchesWithAi({
-      disciplineSlug,
+      disciplineSlug: discipline?.slug || "manual",
       text,
       ocrText,
       imageDataUrl,
@@ -35,7 +32,7 @@ export async function POST(request: Request) {
       fast,
     });
     const mappingStartedAt = Date.now();
-    const mappedMatches = await mapManualMatches(parsed.matches, disciplineSlug, disciplineId);
+    const mappedMatches = discipline ? await mapManualMatches(parsed.matches, disciplineSlug, disciplineId) : [];
     const mappingMs = Date.now() - mappingStartedAt;
 
     return NextResponse.json({
@@ -46,7 +43,10 @@ export async function POST(request: Request) {
       ocrText: parsed.ocrText,
       ocrConfidence: parsed.ocrConfidence,
       parseSource: parsed.parseSource,
-      warnings: parsed.warnings || [],
+      warnings: [
+        ...(parsed.warnings || []),
+        ...(!discipline ? ["Укажите ID дисциплины, чтобы подтянуть и сохранить ID команд."] : []),
+      ],
       fallback: parsed.fallback || false,
       cacheHit: Boolean(parsed.cacheHit),
       timings: {

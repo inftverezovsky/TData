@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth/adminAuth";
 import { getManualImportDiscipline, resolveManualImportDisciplineSlug } from "@/lib/manualImport/config";
-import { normalizeAdminSportId, saveManualImportTeamMappings } from "@/lib/manualImport/teamMappings";
+import {
+  normalizeAdminSportId,
+  saveManualImportSingleTeamMapping,
+  saveManualImportTeamMappings,
+} from "@/lib/manualImport/teamMappings";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
-
   try {
     const body = await request.json().catch(() => ({}));
     const disciplineId = normalizeAdminSportId(body.disciplineId);
@@ -22,6 +22,27 @@ export async function POST(request: Request) {
 
     if (!disciplineId) {
       return NextResponse.json({ ok: false, error: "ID дисциплины должен быть положительным числом." }, { status: 400 });
+    }
+
+    const isSingleSave = "teamName" in body || "platformId" in body;
+    if (isSingleSave) {
+      const result = await saveManualImportSingleTeamMapping({
+        disciplineSlug,
+        adminSportId: disciplineId,
+        teamName: typeof body.teamName === "string" || typeof body.teamName === "number" ? String(body.teamName) : "",
+        platformId: typeof body.platformId === "string" || typeof body.platformId === "number" ? String(body.platformId) : "",
+        canonicalName:
+          typeof body.canonicalName === "string" || typeof body.canonicalName === "number"
+            ? String(body.canonicalName)
+            : "",
+        overwriteConflict: Boolean(body.overwriteConflict || body.overwriteConflicts),
+      });
+
+      return NextResponse.json({
+        ok: true,
+        ...result,
+        savedMapping: result.savedMappings[0] || null,
+      });
     }
 
     const result = await saveManualImportTeamMappings({

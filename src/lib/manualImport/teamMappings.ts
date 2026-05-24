@@ -40,6 +40,15 @@ export type ManualImportTeamMappingsSaveResult = {
   savedMappings: ManualImportTeamMappingCandidate[];
 };
 
+export type ManualImportSingleTeamMappingInput = {
+  disciplineSlug: string;
+  adminSportId: string;
+  teamName: string;
+  platformId: string;
+  canonicalName?: string | null;
+  overwriteConflict?: boolean;
+};
+
 type RawManualMatch = {
   team1?: unknown;
   team2?: unknown;
@@ -106,6 +115,41 @@ export function collectManualImportTeamMappingCandidates(matches: RawManualMatch
     candidates: Array.from(candidatesByName.values()),
     conflicts,
     skippedCount,
+  };
+}
+
+export function collectSingleManualImportTeamMappingCandidate({
+  teamName,
+  platformId,
+  canonicalName,
+}: {
+  teamName: unknown;
+  platformId: unknown;
+  canonicalName?: unknown;
+}) {
+  const readableTeamName = readString(teamName);
+  const normalizedTeamName = normalizeTeamName(readableTeamName);
+  const normalizedPlatformId = normalizeAdminSportId(platformId);
+
+  if (!readableTeamName || !normalizedTeamName || isPlaceholderTeam(readableTeamName) || !normalizedPlatformId) {
+    return {
+      candidates: [],
+      conflicts: [],
+      skippedCount: 1,
+    };
+  }
+
+  return {
+    candidates: [
+      {
+        teamName: readableTeamName,
+        normalizedTeamName,
+        platformId: normalizedPlatformId,
+        canonicalName: readString(canonicalName) || readableTeamName,
+      },
+    ],
+    conflicts: [],
+    skippedCount: 0,
   };
 }
 
@@ -181,22 +225,68 @@ export async function saveManualImportTeamMappings({
   matches: RawManualMatch[];
   overwriteConflicts?: boolean;
 }): Promise<ManualImportTeamMappingsSaveResult> {
-  const normalizedDisciplineSlug = disciplineSlug.trim().toLowerCase();
-  const normalizedSportId = normalizeAdminSportId(adminSportId);
   const collected = collectManualImportTeamMappingCandidates(matches);
 
-  if (!normalizedDisciplineSlug || !normalizedSportId || collected.candidates.length === 0) {
+  return saveManualImportTeamMappingCandidates({
+    disciplineSlug,
+    adminSportId,
+    candidates: collected.candidates,
+    skippedCount: collected.skippedCount,
+    collectedConflicts: collected.conflicts,
+    overwriteConflicts,
+  });
+}
+
+export async function saveManualImportSingleTeamMapping({
+  disciplineSlug,
+  adminSportId,
+  teamName,
+  platformId,
+  canonicalName,
+  overwriteConflict = false,
+}: ManualImportSingleTeamMappingInput): Promise<ManualImportTeamMappingsSaveResult> {
+  const collected = collectSingleManualImportTeamMappingCandidate({ teamName, platformId, canonicalName });
+
+  return saveManualImportTeamMappingCandidates({
+    disciplineSlug,
+    adminSportId,
+    candidates: collected.candidates,
+    skippedCount: collected.skippedCount,
+    collectedConflicts: collected.conflicts,
+    overwriteConflicts: overwriteConflict,
+  });
+}
+
+async function saveManualImportTeamMappingCandidates({
+  disciplineSlug,
+  adminSportId,
+  candidates: rawCandidates,
+  skippedCount,
+  collectedConflicts,
+  overwriteConflicts,
+}: {
+  disciplineSlug: string;
+  adminSportId: string;
+  candidates: ManualImportTeamMappingCandidate[];
+  skippedCount: number;
+  collectedConflicts: ManualImportTeamMappingConflict[];
+  overwriteConflicts: boolean;
+}): Promise<ManualImportTeamMappingsSaveResult> {
+  const normalizedDisciplineSlug = disciplineSlug.trim().toLowerCase();
+  const normalizedSportId = normalizeAdminSportId(adminSportId);
+
+  if (!normalizedDisciplineSlug || !normalizedSportId || rawCandidates.length === 0) {
     return {
       savedCount: 0,
-      skippedCount: collected.skippedCount,
-      conflictCount: collected.conflicts.length,
+      skippedCount,
+      conflictCount: collectedConflicts.length,
       overwrittenCount: 0,
-      conflicts: collected.conflicts,
+      conflicts: collectedConflicts,
       savedMappings: [],
     };
   }
 
-  const platformIds = Array.from(new Set(collected.candidates.map((candidate) => candidate.platformId)));
+  const platformIds = Array.from(new Set(rawCandidates.map((candidate) => candidate.platformId)));
   const adminTeams = await prisma.adminTeam.findMany({
     where: {
       disciplineSlug: normalizedDisciplineSlug,
@@ -208,7 +298,7 @@ export async function saveManualImportTeamMappings({
     },
   });
   const adminNameByPlatformId = new Map(adminTeams.map((team) => [team.platformId, team.platformName]));
-  const candidates = collected.candidates.map((candidate) => ({
+  const candidates = rawCandidates.map((candidate) => ({
     ...candidate,
     canonicalName: adminNameByPlatformId.get(candidate.platformId) || candidate.canonicalName || candidate.teamName,
   }));
@@ -267,11 +357,11 @@ export async function saveManualImportTeamMappings({
     savedMappings.push(saved);
   }
 
-  const conflicts = [...collected.conflicts, ...savePlan.conflicts];
+  const conflicts = [...collectedConflicts, ...savePlan.conflicts];
 
   return {
     savedCount: savedMappings.length,
-    skippedCount: collected.skippedCount + conflicts.length,
+    skippedCount: skippedCount + conflicts.length,
     conflictCount: conflicts.length,
     overwrittenCount: savePlan.overwrittenCount,
     conflicts,

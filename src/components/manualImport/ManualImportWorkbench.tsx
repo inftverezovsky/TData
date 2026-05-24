@@ -2,13 +2,18 @@
 
 import { ChangeEvent, useRef, useState } from "react";
 import {
+  AlertTriangle,
   Bot,
   CheckCircle2,
   Clipboard,
+  Clock,
   FileJson,
   FileUp,
   ImageUp,
   Loader2,
+  Minus,
+  Pencil,
+  Plus,
   RefreshCw,
   Save,
   ScanText,
@@ -17,6 +22,7 @@ import {
   Table2,
   UploadCloud,
 } from "lucide-react";
+import { shiftManualImportMatchDates } from "@/lib/manualImport/timeShift";
 
 type ManualMatch = {
   id?: string;
@@ -31,11 +37,14 @@ type ManualMatch = {
 type MappedMatch = {
   id: string;
   tournament: string;
-  team1: { name: string; platformId: string | null };
-  team2: { name: string; platformId: string | null };
+  team1: { name: string; platformId: string | null; source?: TeamPlatformIdSource };
+  team2: { name: string; platformId: string | null; source?: TeamPlatformIdSource };
   date: string;
   isReady: boolean;
 };
+
+type TeamSide = "team1" | "team2";
+type TeamPlatformIdSource = "explicit" | "manual" | "team_mapping" | "admin_team" | "embedded" | null;
 
 type PreviewData = {
   phpArray: any;
@@ -139,6 +148,10 @@ export default function ManualImportWorkbench() {
   const [mappingConflicts, setMappingConflicts] = useState<ManualMappingConflict[]>([]);
   const [mappingSaveSummary, setMappingSaveSummary] = useState<ManualMappingSaveSummary | null>(null);
   const [lastServiceJsonUrl, setLastServiceJsonUrl] = useState("");
+  const [timeShiftMinutes, setTimeShiftMinutes] = useState("60");
+  const [lockedTeamCells, setLockedTeamCells] = useState<Set<string>>(new Set());
+  const [editingTeamCells, setEditingTeamCells] = useState<Set<string>>(new Set());
+  const [savingTeamCells, setSavingTeamCells] = useState<Set<string>>(new Set());
 
   const [teamImportMode, setTeamImportMode] = useState<"file" | "url">("file");
   const [teamFile, setTeamFile] = useState<File | null>(null);
@@ -168,6 +181,8 @@ export default function ManualImportWorkbench() {
         (match.team2PlatformId || mapped?.team2.platformId)
     );
   }).length;
+  const hasValidDisciplineId = isValidManualAdminId(disciplineId);
+  const hasValidShapkaId = isValidManualAdminId(shapkaId);
 
   async function handleTeamFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0] || null;
@@ -199,6 +214,12 @@ export default function ManualImportWorkbench() {
   async function importTeams() {
     if (teamImportMode === "file" && !teamFile) return;
     if (teamImportMode === "url" && !teamUrl.trim()) return;
+    if (!hasValidDisciplineId) {
+      const errorMessage = { type: "error", text: "Укажите ID дисциплины перед импортом команд." } as const;
+      setTeamImportMessage(errorMessage);
+      setMessage(errorMessage);
+      return;
+    }
 
     setTeamImporting(true);
     setTeamImportResult(null);
@@ -572,9 +593,13 @@ export default function ManualImportWorkbench() {
   }
 
   function applyParsedData(data: any) {
-    const nextMatches = mergeMatchesWithMappedIds(data.rawMatches || [], data.mappedMatches || []);
+    const nextMappedMatches = data.mappedMatches || [];
+    const nextMatches = mergeMatchesWithMappedIds(data.rawMatches || [], nextMappedMatches);
     setMatches(nextMatches);
-    setMappedMatches(data.mappedMatches || []);
+    setMappedMatches(nextMappedMatches);
+    setLockedTeamCells(createLockedTeamCellsFromMappedMatches(nextMappedMatches));
+    setEditingTeamCells(new Set());
+    setSavingTeamCells(new Set());
     setSelectedMatchIndexes(createAllSelectedIndexes(nextMatches.length));
     setPreview(null);
     setMappingConflicts([]);
@@ -594,6 +619,23 @@ export default function ManualImportWorkbench() {
   }
 
   async function applyCachedAiImageParse(cached: ClientAiImageCacheEntry, signal: AbortSignal) {
+    if (!hasValidDisciplineId) {
+      applyParsedData({
+        rawMatches: cached.rawMatches,
+        mappedMatches: [],
+        normalizedText: cached.normalizedText,
+        parseSource: "ai",
+        warnings: ["Укажите ID дисциплины, чтобы подтянуть и сохранить ID команд."],
+        cacheHit: true,
+      });
+      setRecognitionStep("done", `Найдено матчей: ${cached.rawMatches.length}. ID команд не подтянуты без ID дисциплины.`);
+      setMessage({
+        type: "info",
+        text: `ArcCodex AI (кэш). Найдено матчей: ${cached.rawMatches.length}. Укажите ID дисциплины для автомапинга.`,
+      });
+      return;
+    }
+
     setRecognitionStep("mapping", "Обновляю ID команд по текущему справочнику.");
     const mapped = await postManualAutomap(cached.rawMatches, signal);
     const data = {
@@ -605,6 +647,17 @@ export default function ManualImportWorkbench() {
       cacheHit: true,
     };
     applyParsedData(data);
+    setLockedTeamCells((current) =>
+      mergeLockedTeamCellsFromSavedMappings(current, cached.rawMatches, mapped.mappedMatches || [], mapped.savedMappings || [])
+    );
+    if (typeof mapped.savedCount === "number") {
+      setMappingSaveSummary({
+        savedCount: mapped.savedCount || 0,
+        skippedCount: mapped.skippedCount || 0,
+        conflictCount: mapped.conflictCount || 0,
+        overwrittenCount: mapped.overwrittenCount || 0,
+      });
+    }
     setAiFallbackAvailable(false);
     setOcrFallbackAvailable(false);
     setRecognitionStep("done", `Найдено матчей: ${cached.rawMatches.length}.`);
@@ -693,6 +746,10 @@ export default function ManualImportWorkbench() {
       setMessage({ type: "error", text: "Сначала добавьте или распознайте матчи." });
       return;
     }
+    if (!hasValidDisciplineId) {
+      setMessage({ type: "error", text: "Укажите ID дисциплины, чтобы сохранить привязки команд." });
+      return;
+    }
 
     setAutoMapping(true);
     setMessage(null);
@@ -707,13 +764,26 @@ export default function ManualImportWorkbench() {
       const data = await response.json();
       if (!response.ok || !data.ok) throw new Error(data.error || "Автомапинг не выполнен");
 
-      setMappedMatches(data.mappedMatches || []);
-      setMatches((current) => mergeMatchesWithMappedIds(current, data.mappedMatches || []));
-      setMappingConflicts([]);
-      setMappingSaveSummary(null);
+      const nextMappedMatches = data.mappedMatches || [];
+      setMappedMatches(nextMappedMatches);
+      setMatches((current) => mergeMatchesWithMappedIds(current, nextMappedMatches));
+      const conflicts = Array.isArray(data.conflicts) ? data.conflicts : [];
+      setMappingConflicts(conflicts);
+      setMappingSaveSummary({
+        savedCount: data.savedCount || 0,
+        skippedCount: data.skippedCount || 0,
+        conflictCount: data.conflictCount || conflicts.length,
+        overwrittenCount: data.overwrittenCount || 0,
+      });
+      setLockedTeamCells((current) =>
+        mergeLockedTeamCellsFromSavedMappings(current, matches, nextMappedMatches, data.savedMappings || [])
+      );
+      setEditingTeamCells(new Set());
       setMessage({
-        type: "success",
-        text: `Автомапинг готов: ${data.readyMatchesCount || 0} строк с ID.`,
+        type: conflicts.length > 0 ? "info" : "success",
+        text: `Автомапинг готов: ${data.readyMatchesCount || 0} строк с ID. Сохранено привязок: ${
+          data.savedCount || 0
+        }. Конфликты: ${conflicts.length}.`,
       });
     } catch (error) {
       setMessage({ type: "error", text: error instanceof Error ? error.message : "Ошибка автомапинга" });
@@ -727,7 +797,7 @@ export default function ManualImportWorkbench() {
       setMessage({ type: "error", text: "Сначала добавьте или распознайте матчи." });
       return;
     }
-    if (!disciplineId.trim()) {
+    if (!hasValidDisciplineId) {
       setMessage({ type: "error", text: "Укажите ID дисциплины перед сохранением ID команд." });
       return;
     }
@@ -752,6 +822,10 @@ export default function ManualImportWorkbench() {
         conflictCount: data.conflictCount || conflicts.length,
         overwrittenCount: data.overwrittenCount || 0,
       });
+      setLockedTeamCells((current) =>
+        mergeLockedTeamCellsFromSavedMappings(current, matches, mappedMatches, data.savedMappings || [])
+      );
+      if (!conflicts.length) setEditingTeamCells(new Set());
 
       if (conflicts.length > 0) {
         setMessage({
@@ -768,6 +842,74 @@ export default function ManualImportWorkbench() {
       setMessage({ type: "error", text: error instanceof Error ? error.message : "Ошибка сохранения ID команд" });
     } finally {
       setMappingSaving(false);
+    }
+  }
+
+  async function saveSingleTeamMapping(index: number, side: TeamSide, overwriteConflict = false) {
+    const team = getTeamCellData(matches, mappedMatches, index, side);
+    const cellKey = getTeamCellKey(index, side);
+
+    if (!hasValidDisciplineId) {
+      setMessage({ type: "error", text: "Укажите ID дисциплины, чтобы сохранить привязки команд." });
+      return;
+    }
+    if (!team.name.trim() || !team.platformId.trim()) {
+      setMessage({ type: "error", text: "Укажите название команды и ID перед сохранением." });
+      return;
+    }
+
+    setSavingTeamCells((current) => new Set(current).add(cellKey));
+    setMessage(null);
+
+    try {
+      const response = await fetch("/api/manual-import/team-mappings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          disciplineId,
+          teamName: team.name,
+          platformId: team.platformId,
+          canonicalName: team.name,
+          overwriteConflict,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.ok) throw new Error(data.error || "Не удалось сохранить ID команды");
+
+      const conflicts = Array.isArray(data.conflicts) ? data.conflicts : [];
+      setMappingConflicts(conflicts);
+      setMappingSaveSummary({
+        savedCount: data.savedCount || 0,
+        skippedCount: data.skippedCount || 0,
+        conflictCount: data.conflictCount || conflicts.length,
+        overwrittenCount: data.overwrittenCount || 0,
+      });
+
+      if (conflicts.length > 0 && !overwriteConflict) {
+        const conflict = conflicts[0];
+        const shouldOverwrite = window.confirm(
+          `${conflict.teamName}: уже сохранён ID ${conflict.existingPlatformId}, введён ${conflict.incomingPlatformId}. Заменить сохранённый ID?`
+        );
+        if (shouldOverwrite) {
+          await saveSingleTeamMapping(index, side, true);
+          return;
+        }
+
+        setMessage({ type: "info", text: "Конфликт ID не перезаписан." });
+        return;
+      }
+
+      if ((data.savedCount || 0) > 0) {
+        setLockedTeamCells((current) => new Set(current).add(cellKey));
+        setEditingTeamCells((current) => removeFromSet(current, cellKey));
+        setMessage({ type: "success", text: `${team.name}: ID ${team.platformId} сохранён для дисциплины ${disciplineId}.` });
+      } else {
+        setMessage({ type: "info", text: `${team.name}: нечего сохранять. Проверьте название и ID.` });
+      }
+    } catch (error) {
+      setMessage({ type: "error", text: error instanceof Error ? error.message : "Ошибка сохранения ID команды" });
+    } finally {
+      setSavingTeamCells((current) => removeFromSet(current, cellKey));
     }
   }
 
@@ -792,7 +934,7 @@ export default function ManualImportWorkbench() {
       const response = await fetch("/api/manual-import/service-link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ disciplineId, shapkaId, matches: selectedMatches }),
+        body: JSON.stringify({ disciplineId, shapkaId, matches: selectedMatches, publicOrigin: window.location.origin }),
       });
       const data = await response.json();
       if (!response.ok || !data.ok) {
@@ -841,6 +983,11 @@ export default function ManualImportWorkbench() {
 
   function updateMatch(index: number, field: keyof ManualMatch, value: string) {
     setMatches((current) => current.map((match, i) => (i === index ? { ...match, [field]: value } : match)));
+    const side = getTeamSideFromMatchField(field);
+    if (side) {
+      const cellKey = getTeamCellKey(index, side);
+      setLockedTeamCells((current) => removeFromSet(current, cellKey));
+    }
     setPreview(null);
     setMappingConflicts([]);
     setMappingSaveSummary(null);
@@ -858,6 +1005,9 @@ export default function ManualImportWorkbench() {
       }
       return next;
     });
+    setLockedTeamCells((current) => shiftTeamCellSetAfterRemove(current, index));
+    setEditingTeamCells((current) => shiftTeamCellSetAfterRemove(current, index));
+    setSavingTeamCells((current) => shiftTeamCellSetAfterRemove(current, index));
     setPreview(null);
     setMappingConflicts([]);
     setMappingSaveSummary(null);
@@ -886,6 +1036,89 @@ export default function ManualImportWorkbench() {
     setLastServiceJsonUrl("");
   }
 
+  function applyTimeShift(direction: -1 | 1) {
+    const minutes = Math.trunc(Number(timeShiftMinutes.replace(",", ".")));
+    if (!Number.isFinite(minutes) || minutes <= 0) {
+      setMessage({ type: "error", text: "Введите количество минут больше нуля." });
+      return;
+    }
+    if (matches.length === 0) {
+      setMessage({ type: "error", text: "Сначала распознайте или добавьте матчи." });
+      return;
+    }
+
+    const result = shiftManualImportMatchDates(matches, minutes * direction);
+    if (result.changedCount === 0) {
+      setMessage({ type: "error", text: "Не удалось сдвинуть время: в матчах нет распознанных дат." });
+      return;
+    }
+
+    setMatches(result.matches);
+    setMappedMatches((current) =>
+      current.map((mapped, index) => ({
+        ...mapped,
+        date: result.matches[index]?.date || mapped.date,
+      }))
+    );
+    setPreview(null);
+    setMappingConflicts([]);
+    setMappingSaveSummary(null);
+    setLastServiceJsonUrl("");
+    setMessage({
+      type: "success",
+      text: `Время ${direction > 0 ? "увеличено" : "уменьшено"} на ${minutes} мин. Изменено: ${
+        result.changedCount
+      }, пропущено: ${result.skippedCount}.`,
+    });
+  }
+
+  function renderTeamPlatformIdCell(index: number, side: TeamSide, value: string) {
+    const cellKey = getTeamCellKey(index, side);
+    const isLocked = lockedTeamCells.has(cellKey);
+    const isEditing = editingTeamCells.has(cellKey);
+    const isSaving = savingTeamCells.has(cellKey);
+    const team = getTeamCellData(matches, mappedMatches, index, side);
+    const field: keyof ManualMatch = side === "team1" ? "team1PlatformId" : "team2PlatformId";
+    const inputDisabled = isLocked && !isEditing;
+
+    return (
+      <div className="flex min-w-[150px] flex-col gap-1">
+        <input
+          value={value}
+          onChange={(event) => updateMatch(index, field, event.target.value.replace(/[^\d]/g, ""))}
+          inputMode="numeric"
+          placeholder="НЕТ ID"
+          disabled={inputDisabled}
+          className={`h-9 w-32 rounded-lg border px-3 text-xs font-black outline-none transition focus:border-indigo-400 ${
+            inputDisabled
+              ? "border-emerald-100 bg-emerald-50 text-emerald-800"
+              : "border-slate-200 bg-white text-slate-900"
+          }`}
+        />
+        {isLocked && !isEditing ? (
+          <button
+            type="button"
+            onClick={() => setEditingTeamCells((current) => new Set(current).add(cellKey))}
+            className="flex h-7 w-32 items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white text-[9px] font-black uppercase tracking-widest text-slate-500 transition hover:bg-slate-50"
+          >
+            <Pencil className="h-3 w-3" />
+            Изменить
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => saveSingleTeamMapping(index, side)}
+            disabled={isSaving || !team.name.trim() || !value.trim() || !hasValidDisciplineId}
+            className="flex h-7 w-32 items-center justify-center gap-1 rounded-lg border border-emerald-100 bg-emerald-50 text-[9px] font-black uppercase tracking-widest text-emerald-700 transition hover:bg-emerald-100 disabled:border-slate-100 disabled:bg-slate-50 disabled:text-slate-300"
+          >
+            {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+            Сохранить
+          </button>
+        )}
+      </div>
+    );
+  }
+
   const visibleRecognitionStages = getVisibleRecognitionStages(recognitionStage, recognitionStepDetails);
 
   return (
@@ -900,11 +1133,16 @@ export default function ManualImportWorkbench() {
             </p>
           </div>
           <div className="space-y-2">
-            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">ID дисциплины</label>
+            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+              Шаг 1 · ID дисциплины
+            </label>
             <input
               value={disciplineId}
               onChange={(event) => {
-                setDisciplineId(event.target.value.replace(/[^\d]/g, ""));
+                const nextDisciplineId = event.target.value.replace(/[^\d]/g, "");
+                setDisciplineId(nextDisciplineId);
+                setLockedTeamCells(new Set());
+                setEditingTeamCells(new Set());
                 setPreview(null);
                 setMappingConflicts([]);
                 setMappingSaveSummary(null);
@@ -916,7 +1154,9 @@ export default function ManualImportWorkbench() {
             />
           </div>
           <div className="space-y-2">
-            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">ID шапки</label>
+            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+              Шаг 2 · ID шапки
+            </label>
             <input
               value={shapkaId}
               onChange={(event) => {
@@ -930,6 +1170,17 @@ export default function ManualImportWorkbench() {
             />
           </div>
         </div>
+        {(!hasValidDisciplineId || !hasValidShapkaId) && (
+          <div className="mt-5 flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold leading-relaxed text-amber-800">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <div>
+              {!hasValidDisciplineId && (
+                <p>ID дисциплины нужен для автомапинга и постоянного сохранения ID команд.</p>
+              )}
+              {!hasValidShapkaId && <p>ID шапки понадобится перед формированием payload и заливкой.</p>}
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-soft">
@@ -1328,6 +1579,38 @@ export default function ManualImportWorkbench() {
             <p className="mt-1 text-xs font-bold text-slate-500">Можно поправить строки вручную и пересобрать payload.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <div className="flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-2 text-[10px] font-black uppercase tracking-widest text-slate-500 shadow-sm">
+              <Clock className="h-4 w-4 text-indigo-500" />
+              <span className="hidden sm:inline">Сдвиг времени</span>
+              <input
+                value={timeShiftMinutes}
+                onChange={(event) => setTimeShiftMinutes(event.target.value.replace(/[^\d.,]/g, ""))}
+                inputMode="decimal"
+                aria-label="Количество минут для сдвига времени всех матчей"
+                className="h-8 w-16 rounded-lg border border-slate-200 bg-slate-50 px-2 text-center text-xs font-black text-slate-900 outline-none transition focus:border-indigo-400"
+              />
+              <span>мин</span>
+              <button
+                type="button"
+                onClick={() => applyTimeShift(-1)}
+                disabled={matches.length === 0}
+                aria-label="Вычесть минуты из времени всех матчей"
+                title="Вычесть минуты из времени всех матчей"
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 disabled:bg-slate-50 disabled:text-slate-300"
+              >
+                <Minus className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => applyTimeShift(1)}
+                disabled={matches.length === 0}
+                aria-label="Добавить минуты ко времени всех матчей"
+                title="Добавить минуты ко времени всех матчей"
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-indigo-100 bg-indigo-50 text-indigo-700 transition hover:bg-indigo-100 disabled:border-slate-100 disabled:bg-slate-50 disabled:text-slate-300"
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </button>
+            </div>
             <button
               onClick={toggleAllMatchesSelection}
               disabled={matches.length === 0}
@@ -1397,7 +1680,7 @@ export default function ManualImportWorkbench() {
           </div>
         ) : (
           <div className="overflow-auto">
-            <table className="w-full min-w-[760px] text-left">
+            <table className="w-full min-w-[980px] text-left">
               <thead>
                 <tr className="text-[10px] font-black uppercase tracking-widest text-slate-400">
                   <th className="px-3 py-2">
@@ -1457,13 +1740,7 @@ export default function ManualImportWorkbench() {
                         />
                       </td>
                       <td className="px-3 py-3">
-                        <input
-                          value={team1PlatformId}
-                          onChange={(event) => updateMatch(index, "team1PlatformId", event.target.value.replace(/[^\d]/g, ""))}
-                          inputMode="numeric"
-                          placeholder="НЕТ ID"
-                          className="h-9 w-28 rounded-lg border border-slate-200 px-3 text-xs font-black text-slate-900 outline-none focus:border-indigo-400"
-                        />
+                        {renderTeamPlatformIdCell(index, "team1", team1PlatformId)}
                       </td>
                       <td className="px-3 py-3">
                         <input
@@ -1473,13 +1750,7 @@ export default function ManualImportWorkbench() {
                         />
                       </td>
                       <td className="px-3 py-3">
-                        <input
-                          value={team2PlatformId}
-                          onChange={(event) => updateMatch(index, "team2PlatformId", event.target.value.replace(/[^\d]/g, ""))}
-                          inputMode="numeric"
-                          placeholder="НЕТ ID"
-                          className="h-9 w-28 rounded-lg border border-slate-200 px-3 text-xs font-black text-slate-900 outline-none focus:border-indigo-400"
-                        />
+                        {renderTeamPlatformIdCell(index, "team2", team2PlatformId)}
                       </td>
                       <td className="px-3 py-3">
                         {isReady ? (
@@ -1604,6 +1875,96 @@ function mergeMatchesWithMappedIds(matches: ManualMatch[], mappedMatches: Mapped
 
 function createAllSelectedIndexes(length: number) {
   return new Set(Array.from({ length }, (_, index) => index));
+}
+
+function isValidManualAdminId(value: string) {
+  return /^[1-9]\d*$/.test(value.trim());
+}
+
+function getTeamCellKey(index: number, side: TeamSide) {
+  return `${index}:${side}`;
+}
+
+function createLockedTeamCellsFromMappedMatches(mappedMatches: MappedMatch[]) {
+  const locked = new Set<string>();
+  mappedMatches.forEach((match, index) => {
+    if (match.team1.platformId && match.team1.source === "manual") locked.add(getTeamCellKey(index, "team1"));
+    if (match.team2.platformId && match.team2.source === "manual") locked.add(getTeamCellKey(index, "team2"));
+  });
+  return locked;
+}
+
+function mergeLockedTeamCellsFromSavedMappings(
+  current: Set<string>,
+  matches: ManualMatch[],
+  mappedMatches: MappedMatch[],
+  savedMappings: Array<{ teamName?: string; normalizedTeamName?: string; platformId?: string }>
+) {
+  const savedNames = new Set(
+    savedMappings
+      .flatMap((mapping) => [
+        mapping.normalizedTeamName || "",
+        normalizeManualTeamNameForClient(mapping.teamName || ""),
+      ])
+      .filter(Boolean)
+  );
+  if (savedNames.size === 0) return current;
+
+  const next = new Set(current);
+  matches.forEach((match, index) => {
+    for (const side of ["team1", "team2"] as const) {
+      const team = getTeamCellData(matches, mappedMatches, index, side);
+      const normalizedTeamName = normalizeManualTeamNameForClient(team.name);
+      if (team.platformId && (savedNames.has(normalizedTeamName) || savedNames.has(normalizedTeamName.replace(/\s+/g, "")))) {
+        next.add(getTeamCellKey(index, side));
+      }
+    }
+  });
+  return next;
+}
+
+function getTeamCellData(matches: ManualMatch[], mappedMatches: MappedMatch[], index: number, side: TeamSide) {
+  const match = matches[index];
+  const mapped = mappedMatches[index];
+  if (side === "team1") {
+    return {
+      name: match?.team1 || mapped?.team1.name || "",
+      platformId: match?.team1PlatformId || mapped?.team1.platformId || "",
+    };
+  }
+
+  return {
+    name: match?.team2 || mapped?.team2.name || "",
+    platformId: match?.team2PlatformId || mapped?.team2.platformId || "",
+  };
+}
+
+function normalizeManualTeamNameForClient(value: string) {
+  return value.trim().toLowerCase().replace(/[._-]+/g, " ").replace(/\s+/g, " ");
+}
+
+function removeFromSet<T>(set: Set<T>, value: T) {
+  const next = new Set(set);
+  next.delete(value);
+  return next;
+}
+
+function shiftTeamCellSetAfterRemove(set: Set<string>, removedIndex: number) {
+  const next = new Set<string>();
+  for (const key of set) {
+    const [rawIndex, side] = key.split(":") as [string, TeamSide | undefined];
+    const index = Number(rawIndex);
+    if (!Number.isSafeInteger(index) || (side !== "team1" && side !== "team2")) continue;
+    if (index < removedIndex) next.add(key);
+    if (index > removedIndex) next.add(getTeamCellKey(index - 1, side));
+  }
+  return next;
+}
+
+function getTeamSideFromMatchField(field: keyof ManualMatch): TeamSide | null {
+  if (field === "team1" || field === "team1PlatformId") return "team1";
+  if (field === "team2" || field === "team2PlatformId") return "team2";
+  return null;
 }
 
 function getSelectedMatches(matches: ManualMatch[], selectedIndexes: Set<number>) {

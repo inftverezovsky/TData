@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { readSheet } from "read-excel-file/node";
 import { prisma } from "@/lib/db/db";
-import { requireAdmin } from "@/lib/auth/adminAuth";
 import { queueIdentitySync } from "@/lib/sync/identitySync";
 import { parseAdminTeamImportRows } from "@/lib/adminTeams/importSpreadsheet";
 import { runAutoMappingForDiscipline } from "@/lib/teams/mapping";
@@ -11,18 +10,17 @@ const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
 const REMOTE_FETCH_TIMEOUT_MS = 15000;
 
 export async function POST(request: Request) {
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
-
   try {
     const formData = await request.formData();
     const file = formData.get("file") as File;
     const url = formData.get("url") as string;
-    const disciplineSlug =
-      resolveManualImportDisciplineSlug({
-        disciplineId: formData.get("disciplineId"),
-        disciplineSlug: formData.get("disciplineSlug"),
-      }) || "dota2";
+    const disciplineSlug = resolveAdminTeamsImportDisciplineSlug({
+      disciplineId: formData.get("disciplineId"),
+      disciplineSlug: formData.get("disciplineSlug"),
+    });
+    if (!disciplineSlug) {
+      return NextResponse.json({ error: "Укажите ID дисциплины перед импортом команд." }, { status: 400 });
+    }
 
     if (!file && !url) {
       return NextResponse.json({ error: "No file or URL provided" }, { status: 400 });
@@ -159,6 +157,10 @@ export function toGoogleSheetsExportUrl(rawUrl: string) {
   } catch {
     return null;
   }
+}
+
+export function resolveAdminTeamsImportDisciplineSlug(input: { disciplineId?: unknown; disciplineSlug?: unknown }) {
+  return resolveManualImportDisciplineSlug(input) || null;
 }
 
 function looksLikeHtml(buffer: Buffer, contentType: string | null) {

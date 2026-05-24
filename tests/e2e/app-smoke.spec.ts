@@ -95,6 +95,7 @@ test("manual import hides discipline selector and uses AI-first image recognitio
   });
 
   await page.goto("/manual-import");
+  await page.waitForLoadState("networkidle");
 
   await expect(page.getByText("Дисциплина", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("combobox", { name: "Дисциплина" })).toHaveCount(0);
@@ -104,6 +105,7 @@ test("manual import hides discipline selector and uses AI-first image recognitio
     mimeType: "image/png",
     buffer: Buffer.from("fake-image"),
   });
+  await expect(page.getByText("schedule.png")).toBeVisible();
   await page.getByRole("button", { name: /распознать/i }).click();
 
   await expect(page.getByText("Ход распознавания")).toBeVisible();
@@ -187,11 +189,13 @@ test("manual import shows manual OCR fallback when AI image recognition fails", 
   });
 
   await page.goto("/manual-import");
+  await page.waitForLoadState("networkidle");
   await page.locator('input[type="file"][accept="image/*"]').setInputFiles({
     name: "messy-schedule.png",
     mimeType: "image/png",
     buffer: Buffer.from("fake-image"),
   });
+  await expect(page.getByText("messy-schedule.png")).toBeVisible();
   await page.getByRole("button", { name: /распознать/i }).click();
 
   await expect(page.getByText(/OCR fallback можно запустить вручную/)).toBeVisible();
@@ -271,6 +275,92 @@ test("manual import text-only recognition does not call OCR", async ({ page }) =
   expect(parseBodies[0]).toContain("text");
 });
 
+test("manual import saves one team ID and locks the saved input", async ({ page }) => {
+  let savedRequestBody: any = null;
+
+  await page.route("**/api/admin-auth/session", async route => {
+    await route.fulfill({ json: { authenticated: true } });
+  });
+  await page.route("**/api/manual-import/parse", async route => {
+    await route.fulfill({
+      json: {
+        ok: true,
+        rawMatches: [
+          {
+            tournament: "Manual Import",
+            team1: "Team Liquid",
+            team2: "G2 Esports",
+            date: "23.05.2026 16:10:00",
+          },
+        ],
+        mappedMatches: [
+          {
+            id: "manual-save-1",
+            tournament: "Manual Import",
+            team1: { name: "Team Liquid", platformId: null },
+            team2: { name: "G2 Esports", platformId: null },
+            date: "23.05.2026 16:10:00",
+            isReady: false,
+          },
+        ],
+        normalizedText: "Team Liquid\nG2 Esports\n23 May, 16:10 | Table 1",
+        parseSource: "local-text",
+        warnings: [],
+      },
+    });
+  });
+  await page.route("**/api/manual-import/team-mappings", async route => {
+    savedRequestBody = route.request().postDataJSON();
+    await route.fulfill({
+      json: {
+        ok: true,
+        savedCount: 1,
+        skippedCount: 0,
+        conflictCount: 0,
+        overwrittenCount: 0,
+        conflicts: [],
+        savedMappings: [
+          {
+            teamName: "Team Liquid",
+            normalizedTeamName: "team liquid",
+            platformId: "211608",
+            canonicalName: "Team Liquid",
+          },
+        ],
+        savedMapping: {
+          teamName: "Team Liquid",
+          normalizedTeamName: "team liquid",
+          platformId: "211608",
+          canonicalName: "Team Liquid",
+        },
+      },
+    });
+  });
+
+  await page.goto("/manual-import");
+  await expect(page.getByText("Шаг 1 · ID дисциплины")).toBeVisible();
+  await expect(page.getByText("Шаг 2 · ID шапки")).toBeVisible();
+
+  await page.getByPlaceholder("Вставьте текст расписания или OCR...").fill("Team Liquid\nG2 Esports\n23 May, 16:10 | Table 1");
+  await page.getByRole("button", { name: /распознать/i }).click();
+  const firstRow = page.locator("tbody tr").first();
+  await expect(firstRow).toBeVisible();
+
+  const firstIdInput = firstRow.locator('input[placeholder="НЕТ ID"]').first();
+  await firstIdInput.fill("211608");
+  await firstRow.getByRole("button", { name: /сохранить/i }).first().click();
+
+  await expect(firstIdInput).toBeDisabled();
+  await expect(firstRow.getByRole("button", { name: /изменить/i }).first()).toBeVisible();
+  await firstRow.getByRole("button", { name: /изменить/i }).first().click();
+  await expect(firstIdInput).toBeEnabled();
+  expect(savedRequestBody).toMatchObject({
+    disciplineId: "73",
+    teamName: "Team Liquid",
+    platformId: "211608",
+  });
+});
+
 test("manual import can cancel an in-flight AI recognition request", async ({ page }) => {
   await page.route("**/api/admin-auth/session", async route => {
     await route.fulfill({ json: { authenticated: true } });
@@ -281,11 +371,13 @@ test("manual import can cancel an in-flight AI recognition request", async ({ pa
   });
 
   await page.goto("/manual-import");
+  await page.waitForLoadState("networkidle");
   await page.locator('input[type="file"][accept="image/*"]').setInputFiles({
     name: "slow-schedule.png",
     mimeType: "image/png",
     buffer: Buffer.from("fake-image"),
   });
+  await expect(page.getByText("slow-schedule.png")).toBeVisible();
   await page.getByRole("button", { name: /распознать/i }).click();
 
   await expect(page.getByRole("button", { name: /отменить/i })).toBeVisible();

@@ -21,14 +21,18 @@ export type ManualImportMappedMatch = {
   team1: {
     name: string;
     platformId: string | null;
+    source?: ManualTeamPlatformIdSource;
   };
   team2: {
     name: string;
     platformId: string | null;
+    source?: ManualTeamPlatformIdSource;
   };
   date: string;
   isReady: boolean;
 };
+
+export type ManualTeamPlatformIdSource = "explicit" | "manual" | "team_mapping" | "admin_team" | "embedded" | null;
 
 export type ManualFixtMatch = {
   date: string;
@@ -64,14 +68,34 @@ export function resolveManualTeamPlatformId({
   teamMappingPlatformId?: string | null;
   adminTeamPlatformId?: string | null;
 }) {
-  return (
-    explicitPlatformId ||
-    manualMappingPlatformId ||
-    teamMappingPlatformId ||
-    adminTeamPlatformId ||
-    embeddedPlatformId ||
-    null
-  );
+  return resolveManualTeamPlatformIdWithSource({
+    explicitPlatformId,
+    embeddedPlatformId,
+    manualMappingPlatformId,
+    teamMappingPlatformId,
+    adminTeamPlatformId,
+  }).platformId;
+}
+
+export function resolveManualTeamPlatformIdWithSource({
+  explicitPlatformId,
+  embeddedPlatformId,
+  manualMappingPlatformId,
+  teamMappingPlatformId,
+  adminTeamPlatformId,
+}: {
+  explicitPlatformId?: string | null;
+  embeddedPlatformId?: string | null;
+  manualMappingPlatformId?: string | null;
+  teamMappingPlatformId?: string | null;
+  adminTeamPlatformId?: string | null;
+}): { platformId: string | null; source: ManualTeamPlatformIdSource } {
+  if (explicitPlatformId) return { platformId: explicitPlatformId, source: "explicit" };
+  if (manualMappingPlatformId) return { platformId: manualMappingPlatformId, source: "manual" };
+  if (teamMappingPlatformId) return { platformId: teamMappingPlatformId, source: "team_mapping" };
+  if (adminTeamPlatformId) return { platformId: adminTeamPlatformId, source: "admin_team" };
+  if (embeddedPlatformId) return { platformId: embeddedPlatformId, source: "embedded" };
+  return { platformId: null, source: null };
 }
 
 export async function mapManualMatches(
@@ -101,14 +125,14 @@ export async function mapManualMatches(
       manualMappingA?.platformId || mappingA?.platformId ? null : findClosestPlatformTeamFromCandidates(adminTeams, team1Name, 0.62);
     const adminTeamB =
       manualMappingB?.platformId || mappingB?.platformId ? null : findClosestPlatformTeamFromCandidates(adminTeams, team2Name, 0.62);
-    const platformIdA = resolveManualTeamPlatformId({
+    const platformIdA = resolveManualTeamPlatformIdWithSource({
       explicitPlatformId: readString(match.team1PlatformId),
       embeddedPlatformId: readTeamPlatformId(match.team1),
       manualMappingPlatformId: manualMappingA?.platformId,
       teamMappingPlatformId: mappingA?.platformId,
       adminTeamPlatformId: adminTeamA?.platformId,
     });
-    const platformIdB = resolveManualTeamPlatformId({
+    const platformIdB = resolveManualTeamPlatformIdWithSource({
       explicitPlatformId: readString(match.team2PlatformId),
       embeddedPlatformId: readTeamPlatformId(match.team2),
       manualMappingPlatformId: manualMappingB?.platformId,
@@ -122,14 +146,16 @@ export async function mapManualMatches(
       tournament: readString(match.tournament) || "Manual Import",
       team1: {
         name: team1Name,
-        platformId: platformIdA,
+        platformId: platformIdA.platformId,
+        source: platformIdA.source,
       },
       team2: {
         name: team2Name,
-        platformId: platformIdB,
+        platformId: platformIdB.platformId,
+        source: platformIdB.source,
       },
       date: normalizeManualDate(match.date, match.unix_time),
-      isReady: Boolean(platformIdA && platformIdB),
+      isReady: Boolean(platformIdA.platformId && platformIdB.platformId),
     };
   }));
 }

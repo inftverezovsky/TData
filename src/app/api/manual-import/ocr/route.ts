@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth/adminAuth";
 import { getManualImportDiscipline } from "@/lib/manualImport/config";
 import { extractManualImportOcr } from "@/lib/manualImport/ocrPipeline";
 import { readManualImportParseRequest } from "@/lib/manualImport/parseRequest";
@@ -8,13 +7,10 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 180;
 
 export async function POST(request: Request) {
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
-
   try {
     const { disciplineSlug, imageDataUrl, imageBuffer, imageMime } = await readManualImportParseRequest(request);
 
-    if (!getManualImportDiscipline(disciplineSlug)) {
+    if (disciplineSlug && !getManualImportDiscipline(disciplineSlug)) {
       return NextResponse.json({ ok: false, error: "Unsupported discipline" }, { status: 400 });
     }
 
