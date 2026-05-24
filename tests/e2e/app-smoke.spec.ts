@@ -93,6 +93,29 @@ test("manual import hides discipline selector and uses AI-first image recognitio
       },
     });
   });
+  await page.route("**/api/manual-import/automap", async route => {
+    await route.fulfill({
+      json: {
+        ok: true,
+        mappedMatches: [
+          {
+            id: "manual-1",
+            tournament: "Manual Import",
+            team1: { name: "Team Liquid", platformId: "111" },
+            team2: { name: "G2 Esports", platformId: "222" },
+            date: "23.05.2026 16:10:00",
+            isReady: true,
+          },
+        ],
+        readyMatchesCount: 1,
+        savedMappings: [],
+        savedCount: 0,
+        skippedCount: 0,
+        conflictCount: 0,
+        overwrittenCount: 0,
+      },
+    });
+  });
 
   await page.goto("/manual-import");
   await page.waitForLoadState("networkidle");
@@ -111,7 +134,7 @@ test("manual import hides discipline selector and uses AI-first image recognitio
   await expect(page.getByText("Ход распознавания")).toBeVisible();
   await expect(page.getByText("AI распознавание")).toBeVisible();
   await expect(page.getByText("OCR изображения")).toHaveCount(0);
-  await expect(page.getByText(/ArcCodex AI\. Найдено матчей: 1/)).toBeVisible();
+  await expect(page.getByText(/Батч готов: скринов 1, успешно 1, без матчей 0, ошибок 0, матчей 1/)).toBeVisible();
   await expect(page.locator("tbody tr")).toHaveCount(1);
   await expect(page.getByRole("checkbox", { name: /выбрать все матчи/i })).toBeChecked();
   await expect(page.getByRole("checkbox", { name: /выбрать матч team liquid против g2 esports/i })).toBeChecked();
@@ -124,6 +147,86 @@ test("manual import hides discipline selector and uses AI-first image recognitio
   expect(parseBodies[0]).toContain("true");
   expect(parseBodies[0]).toContain('name="disciplineId"');
   expect(parseBodies[0]).not.toContain('name="disciplineSlug"');
+});
+
+test("manual import accepts multiple pasted screenshots and deduplicates batch matches", async ({ page }) => {
+  let parseCalls = 0;
+  let automapBody: any = null;
+  let ocrCalled = false;
+
+  await page.route("**/api/admin-auth/session", async route => {
+    await route.fulfill({ json: { authenticated: true } });
+  });
+  await page.route("**/api/manual-import/ocr", async route => {
+    ocrCalled = true;
+    await route.fulfill({ status: 500, json: { ok: false, error: "OCR should be manual only" } });
+  });
+  await page.route("**/api/manual-import/parse", async route => {
+    parseCalls += 1;
+    const isFirst = parseCalls === 1;
+    await route.fulfill({
+      json: {
+        ok: true,
+        rawMatches: [
+          {
+            tournament: "Manual Import",
+            team1: isFirst ? "Team Alpha" : "Team Beta",
+            team2: isFirst ? "Team Beta" : "Team Alpha",
+            date: "24.05.2026 11:50:00",
+          },
+        ],
+        mappedMatches: [],
+        normalizedText: isFirst ? "Team Alpha vs Team Beta" : "Team Beta vs Team Alpha",
+        ocrText: "",
+        ocrConfidence: null,
+        parseSource: "ai",
+        warnings: [],
+      },
+    });
+  });
+  await page.route("**/api/manual-import/automap", async route => {
+    automapBody = route.request().postDataJSON();
+    await route.fulfill({
+      json: {
+        ok: true,
+        mappedMatches: [
+          {
+            id: "manual-batch-1",
+            tournament: "Manual Import",
+            team1: { name: "Team Alpha", platformId: "101" },
+            team2: { name: "Team Beta", platformId: "202" },
+            date: "24.05.2026 11:50:00",
+            isReady: true,
+          },
+        ],
+        readyMatchesCount: 1,
+        savedMappings: [],
+        savedCount: 0,
+        skippedCount: 0,
+        conflictCount: 0,
+        overwrittenCount: 0,
+      },
+    });
+  });
+
+  await page.goto("/manual-import");
+  await page.waitForLoadState("networkidle");
+  await page.evaluate(() => {
+    const clipboardData = new DataTransfer();
+    clipboardData.items.add(new File(["image-one"], "paste-one.png", { type: "image/png" }));
+    clipboardData.items.add(new File(["image-two"], "paste-two.png", { type: "image/png" }));
+    window.dispatchEvent(new ClipboardEvent("paste", { clipboardData }));
+  });
+
+  await expect(page.getByText("paste-one.png")).toBeVisible();
+  await expect(page.getByText("paste-two.png")).toBeVisible();
+  await page.getByRole("button", { name: /распознать/i }).click();
+
+  await expect(page.locator("tbody tr")).toHaveCount(1);
+  await expect(page.getByText("Дубли: 1")).toBeVisible();
+  await expect.poll(() => parseCalls).toBe(2);
+  await expect.poll(() => automapBody?.matches?.length).toBe(1);
+  expect(ocrCalled).toBe(false);
 });
 
 test("manual import shows manual OCR fallback when AI image recognition fails", async ({ page }) => {
@@ -187,6 +290,29 @@ test("manual import shows manual OCR fallback when AI image recognition fails", 
       },
     });
   });
+  await page.route("**/api/manual-import/automap", async route => {
+    await route.fulfill({
+      json: {
+        ok: true,
+        mappedMatches: [
+          {
+            id: "manual-ai-1",
+            tournament: "Manual Import",
+            team1: { name: "NAVI", platformId: "333" },
+            team2: { name: "Vitality", platformId: "444" },
+            date: "23.05.2026 18:00:00",
+            isReady: true,
+          },
+        ],
+        readyMatchesCount: 1,
+        savedMappings: [],
+        savedCount: 0,
+        skippedCount: 0,
+        conflictCount: 0,
+        overwrittenCount: 0,
+      },
+    });
+  });
 
   await page.goto("/manual-import");
   await page.waitForLoadState("networkidle");
@@ -198,8 +324,8 @@ test("manual import shows manual OCR fallback when AI image recognition fails", 
   await expect(page.getByText("messy-schedule.png")).toBeVisible();
   await page.getByRole("button", { name: /распознать/i }).click();
 
-  await expect(page.getByText(/OCR fallback можно запустить вручную/)).toBeVisible();
-  await expect(page.getByRole("button", { name: /запустить ocr fallback/i })).toBeVisible();
+  await expect(page.getByText(/OCR fallback доступен вручную/)).toBeVisible();
+  await expect(page.getByRole("button", { name: /ocr fallback для ошибок/i })).toBeVisible();
   await expect(page.getByText("OCR изображения")).toHaveCount(0);
   expect(ocrCalls).toBe(0);
   expect(parseBodies).toHaveLength(1);
@@ -207,10 +333,11 @@ test("manual import shows manual OCR fallback when AI image recognition fails", 
   expect(parseBodies[0]).toContain("ai");
   expect(parseBodies[0]).toContain('name="fast"');
 
-  await page.getByRole("button", { name: /запустить ocr fallback/i }).click();
+  await page.getByRole("button", { name: /ocr fallback для ошибок/i }).click();
 
   await expect(page.getByText("OCR изображения")).toBeVisible();
-  await expect(page.getByText(/Локальный OCR\. Найдено матчей: 1/)).toBeVisible();
+  await expect(page.getByText("Локальный OCR", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Батч готов: скринов 1, успешно 1, без матчей 0, ошибок 0, матчей 1/)).toBeVisible();
   await expect(page.locator("tbody tr")).toHaveCount(1);
   expect(ocrCalls).toBe(1);
   expect(parseBodies).toHaveLength(2);

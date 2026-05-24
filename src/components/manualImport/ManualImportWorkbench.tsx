@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, useRef, useState } from "react";
+import { ChangeEvent, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   Bot,
@@ -9,6 +9,7 @@ import {
   Clock,
   FileJson,
   FileUp,
+  Images,
   ImageUp,
   Loader2,
   Minus,
@@ -21,8 +22,18 @@ import {
   Sparkles,
   Table2,
   UploadCloud,
+  X,
 } from "lucide-react";
 import { shiftManualImportMatchDates } from "@/lib/manualImport/timeShift";
+import {
+  buildManualImportBatchSummary,
+  dedupeManualImportBatchMatches,
+  type BatchRecognitionSummary,
+  type ImageRecognitionStatus,
+  MANUAL_IMPORT_IMAGE_BATCH_CONCURRENCY,
+  MANUAL_IMPORT_MAX_IMAGES,
+  selectManualImportImageHashes,
+} from "@/lib/manualImport/imageBatch";
 
 type ManualMatch = {
   id?: string;
@@ -117,6 +128,23 @@ type ClientAiImageCacheEntry = {
   expiresAt: number;
 };
 
+type ManualImportImageItem = {
+  id: string;
+  name: string;
+  file: File;
+  previewUrl: string;
+  hash: string;
+  status: ImageRecognitionStatus;
+  error?: string;
+  rawMatches?: ManualMatch[];
+  normalizedText?: string;
+  parseSource?: ParseSource;
+  timings?: Record<string, number>;
+  ocrText?: string;
+  ocrConfidence?: number | null;
+  warnings?: string[];
+};
+
 const CLIENT_AI_IMAGE_CACHE_TTL_MS = 30 * 60 * 1000;
 const clientAiImageCache = new Map<string, ClientAiImageCacheEntry>();
 
@@ -124,9 +152,8 @@ export default function ManualImportWorkbench() {
   const [disciplineId, setDisciplineId] = useState("73");
   const [shapkaId, setShapkaId] = useState("");
   const [rawText, setRawText] = useState("");
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imageDataUrl, setImageDataUrl] = useState("");
-  const [imageName, setImageName] = useState("");
+  const [imageItems, setImageItems] = useState<ManualImportImageItem[]>([]);
+  const [batchSummary, setBatchSummary] = useState<BatchRecognitionSummary | null>(null);
   const [ocrText, setOcrText] = useState("");
   const [ocrConfidence, setOcrConfidence] = useState<number | null>(null);
   const [parseSource, setParseSource] = useState<ParseSource>("");
@@ -160,6 +187,30 @@ export default function ManualImportWorkbench() {
   const [teamImportResult, setTeamImportResult] = useState<TeamImportResult | null>(null);
   const [teamImportMessage, setTeamImportMessage] = useState<ResultMessage | null>(null);
   const activeRecognitionController = useRef<AbortController | null>(null);
+  const imageItemsRef = useRef<ManualImportImageItem[]>([]);
+  const addImageFilesRef = useRef<(files: File[], source: "file" | "paste") => Promise<void>>(async () => undefined);
+
+  useEffect(() => {
+    imageItemsRef.current = imageItems;
+  }, [imageItems]);
+
+  useEffect(() => {
+    return () => {
+      imageItemsRef.current.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+    };
+  }, []);
+
+  function setImageItemsState(
+    updater: ManualImportImageItem[] | ((current: ManualImportImageItem[]) => ManualImportImageItem[])
+  ) {
+    const current = imageItemsRef.current;
+    const next =
+      typeof updater === "function"
+        ? (updater as (current: ManualImportImageItem[]) => ManualImportImageItem[])(current)
+        : updater;
+    imageItemsRef.current = next;
+    setImageItems(next);
+  }
 
   const selectedMatches = getSelectedMatches(matches, selectedMatchIndexes);
   const selectedCount = selectedMatchIndexes.size;
@@ -190,12 +241,107 @@ export default function ManualImportWorkbench() {
   }
 
   async function handleImageChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(event.target.files || []);
+    await addImageFiles(files, "file");
+    event.target.value = "";
+  }
 
-    setImageName(file.name);
-    setImageFile(file);
-    setImageDataUrl("");
+  async function addImageFiles(files: File[], source: "file" | "paste") {
+    const imageFiles = files.filter((file) => file.type.startsWith("image/"));
+    if (imageFiles.length === 0) return;
+
+    const preparedItems = await Promise.all(
+      imageFiles.map(async (file, index) => ({
+        id: `${Date.now()}-${source}-${index}-${Math.random().toString(36).slice(2, 8)}`,
+        name: file.name || `clipboard-${new Date().toISOString().replace(/[:.]/g, "-")}.${fileExtensionFromMime(file.type)}`,
+        file,
+        previewUrl: URL.createObjectURL(file),
+        hash: await getFileHash(file),
+        status: "queued" as const,
+      }))
+    );
+    const selection = selectManualImportImageHashes(
+      imageItemsRef.current.map((item) => item.hash),
+      preparedItems.map((item) => item.hash)
+    );
+    const acceptedHashes = new Set(selection.acceptedHashes);
+    const acceptedItems = preparedItems.filter((item) => acceptedHashes.has(item.hash));
+    preparedItems
+      .filter((item) => !acceptedHashes.has(item.hash))
+      .forEach((item) => URL.revokeObjectURL(item.previewUrl));
+
+    if (acceptedItems.length === 0) {
+      setMessage({
+        type: "info",
+        text:
+          selection.duplicateCount > 0
+            ? "Эти скрины уже есть в очереди."
+            : `Можно добавить максимум ${MANUAL_IMPORT_MAX_IMAGES} скринов.`,
+      });
+      return;
+    }
+
+    const nextQueueLength = imageItemsRef.current.length + acceptedItems.length;
+    setImageItemsState((current) => [...current, ...acceptedItems]);
+    setOcrText("");
+    setOcrConfidence(null);
+    setParseSource("");
+    setParseWarnings([]);
+    setBatchSummary(null);
+    setRecognitionStage("idle");
+    setRecognitionStepDetails({});
+    setAiFallbackAvailable(false);
+    setOcrFallbackAvailable(false);
+    setPreview(null);
+    setMappingConflicts([]);
+    setMappingSaveSummary(null);
+    setLastServiceJsonUrl("");
+    const details = [
+      selection.duplicateCount > 0 ? `дубликатов: ${selection.duplicateCount}` : "",
+      selection.overflowCount > 0 ? `не влезло: ${selection.overflowCount}` : "",
+    ].filter(Boolean);
+    setMessage({
+      type: "success",
+      text: `Добавлено скринов: ${acceptedItems.length}. В очереди: ${nextQueueLength}/${MANUAL_IMPORT_MAX_IMAGES}${
+        details.length ? `. ${details.join(", ")}.` : "."
+      }`,
+    });
+  }
+
+  useEffect(() => {
+    addImageFilesRef.current = addImageFiles;
+  });
+
+  useEffect(() => {
+    function handleWindowPaste(event: globalThis.ClipboardEvent) {
+      const files = getImageFilesFromClipboard(event.clipboardData);
+      if (files.length === 0) return;
+      event.preventDefault();
+      void addImageFilesRef.current(files, "paste");
+    }
+
+    window.addEventListener("paste", handleWindowPaste);
+    return () => window.removeEventListener("paste", handleWindowPaste);
+  }, []);
+
+  function updateImageItem(id: string, patch: Partial<ManualImportImageItem>) {
+    setImageItemsState((current) => current.map((item) => (item.id === id ? { ...item, ...patch } : item)));
+  }
+
+  function removeImageItem(id: string) {
+    const item = imageItemsRef.current.find((currentItem) => currentItem.id === id);
+    if (item) URL.revokeObjectURL(item.previewUrl);
+    setImageItemsState((current) => current.filter((currentItem) => currentItem.id !== id));
+    setBatchSummary(null);
+    setOcrFallbackAvailable(false);
+    setPreview(null);
+  }
+
+  function clearImageItems() {
+    activeRecognitionController.current?.abort();
+    imageItemsRef.current.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+    setImageItemsState([]);
+    setBatchSummary(null);
     setOcrText("");
     setOcrConfidence(null);
     setParseSource("");
@@ -205,10 +351,6 @@ export default function ManualImportWorkbench() {
     setAiFallbackAvailable(false);
     setOcrFallbackAvailable(false);
     setPreview(null);
-    setMappingConflicts([]);
-    setMappingSaveSummary(null);
-    setLastServiceJsonUrl("");
-    setMessage(null);
   }
 
   async function importTeams() {
@@ -260,10 +402,10 @@ export default function ManualImportWorkbench() {
 
   async function parseMatches(options: { useOcrText?: boolean } = {}) {
     const textForParse = options.useOcrText ? ocrText : rawText;
-    const shouldUploadImage = !options.useOcrText && Boolean(imageFile || imageDataUrl);
+    const shouldUploadImage = !options.useOcrText && imageItems.length > 0;
 
     if (!textForParse.trim() && !shouldUploadImage) {
-      setMessage({ type: "error", text: "Добавьте текст или фото для распознавания." });
+      setMessage({ type: "error", text: "Добавьте текст или скрины для распознавания." });
       return;
     }
 
@@ -286,7 +428,7 @@ export default function ManualImportWorkbench() {
             setRecognitionStep("local-parser", "Текст не собрал матчи, перехожу к AI распознаванию.");
           }
         }
-        await parseImageWithAiFirst(controller);
+        await parseImageBatchWithAiFirst(controller);
         return;
       }
 
@@ -311,69 +453,175 @@ export default function ManualImportWorkbench() {
     }
   }
 
-  async function parseImageWithAiFirst(controller: AbortController) {
-    setRecognitionStep("preparing", "Готовлю изображение для ArcCodex AI.");
-    const preparedImage = imageFile ? await resizeImageForAi(imageFile) : null;
-    throwIfAborted(controller.signal);
-    const cacheKey = await getClientAiImageCacheKey(disciplineId, preparedImage, imageDataUrl);
-    const cached = cacheKey ? getClientAiImageCache(cacheKey) : null;
-
-    if (cached) {
-      setRecognitionStep("ai-fallback", "Взято из кэша ArcCodex AI.");
-      await applyCachedAiImageParse(cached, controller.signal);
+  async function parseImageBatchWithAiFirst(controller: AbortController) {
+    const queuedItems = imageItemsRef.current;
+    if (queuedItems.length === 0) {
+      setMessage({ type: "error", text: "Добавьте скрины через Ctrl+V или выбор файла." });
       return;
     }
 
-    setRecognitionStep("ai-fallback", "Отправляю изображение в ArcCodex AI.");
+    setBatchSummary(null);
+    setRecognitionStep("preparing", `Готовлю скрины: ${queuedItems.length}.`);
+    setImageItemsState((current) =>
+      current.map((item) => ({
+        ...item,
+        status: "queued",
+        error: undefined,
+        rawMatches: undefined,
+        normalizedText: undefined,
+        parseSource: undefined,
+        timings: undefined,
+        warnings: undefined,
+      }))
+    );
+
+    setRecognitionStep(
+      "ai-fallback",
+      `Отправляю скрины в ArcCodex AI, параллельно до ${MANUAL_IMPORT_IMAGE_BATCH_CONCURRENCY}.`
+    );
+    await runImageBatchPool(queuedItems, MANUAL_IMPORT_IMAGE_BATCH_CONCURRENCY, (item) =>
+      processImageItemWithAi(item, controller.signal)
+    );
+    throwIfAborted(controller.signal);
+    await finalizeBatchRecognition(controller.signal);
+  }
+
+  async function processImageItemWithAi(item: ManualImportImageItem, signal: AbortSignal) {
+    updateImageItem(item.id, { status: "preparing", error: undefined });
+    const preparedImage = await resizeImageForAi(item.file);
+    throwIfAborted(signal);
+    const cacheKey = await getClientAiImageCacheKey(disciplineId, preparedImage, "");
+    const cached = cacheKey ? getClientAiImageCache(cacheKey) : null;
+
+    if (cached) {
+      updateImageItem(item.id, {
+        status: cached.rawMatches.length > 0 ? "success" : "empty",
+        rawMatches: cached.rawMatches,
+        normalizedText: cached.normalizedText,
+        parseSource: "ai",
+        timings: { aiMs: 0 },
+      });
+      return;
+    }
+
+    updateImageItem(item.id, { status: "ai" });
+
     try {
       const data = await postManualParse({
         mode: "ai",
         text: rawText,
-        image: preparedImage || undefined,
-        imageDataUrl: preparedImage ? "" : imageDataUrl,
+        image: preparedImage,
         fast: true,
-        signal: controller.signal,
+        signal,
       });
-      applyParsedData(data);
+      const rawMatches = Array.isArray(data.rawMatches) ? data.rawMatches : [];
       if (cacheKey) {
         setClientAiImageCache(cacheKey, {
-          rawMatches: data.rawMatches || [],
+          rawMatches,
           normalizedText: data.normalizedText || "",
         });
       }
-      setAiFallbackAvailable(false);
-      setOcrFallbackAvailable(false);
-      setRecognitionStep("mapping", "ID команд подтянуты из справочников.");
-      setRecognitionStep("done", `Найдено матчей: ${(data.rawMatches || []).length}.`);
-      setMessage({
-        type: "success",
-        text: `${getParseSourceLabel(data.parseSource)}. Найдено матчей: ${(data.rawMatches || []).length}.`,
+      updateImageItem(item.id, {
+        status: rawMatches.length > 0 ? "success" : "empty",
+        rawMatches,
+        normalizedText: data.normalizedText || "",
+        parseSource: data.parseSource || "ai",
+        timings: data.timings || {},
+        warnings: Array.isArray(data.warnings) ? data.warnings : [],
       });
     } catch (error) {
       if (isAbortError(error)) throw error;
-      const reason = error instanceof Error ? error.message : "AI не смог собрать матчи.";
-      setAiFallbackAvailable(false);
-      setOcrFallbackAvailable(Boolean(imageFile || imageDataUrl));
-      setParseSource("ai");
-      setParseWarnings([`${reason} OCR fallback можно запустить вручную.`]);
-      setRecognitionStep("done", "AI не нашёл матчи. OCR fallback доступен вручную.");
-      setMessage({ type: "error", text: `${reason} Можно запустить OCR fallback вручную.` });
+      updateImageItem(item.id, {
+        status: "error",
+        error: error instanceof Error ? error.message : "AI не смог собрать матчи.",
+        rawMatches: [],
+        parseSource: "ai",
+      });
     }
   }
 
-  async function parseImageWithFastOcr(controller: AbortController) {
-    setRecognitionStep("preparing", "Готовлю изображение для локального OCR.");
-    const preparedImage = imageFile ? await resizeImageForOcr(imageFile) : null;
+  async function finalizeBatchRecognition(signal: AbortSignal) {
+    const currentItems = imageItemsRef.current;
+    const allRawMatches = currentItems.flatMap((item) => item.rawMatches || []);
+    const deduped = dedupeManualImportBatchMatches(allRawMatches);
+    const warnings = currentItems.flatMap((item) => item.warnings || []);
+    const failedItems = currentItems.filter((item) => item.status === "error" || item.status === "empty");
+    const combinedText = currentItems.map((item) => item.normalizedText || item.ocrText || "").filter(Boolean).join("\n\n");
+    const hasOcrResult = currentItems.some((item) => item.parseSource === "local-ocr" || item.parseSource === "ocr-cache");
+
+    setRecognitionStep("mapping", "Объединяю результаты и подтягиваю ID команд.");
+
+    if (deduped.matches.length > 0) {
+      if (hasValidDisciplineId) {
+        const mapped = await postManualAutomap(deduped.matches as ManualMatch[], signal);
+        applyParsedData({
+          rawMatches: deduped.matches,
+          mappedMatches: mapped.mappedMatches || [],
+          normalizedText: combinedText,
+          parseSource: hasOcrResult ? "local-ocr" : "ai",
+          warnings,
+        });
+        setLockedTeamCells((current) =>
+          mergeLockedTeamCellsFromSavedMappings(current, deduped.matches as ManualMatch[], mapped.mappedMatches || [], mapped.savedMappings || [])
+        );
+        if (typeof mapped.savedCount === "number") {
+          setMappingSaveSummary({
+            savedCount: mapped.savedCount || 0,
+            skippedCount: mapped.skippedCount || 0,
+            conflictCount: mapped.conflictCount || 0,
+            overwrittenCount: mapped.overwrittenCount || 0,
+          });
+        }
+      } else {
+        applyParsedData({
+          rawMatches: deduped.matches,
+          mappedMatches: [],
+          normalizedText: combinedText,
+          parseSource: hasOcrResult ? "local-ocr" : "ai",
+          warnings: [...warnings, "Укажите ID дисциплины, чтобы подтянуть и сохранить ID команд."],
+        });
+      }
+    } else {
+      applyParsedData({
+        rawMatches: [],
+        mappedMatches: [],
+        normalizedText: combinedText,
+        parseSource: hasOcrResult ? "local-ocr" : "ai",
+        warnings,
+      });
+    }
+
+    const summary = buildManualImportBatchSummary(imageItemsRef.current, deduped.matches.length, deduped.duplicatesRemoved);
+    setBatchSummary(summary);
+    setAiFallbackAvailable(false);
+    setOcrFallbackAvailable(failedItems.length > 0);
+    if (combinedText && hasOcrResult) setOcrText(combinedText);
+    setParseSource(hasOcrResult ? "local-ocr" : "ai");
+    setParseWarnings([
+      ...warnings,
+      ...failedItems.map((item) => `${item.name}: ${item.error || "матчи не найдены"}`),
+      ...(deduped.duplicatesRemoved > 0 ? [`Удалено дублей: ${deduped.duplicatesRemoved}.`] : []),
+    ]);
+    setRecognitionStep("done", `Готово: матчей ${summary.matches}, ошибок ${summary.error}, без матчей ${summary.empty}.`);
+    setMessage({
+      type: summary.matches > 0 ? "success" : "error",
+      text: `Батч готов: скринов ${summary.total}, успешно ${summary.success}, без матчей ${summary.empty}, ошибок ${
+        summary.error
+      }, матчей ${summary.matches}.${failedItems.length > 0 ? " OCR fallback доступен вручную." : ""}`,
+    });
+  }
+
+  async function parseImageItemWithFastOcr(item: ManualImportImageItem, controller: AbortController) {
+    updateImageItem(item.id, { status: "preparing", error: undefined });
+    setRecognitionStep("preparing", `Готовлю OCR: ${item.name}.`);
+    const preparedImage = await resizeImageForOcr(item.file);
     throwIfAborted(controller.signal);
     const ocrFormData = new FormData();
     ocrFormData.append("disciplineId", disciplineId);
-    if (preparedImage) {
-      ocrFormData.append("image", preparedImage);
-    } else if (imageDataUrl) {
-      ocrFormData.append("imageDataUrl", imageDataUrl);
-    }
+    ocrFormData.append("image", preparedImage);
 
-    setRecognitionStep("ocr", "Извлекаю текст локальным OCR.");
+    updateImageItem(item.id, { status: "ocr" });
+    setRecognitionStep("ocr", `Извлекаю текст локальным OCR: ${item.name}.`);
     const ocrResponse = await fetch("/api/manual-import/ocr", {
       method: "POST",
       body: ocrFormData,
@@ -385,42 +633,35 @@ export default function ManualImportWorkbench() {
     }
 
     const extractedText = typeof ocrData.ocrText === "string" ? ocrData.ocrText : "";
-    setOcrText(extractedText);
-    setOcrConfidence(typeof ocrData.ocrConfidence === "number" ? ocrData.ocrConfidence : null);
-    setParseSource(ocrData.cached ? "ocr-cache" : "local-ocr");
-    setParseWarnings(Array.isArray(ocrData.warnings) ? ocrData.warnings : []);
+    const ocrConfidence = typeof ocrData.ocrConfidence === "number" ? ocrData.ocrConfidence : null;
     setRecognitionStep(
       "ocr",
       `${ocrData.cached ? "Взято из кэша OCR" : "OCR завершён"}${
-        typeof ocrData.ocrConfidence === "number" ? `, confidence ${Math.round(ocrData.ocrConfidence)}%` : ""
+        ocrConfidence !== null ? `, confidence ${Math.round(ocrConfidence)}%` : ""
       }.`
     );
 
-    setRecognitionStep("local-parser", "Собираю матчи из OCR-текста.");
+    setRecognitionStep("local-parser", `Собираю матчи из OCR-текста: ${item.name}.`);
     try {
       const data = await postManualParse({ mode: "text", text: extractedText, signal: controller.signal });
-      applyParsedData({
-        ...data,
-        ocrText: extractedText,
-        ocrConfidence: ocrData.ocrConfidence,
+      const rawMatches = Array.isArray(data.rawMatches) ? data.rawMatches : [];
+      updateImageItem(item.id, {
+        status: rawMatches.length > 0 ? "ocr" : "empty",
+        rawMatches,
+        normalizedText: data.normalizedText || extractedText,
         parseSource: ocrData.cached ? "ocr-cache" : "local-ocr",
+        ocrText: extractedText,
+        ocrConfidence,
         warnings: [...(ocrData.warnings || []), ...(data.warnings || [])],
-      });
-      setRecognitionStep("mapping", "ID команд подтянуты из справочников.");
-      setOcrFallbackAvailable(false);
-      setRecognitionStep("done", `Найдено матчей: ${(data.rawMatches || []).length}.`);
-      setMessage({
-        type: "success",
-        text: `${ocrData.cached ? "Кэш OCR" : "Локальный OCR"}. Найдено матчей: ${(data.rawMatches || []).length}.`,
       });
     } catch (error) {
       if (isAbortError(error)) throw error;
-      const reason = error instanceof Error ? error.message : "Локальный парсер не смог собрать матчи.";
-      await runAiFallbackParse({
-        ocrTextOverride: extractedText,
-        imageFallback: false,
-        introDetail: `${reason} Отправляю OCR-текст в ArcCodex AI автоматически.`,
-        signal: controller.signal,
+      updateImageItem(item.id, {
+        status: "error",
+        error: error instanceof Error ? error.message : "Локальный парсер не смог собрать матчи.",
+        ocrText: extractedText,
+        ocrConfidence,
+        warnings: Array.isArray(ocrData.warnings) ? ocrData.warnings : [],
       });
     }
   }
@@ -437,14 +678,19 @@ export default function ManualImportWorkbench() {
   }
 
   async function runOcrFallback() {
-    if (!imageFile && !imageDataUrl) {
-      setMessage({ type: "error", text: "Нет фото для OCR fallback." });
+    const fallbackItems = imageItemsRef.current.filter((item) => item.status === "error" || item.status === "empty");
+    if (fallbackItems.length === 0) {
+      setMessage({ type: "error", text: "Нет скринов для OCR fallback." });
       return;
     }
 
     const controller = beginRecognition();
     try {
-      await parseImageWithFastOcr(controller);
+      for (const item of fallbackItems) {
+        throwIfAborted(controller.signal);
+        await parseImageItemWithFastOcr(item, controller);
+      }
+      await finalizeBatchRecognition(controller.signal);
     } catch (error) {
       if (isAbortError(error)) {
         setRecognitionStep("done", "OCR fallback отменён.");
@@ -475,7 +721,8 @@ export default function ManualImportWorkbench() {
     const resetController = resetProgress ? beginRecognition() : null;
     const requestSignal = signal || resetController?.signal;
     const nextOcrText = ocrTextOverride ?? ocrText;
-    if (!nextOcrText.trim() && !rawText.trim() && (!imageFallback || (!imageFile && !imageDataUrl))) {
+    const fallbackImageItem = imageFallback ? imageItemsRef.current[0] || null : null;
+    if (!nextOcrText.trim() && !rawText.trim() && !fallbackImageItem) {
       setMessage({ type: "error", text: "Нет текста или фото для AI fallback." });
       if (resetController) finishRecognition(resetController);
       return;
@@ -488,8 +735,7 @@ export default function ManualImportWorkbench() {
         mode: "ai",
         text: rawText,
         ocrText: nextOcrText,
-        image: imageFallback && !nextOcrText.trim() && imageFile ? await resizeImageForAi(imageFile) : undefined,
-        imageDataUrl: imageFallback && !nextOcrText.trim() ? imageDataUrl : "",
+        image: fallbackImageItem && !nextOcrText.trim() ? await resizeImageForAi(fallbackImageItem.file) : undefined,
         fast: true,
         signal: requestSignal,
       });
@@ -616,52 +862,6 @@ export default function ManualImportWorkbench() {
     if (data.normalizedText && !rawText.trim() && !data.ocrText && data.parseSource !== "local-ocr" && data.parseSource !== "ocr-cache") {
       setRawText(data.normalizedText);
     }
-  }
-
-  async function applyCachedAiImageParse(cached: ClientAiImageCacheEntry, signal: AbortSignal) {
-    if (!hasValidDisciplineId) {
-      applyParsedData({
-        rawMatches: cached.rawMatches,
-        mappedMatches: [],
-        normalizedText: cached.normalizedText,
-        parseSource: "ai",
-        warnings: ["Укажите ID дисциплины, чтобы подтянуть и сохранить ID команд."],
-        cacheHit: true,
-      });
-      setRecognitionStep("done", `Найдено матчей: ${cached.rawMatches.length}. ID команд не подтянуты без ID дисциплины.`);
-      setMessage({
-        type: "info",
-        text: `ArcCodex AI (кэш). Найдено матчей: ${cached.rawMatches.length}. Укажите ID дисциплины для автомапинга.`,
-      });
-      return;
-    }
-
-    setRecognitionStep("mapping", "Обновляю ID команд по текущему справочнику.");
-    const mapped = await postManualAutomap(cached.rawMatches, signal);
-    const data = {
-      rawMatches: cached.rawMatches,
-      mappedMatches: mapped.mappedMatches || [],
-      normalizedText: cached.normalizedText,
-      parseSource: "ai",
-      warnings: [],
-      cacheHit: true,
-    };
-    applyParsedData(data);
-    setLockedTeamCells((current) =>
-      mergeLockedTeamCellsFromSavedMappings(current, cached.rawMatches, mapped.mappedMatches || [], mapped.savedMappings || [])
-    );
-    if (typeof mapped.savedCount === "number") {
-      setMappingSaveSummary({
-        savedCount: mapped.savedCount || 0,
-        skippedCount: mapped.skippedCount || 0,
-        conflictCount: mapped.conflictCount || 0,
-        overwrittenCount: mapped.overwrittenCount || 0,
-      });
-    }
-    setAiFallbackAvailable(false);
-    setOcrFallbackAvailable(false);
-    setRecognitionStep("done", `Найдено матчей: ${cached.rawMatches.length}.`);
-    setMessage({ type: "success", text: `ArcCodex AI (кэш). Найдено матчей: ${cached.rawMatches.length}.` });
   }
 
   async function postManualAutomap(rawMatches: ManualMatch[], signal?: AbortSignal) {
@@ -1308,9 +1508,20 @@ export default function ManualImportWorkbench() {
           <div className="grid gap-4 md:grid-cols-2">
             <label className="flex min-h-40 cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-indigo-200 bg-indigo-50/30 p-6 text-center transition hover:bg-indigo-50">
               <ImageUp className="h-9 w-9 text-indigo-500" />
-              <span className="mt-3 text-sm font-black text-slate-950">{imageName || "Добавить фото"}</span>
-              <span className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">png / jpg / webp</span>
-              <input key={`image-file-${disciplineId}`} type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
+              <span className="mt-3 text-sm font-black text-slate-950">
+                {imageItems.length > 0 ? `Скринов в очереди: ${imageItems.length}/${MANUAL_IMPORT_MAX_IMAGES}` : "Ctrl+V или выбрать скрины"}
+              </span>
+              <span className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                до {MANUAL_IMPORT_MAX_IMAGES} файлов · png / jpg / webp
+              </span>
+              <input
+                key={`image-file-${disciplineId}`}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleImageChange}
+                className="hidden"
+              />
             </label>
             <div className="rounded-2xl border border-slate-200 bg-slate-50 p-2">
               <textarea
@@ -1324,6 +1535,82 @@ export default function ManualImportWorkbench() {
               />
             </div>
           </div>
+
+          {imageItems.length > 0 && (
+            <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+              <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white text-indigo-600 shadow-sm">
+                    <Images className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-slate-950">Очередь скринов</h3>
+                    <p className="mt-1 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                      {imageItems.length}/{MANUAL_IMPORT_MAX_IMAGES} · вставляйте через Ctrl+V
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={clearImageItems}
+                  disabled={parsing}
+                  className="h-9 rounded-xl border border-slate-200 bg-white px-4 text-[10px] font-black uppercase tracking-widest text-slate-500 transition hover:bg-slate-100 disabled:opacity-50"
+                >
+                  Очистить все
+                </button>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {imageItems.map((item, index) => (
+                  <div key={item.id} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                    <div
+                      className="relative h-28 overflow-hidden rounded-xl border border-slate-100 bg-slate-100 bg-cover bg-center"
+                      style={{ backgroundImage: `url(${item.previewUrl})` }}
+                      aria-label={item.name}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => removeImageItem(item.id)}
+                        disabled={parsing}
+                        aria-label={`Удалить скрин ${item.name}`}
+                        className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-slate-500 shadow-sm transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                    <div className="mt-3 flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-black text-slate-950">
+                          {index + 1}. {item.name}
+                        </p>
+                        <p className="mt-1 text-[10px] font-bold text-slate-400">
+                          {item.rawMatches?.length ? `Матчей: ${item.rawMatches.length}` : item.error || "Ожидает распознавания"}
+                        </p>
+                      </div>
+                      <span
+                        className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-widest ${getImageStatusClass(
+                          item.status
+                        )}`}
+                      >
+                        {getImageStatusLabel(item.status)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {batchSummary && (
+            <div className="mt-5 grid gap-2 rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4 text-[10px] font-black uppercase tracking-widest text-emerald-800 sm:grid-cols-3 xl:grid-cols-6">
+              <div>Скринов: {batchSummary.total}</div>
+              <div>Успешно: {batchSummary.success}</div>
+              <div>Без матчей: {batchSummary.empty}</div>
+              <div>Ошибок: {batchSummary.error}</div>
+              <div>Матчей: {batchSummary.matches}</div>
+              <div>Дубли: {batchSummary.duplicatesRemoved}</div>
+            </div>
+          )}
 
           {recognitionStage !== "idle" && (
             <div className="mt-5 rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4">
@@ -1423,7 +1710,7 @@ export default function ManualImportWorkbench() {
                       className="flex h-10 items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-500 px-4 text-[10px] font-black uppercase tracking-widest text-white transition hover:bg-amber-600 disabled:border-slate-100 disabled:bg-slate-50 disabled:text-slate-300"
                     >
                       {parsing ? <Loader2 className="h-4 w-4 animate-spin" /> : <ScanText className="h-4 w-4" />}
-                      Запустить OCR fallback
+                      OCR fallback для ошибок
                     </button>
                   )}
                 </div>
@@ -2026,6 +2313,44 @@ function getRecognitionStageStatus(
   return "pending";
 }
 
+function getImageStatusLabel(status: ImageRecognitionStatus) {
+  switch (status) {
+    case "queued":
+      return "Очередь";
+    case "preparing":
+      return "Подготовка";
+    case "ai":
+      return "AI";
+    case "success":
+      return "Готово";
+    case "empty":
+      return "Пусто";
+    case "error":
+      return "Ошибка";
+    case "ocr":
+      return "OCR";
+    default:
+      return "Очередь";
+  }
+}
+
+function getImageStatusClass(status: ImageRecognitionStatus) {
+  switch (status) {
+    case "success":
+    case "ocr":
+      return "bg-emerald-50 text-emerald-700";
+    case "ai":
+    case "preparing":
+      return "bg-indigo-50 text-indigo-700";
+    case "empty":
+      return "bg-amber-50 text-amber-700";
+    case "error":
+      return "bg-rose-50 text-rose-700";
+    default:
+      return "bg-slate-100 text-slate-500";
+  }
+}
+
 async function resizeImageForAi(file: File) {
   return resizeImage(file, {
     maxSide: 1600,
@@ -2097,6 +2422,50 @@ async function getClientAiImageCacheKey(disciplineId: string, file: File | null,
   return `${disciplineId.trim() || "manual"}:${Array.from(new Uint8Array(hash))
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("")}`;
+}
+
+function getImageFilesFromClipboard(clipboardData: DataTransfer | null) {
+  if (!clipboardData?.items) return [];
+  const files: File[] = [];
+  for (const item of Array.from(clipboardData.items)) {
+    if (item.kind !== "file" || !item.type.startsWith("image/")) continue;
+    const file = item.getAsFile();
+    if (file) files.push(file);
+  }
+  return files;
+}
+
+async function getFileHash(file: File) {
+  if (typeof window === "undefined" || !window.crypto?.subtle) {
+    return `${file.name}:${file.size}:${file.lastModified}`;
+  }
+  const hash = await window.crypto.subtle.digest("SHA-256", await file.arrayBuffer());
+  return Array.from(new Uint8Array(hash))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function fileExtensionFromMime(mimeType: string) {
+  if (mimeType.includes("png")) return "png";
+  if (mimeType.includes("webp")) return "webp";
+  if (mimeType.includes("jpeg") || mimeType.includes("jpg")) return "jpg";
+  return "png";
+}
+
+async function runImageBatchPool<T>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<void>
+) {
+  let cursor = 0;
+  const workers = Array.from({ length: Math.max(1, Math.min(concurrency, items.length)) }, async () => {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      await worker(items[index], index);
+    }
+  });
+  await Promise.all(workers);
 }
 
 function getClientAiImageCache(key: string) {

@@ -1,0 +1,80 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import {
+  buildScheduleFormatGroups,
+  isAnnouncementScheduleMatch,
+  isGeneratedScheduleMatrixRow,
+  isUploadReadyScheduleMatch,
+} from "../src/lib/matches/scheduleView";
+
+test("exact-time matches are upload-ready and not announcements", () => {
+  const match = {
+    id: "match-1",
+    matchDate: null,
+    matchDateTime: "May 23, 2026 - 13:00 CEST",
+    rawText: "Alpha vs Beta",
+    scoreA: null,
+    scoreB: null,
+    teamAName: "Alpha",
+    teamBName: "Beta",
+  };
+
+  assert.equal(isUploadReadyScheduleMatch(match), true);
+  assert.equal(isAnnouncementScheduleMatch(match), false);
+});
+
+test("date-only schedule rows are announcements, not upload-ready matches", () => {
+  const match = {
+    id: "announcement-1",
+    matchDate: new Date("2026-05-23T00:00:00.000Z"),
+    matchDateTime: "May 23, 2026",
+    rawText: "Alpha vs Beta announced match",
+    scoreA: null,
+    scoreB: null,
+    teamAName: "Alpha",
+    teamBName: "Beta",
+  };
+
+  assert.equal(isUploadReadyScheduleMatch(match), false);
+  assert.equal(isAnnouncementScheduleMatch(match), true);
+});
+
+test("generated crosstable matrix rows are hidden from both schedule modes", () => {
+  const match = {
+    id: "matrix-1",
+    format: "Round robin",
+    matchDate: null,
+    matchDateTime: null,
+    rawText: "Group Stage crosstable row",
+    scoreA: null,
+    scoreB: null,
+    teamAName: "Alpha",
+    teamBName: "Beta",
+  };
+
+  assert.equal(isGeneratedScheduleMatrixRow(match), true);
+  assert.equal(isUploadReadyScheduleMatch(match), false);
+  assert.equal(isAnnouncementScheduleMatch(match), false);
+});
+
+test("format groups work for announcement rows", () => {
+  const groups = buildScheduleFormatGroups([
+    {
+      id: "announcement-bo3",
+      format: "Best of 3",
+      matchDateTime: "May 23, 2026",
+      teamAName: "Alpha",
+      teamBName: "Beta",
+    },
+    {
+      id: "announcement-bo1",
+      format: "BO1",
+      matchDateTime: "May 24, 2026",
+      teamAName: "Gamma",
+      teamBName: "Delta",
+    },
+  ]);
+
+  assert.deepEqual(groups.map((group) => group.format), ["BO1", "BO3"]);
+  assert.deepEqual(groups.map((group) => group.matches.length), [1, 1]);
+});

@@ -1,10 +1,16 @@
 "use client";
 
 import { useMemo, useEffect, useState } from "react";
-import { getBestOfLabel } from "@/lib/matches/format";
 import { applyDisciplineScheduleLead } from "@/lib/matches/scheduleOffset";
-import { hasExactMatchTime, resolveExactMatchDate } from "@/lib/matches/time";
-import { isPlaceholderTeam, normalizeTeamName } from "@/lib/teams/teams";
+import {
+  buildScheduleFormatGroups,
+  getScheduleMatchBestOfLabel,
+  isAnnouncementScheduleMatch,
+  isSchedulePlaceholderMatch,
+  isUploadReadyScheduleMatch,
+} from "@/lib/matches/scheduleView";
+import { resolveExactMatchDate } from "@/lib/matches/time";
+import { normalizeTeamName } from "@/lib/teams/teams";
 import { getTeamAliasKey } from "@/lib/teams/canonicalize";
 import { Clock, LayoutGrid, CheckCircle2, TimerReset } from "lucide-react";
 
@@ -31,6 +37,7 @@ type Match = {
 };
 
 type MappingInfo = { alias: string | null; platformId: string | null; logoUrl?: string | null };
+type ScheduleMode = "matches" | "announcements";
 
 const moscowDateFormatter = new Intl.DateTimeFormat("ru-RU", {
   timeZone: "Europe/Moscow",
@@ -52,47 +59,7 @@ function getMatchTimestamp(match: Match): number | null {
 }
 
 function isMatchPlaceholder(match: Match) {
-  return Boolean(
-    match.hasPlaceholderTeams ||
-    isPlaceholderTeam(match.teamAName) ||
-    isPlaceholderTeam(match.teamBName)
-  );
-}
-
-function isGeneratedScheduleMatrixRow(match: Match) {
-  if (isMatchPlaceholder(match)) return false;
-  if (hasExactMatchTime(match)) return false;
-
-  const rawText = String(match.rawText || "").toLowerCase();
-  const format = String(match.format || "").toLowerCase().trim();
-  return format === "round robin" || rawText.includes("crosstable");
-}
-
-function getMatchBestOfLabel(match: Match) {
-  return getBestOfLabel(match.format) || getBestOfLabel(match.rawText) || "BO?";
-}
-
-function getBestOfSortValue(label: string) {
-  const match = label.match(/^BO(\d+)$/i);
-  return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
-}
-
-function buildFormatGroups(matches: Match[]) {
-  const groups = new Map<string, Match[]>();
-
-  for (const match of matches) {
-    const label = getMatchBestOfLabel(match);
-    const group = groups.get(label) || [];
-    group.push(match);
-    groups.set(label, group);
-  }
-
-  return Array.from(groups.entries())
-    .sort(([a], [b]) => {
-      const formatDiff = getBestOfSortValue(a) - getBestOfSortValue(b);
-      return formatDiff || a.localeCompare(b);
-    })
-    .map(([format, groupMatches]) => ({ format, matches: groupMatches }));
+  return isSchedulePlaceholderMatch(match);
 }
 
 function getMatchStatusDotClass(match: Match) {
@@ -117,6 +84,7 @@ export default function MatchList({
   setSelectedIds: (ids: Set<string>) => void;
   mutate?: () => void;
 }) {
+  const [scheduleMode, setScheduleMode] = useState<ScheduleMode>("matches");
   const [groupByFormat, setGroupByFormat] = useState(false);
   const [hideUploaded, setHideUploaded] = useState(false);
 
@@ -129,22 +97,9 @@ export default function MatchList({
     return () => window.removeEventListener('admin-upload-success', handleSuccess);
   }, [mutate, setSelectedIds]);
 
-  const baseDisplayMatches = useMemo(() => {
+  const baseMatches = useMemo(() => {
     return [...matches]
-      .filter(m => {
-        // Liquipedia crosstable rows are schedule matrix hints, not exact
-        // upload-ready matches. TBD slots are preserved separately.
-        if (isGeneratedScheduleMatrixRow(m)) return false;
-
-        // Анонсы без точного времени не показываем: сначала parser/helper
-        // пытается восстановить время из timestamp/raw text, затем скрываем.
-        if (!hasExactMatchTime(m)) return false;
-
-        // 1. Скрываем матчи с результатами
-        if (m.scoreA !== null || m.scoreB !== null) return false;
-
-        return true;
-      })
+      .filter(isUploadReadyScheduleMatch)
       .sort((a, b) => {
         const tsA = getMatchTimestamp(a) || Infinity;
         const tsB = getMatchTimestamp(b) || Infinity;
@@ -153,21 +108,34 @@ export default function MatchList({
       });
   }, [matches]);
 
-  const displayMatches = useMemo(() => {
-    return hideUploaded
-      ? baseDisplayMatches.filter((match) => !match.syncedAt)
-      : baseDisplayMatches;
-  }, [baseDisplayMatches, hideUploaded]);
+  const baseAnnouncements = useMemo(() => {
+    return [...matches]
+      .filter(isAnnouncementScheduleMatch)
+      .sort((a, b) => a.id.localeCompare(b.id));
+  }, [matches]);
 
-  const selectableMatches = displayMatches.filter((match) => !match.syncedAt);
+  const displayMatches = useMemo(() => {
+    if (scheduleMode === "announcements") return baseAnnouncements;
+
+    return hideUploaded
+      ? baseMatches.filter((match) => !match.syncedAt)
+      : baseMatches;
+  }, [baseAnnouncements, baseMatches, hideUploaded, scheduleMode]);
+
+  const selectableMatches = scheduleMode === "matches"
+    ? displayMatches.filter((match) => !match.syncedAt)
+    : [];
   const allSelected = selectableMatches.length > 0 && selectableMatches.every(m => selectedIds.has(getSelectionId(m)));
-  const groupedMatches = useMemo(() => buildFormatGroups(displayMatches), [displayMatches]);
+  const groupedMatches = useMemo(() => buildScheduleFormatGroups(displayMatches), [displayMatches]);
+  const activeBaseCount = scheduleMode === "announcements" ? baseAnnouncements.length : baseMatches.length;
 
   function getSelectionId(match: Match) {
     return match.matchId || "unknown";
   }
 
   function toggleAll() {
+    if (scheduleMode !== "matches") return;
+
     const newIds = new Set(selectedIds);
     if (allSelected) {
       selectableMatches.forEach(m => newIds.delete(getSelectionId(m)));
@@ -178,6 +146,8 @@ export default function MatchList({
   }
 
   function toggleHideUploaded(checked: boolean) {
+    if (scheduleMode !== "matches") return;
+
     setHideUploaded(checked);
 
     if (!checked) return;
@@ -198,11 +168,15 @@ export default function MatchList({
   }
 
   function isGroupSelected(groupMatches: Match[]) {
+    if (scheduleMode !== "matches") return false;
+
     const selectableGroupMatches = groupMatches.filter((match) => !match.syncedAt);
     return selectableGroupMatches.length > 0 && selectableGroupMatches.every(match => selectedIds.has(getSelectionId(match)));
   }
 
   function toggleGroup(groupMatches: Match[]) {
+    if (scheduleMode !== "matches") return;
+
     const selectableGroupMatches = groupMatches.filter((match) => !match.syncedAt);
     if (selectableGroupMatches.length === 0) return;
 
@@ -231,21 +205,28 @@ export default function MatchList({
     return moscowDateFormatter.format(applyDisciplineScheduleLead(d, disciplineSlug)).replace(",", "");
   }
 
-  function MatchCard({ match }: { match: Match }) {
+  function formatAnnouncementDate(match: Match) {
+    return match.matchDateTime?.trim() || "без точного времени";
+  }
+
+  function MatchCard({ match, variant }: { match: Match; variant: ScheduleMode }) {
     const isPlaceholder = isMatchPlaceholder(match);
     const isUploaded = Boolean(match.syncedAt);
+    const isAnnouncement = variant === "announcements";
     const selectionId = getSelectionId(match);
     const isSelected = selectedIds.has(selectionId);
-    const bestOfLabel = getMatchBestOfLabel(match);
+    const bestOfLabel = getScheduleMatchBestOfLabel(match);
 
     return (
       <div
         key={match.matchId || match.id}
         onClick={() => {
-          if (!isUploaded) toggleOne(selectionId);
+          if (!isUploaded && !isAnnouncement) toggleOne(selectionId);
         }}
         className={`group relative flex flex-col overflow-hidden rounded-lg border bg-white px-4 py-1 transition-all duration-300 hover:-translate-y-0.5 active:scale-[0.99] will-change-transform cursor-pointer ${
-          isUploaded
+          isAnnouncement
+            ? "cursor-default border-sky-200 bg-sky-50/20 hover:border-sky-300"
+            : isUploaded
             ? "border-emerald-200 bg-emerald-50/10 cursor-default hover:border-emerald-300"
             : isSelected
             ? "border-indigo-600 ring-1 ring-indigo-600/10 shadow-sm shadow-indigo-600/5"
@@ -254,11 +235,11 @@ export default function MatchList({
               : "border-slate-200 hover:border-indigo-300 hover:bg-slate-50/40 hover:shadow-sm"
         }`}
       >
-        {isSelected && !isUploaded && <div className="absolute inset-0 shimmer pointer-events-none" />}
+        {isSelected && !isUploaded && !isAnnouncement && <div className="absolute inset-0 shimmer pointer-events-none" />}
 
         <div className="mb-0 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-center gap-2">
-            <div className={`h-1.5 w-1.5 rounded-full ${getMatchStatusDotClass(match)}`} />
+            <div className={`h-1.5 w-1.5 rounded-full ${isAnnouncement ? "bg-sky-400" : getMatchStatusDotClass(match)}`} />
             {match.platformId && (
               <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">
                 ID: <span className="text-slate-900">{match.platformId}</span>
@@ -276,6 +257,11 @@ export default function MatchList({
             <span className="inline-flex w-fit items-center rounded-md border border-slate-200 bg-slate-50 px-2 py-0 text-[8px] font-black uppercase tracking-widest text-slate-700">
               {bestOfLabel}
             </span>
+            {isAnnouncement && (
+              <span className="inline-flex w-fit items-center rounded-md border border-sky-200 bg-sky-50 px-2 py-0 text-[8px] font-black uppercase tracking-widest text-sky-700">
+                Анонс
+              </span>
+            )}
             {match.syncedAt && (
               <span className="inline-flex items-center gap-1 text-[8px] font-black uppercase tracking-widest text-emerald-600">
                 <CheckCircle2 className="w-2.5 h-2.5" /> ОПУБЛИКОВАН
@@ -284,13 +270,15 @@ export default function MatchList({
           </div>
           <div className="flex items-center justify-between gap-3 sm:justify-end">
             <span suppressHydrationWarning className="text-[10px] font-bold text-slate-900 tabular-nums">
-              {formatNeutralDate(match)}
+              {isAnnouncement ? formatAnnouncementDate(match) : formatNeutralDate(match)}
             </span>
-            <div className={`h-3.5 w-3.5 rounded-md border transition-all flex items-center justify-center ${
-              isSelected && !isUploaded ? "bg-indigo-600 border-indigo-600" : "bg-white border-slate-200"
-            }`}>
-              {isSelected && !isUploaded && <CheckCircle2 className="h-3 w-3 text-white" />}
-            </div>
+            {!isAnnouncement && (
+              <div className={`h-3.5 w-3.5 rounded-md border transition-all flex items-center justify-center ${
+                isSelected && !isUploaded ? "bg-indigo-600 border-indigo-600" : "bg-white border-slate-200"
+              }`}>
+                {isSelected && !isUploaded && <CheckCircle2 className="h-3 w-3 text-white" />}
+              </div>
+            )}
           </div>
         </div>
 
@@ -342,14 +330,36 @@ export default function MatchList({
   return (
     <div className="mt-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-900 border border-slate-200">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setScheduleMode("matches")}
+            className={`flex items-center gap-2 rounded-xl border px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest transition-colors ${
+              scheduleMode === "matches"
+                ? "border-indigo-200 bg-indigo-50 text-indigo-700"
+                : "border-slate-200 bg-white text-slate-500 hover:border-indigo-200 hover:text-indigo-600"
+            }`}
+          >
             <LayoutGrid className="w-3 h-3" />
             Предстоящие матчи
-          </div>
+            <span className="rounded-full bg-white/70 px-1.5 py-0 text-[8px] text-slate-500">{baseMatches.length}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setScheduleMode("announcements")}
+            className={`flex items-center gap-2 rounded-xl border px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest transition-colors ${
+              scheduleMode === "announcements"
+                ? "border-sky-200 bg-sky-50 text-sky-700"
+                : "border-slate-200 bg-white text-slate-500 hover:border-sky-200 hover:text-sky-600"
+            }`}
+          >
+            <Clock className="w-3 h-3" />
+            Анонсы
+            <span className="rounded-full bg-white/70 px-1.5 py-0 text-[8px] text-slate-500">{baseAnnouncements.length}</span>
+          </button>
         </div>
 
-        {baseDisplayMatches.length > 0 && (
+        {activeBaseCount > 0 && (
           <div className="flex flex-wrap items-center justify-end gap-3">
             <label className="flex cursor-pointer items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500 transition-colors hover:border-indigo-200 hover:text-indigo-600">
               <span className={`h-4 w-4 rounded border transition-all flex items-center justify-center ${
@@ -365,32 +375,36 @@ export default function MatchList({
               />
               Группировка по формату
             </label>
-            <label className="flex cursor-pointer items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500 transition-colors hover:border-emerald-200 hover:text-emerald-600">
-              <span className={`h-4 w-4 rounded border transition-all flex items-center justify-center ${
-                hideUploaded ? "bg-emerald-500 border-emerald-500" : "bg-white border-slate-200"
-              }`}>
-                {hideUploaded && <CheckCircle2 className="h-3 w-3 text-white" />}
-              </span>
-              <input
-                type="checkbox"
-                checked={hideUploaded}
-                onChange={(event) => toggleHideUploaded(event.target.checked)}
-                className="sr-only"
-              />
-              Скрыть залитые
-            </label>
-            <button
-              onClick={toggleAll}
-              disabled={selectableMatches.length === 0}
-              className="flex items-center gap-2.5 text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-indigo-600 transition-colors"
-            >
-              <div className={`h-4 w-4 rounded border transition-all flex items-center justify-center ${
-                allSelected ? "bg-indigo-600 border-indigo-600" : "bg-white border-slate-200"
-              }`}>
-                {allSelected && <CheckCircle2 className="h-3 w-3 text-white" />}
-              </div>
-              Выбрать все
-            </button>
+            {scheduleMode === "matches" && (
+              <>
+                <label className="flex cursor-pointer items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500 transition-colors hover:border-emerald-200 hover:text-emerald-600">
+                  <span className={`h-4 w-4 rounded border transition-all flex items-center justify-center ${
+                    hideUploaded ? "bg-emerald-500 border-emerald-500" : "bg-white border-slate-200"
+                  }`}>
+                    {hideUploaded && <CheckCircle2 className="h-3 w-3 text-white" />}
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={hideUploaded}
+                    onChange={(event) => toggleHideUploaded(event.target.checked)}
+                    className="sr-only"
+                  />
+                  Скрыть залитые
+                </label>
+                <button
+                  onClick={toggleAll}
+                  disabled={selectableMatches.length === 0}
+                  className="flex items-center gap-2.5 text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-indigo-600 transition-colors"
+                >
+                  <div className={`h-4 w-4 rounded border transition-all flex items-center justify-center ${
+                    allSelected ? "bg-indigo-600 border-indigo-600" : "bg-white border-slate-200"
+                  }`}>
+                    {allSelected && <CheckCircle2 className="h-3 w-3 text-white" />}
+                  </div>
+                  Выбрать все
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -399,9 +413,13 @@ export default function MatchList({
           <div className="rounded-lg border-2 border-dashed border-slate-200 bg-white/70 p-12 text-center">
             <Clock className="w-12 h-12 text-slate-200 mx-auto mb-4" />
             <p className="text-sm font-medium text-slate-400">
-              {hideUploaded && baseDisplayMatches.length > 0 ? "Все залитые матчи скрыты." : "Нет предстоящих матчей."}
+              {scheduleMode === "announcements"
+                ? "Анонсов без точного времени нет."
+                : hideUploaded && baseMatches.length > 0
+                  ? "Все залитые матчи скрыты."
+                  : "Нет предстоящих матчей."}
             </p>
-            {hideUploaded && baseDisplayMatches.length > 0 && (
+            {scheduleMode === "matches" && hideUploaded && baseMatches.length > 0 && (
               <button
                 type="button"
                 onClick={() => setHideUploaded(false)}
@@ -415,7 +433,8 @@ export default function MatchList({
           <div className="grid gap-5">
             {groupedMatches.map((group) => {
               const groupSelected = isGroupSelected(group.matches);
-              const groupSelectableCount = group.matches.filter((match) => !match.syncedAt).length;
+              const groupSelectableCount =
+                scheduleMode === "matches" ? group.matches.filter((match) => !match.syncedAt).length : 0;
 
               return (
                 <section key={group.format} className="grid gap-2">
@@ -424,26 +443,28 @@ export default function MatchList({
                       {group.format}
                     </div>
                     <div className="h-px min-w-8 flex-1 bg-slate-100" />
-                    <button
-                      type="button"
-                      onClick={() => toggleGroup(group.matches)}
-                      disabled={groupSelectableCount === 0}
-                      className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-slate-500 transition-colors hover:border-indigo-200 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      <span className={`flex h-3.5 w-3.5 items-center justify-center rounded border transition-all ${
-                        groupSelected ? "border-indigo-600 bg-indigo-600" : "border-slate-200 bg-white"
-                      }`}>
-                        {groupSelected && <CheckCircle2 className="h-2.5 w-2.5 text-white" />}
-                      </span>
-                      Выбрать все
-                    </button>
+                    {scheduleMode === "matches" && (
+                      <button
+                        type="button"
+                        onClick={() => toggleGroup(group.matches)}
+                        disabled={groupSelectableCount === 0}
+                        className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-slate-500 transition-colors hover:border-indigo-200 hover:text-indigo-600 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <span className={`flex h-3.5 w-3.5 items-center justify-center rounded border transition-all ${
+                          groupSelected ? "border-indigo-600 bg-indigo-600" : "border-slate-200 bg-white"
+                        }`}>
+                          {groupSelected && <CheckCircle2 className="h-2.5 w-2.5 text-white" />}
+                        </span>
+                        Выбрать все
+                      </button>
+                    )}
                     <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                      Матчей: {group.matches.length}
+                      {scheduleMode === "announcements" ? "Анонсов" : "Матчей"}: {group.matches.length}
                     </div>
                   </div>
                 <div className="grid gap-2">
                   {group.matches.map((match) => (
-                    <MatchCard key={match.matchId || match.id} match={match} />
+                    <MatchCard key={match.matchId || match.id} match={match} variant={scheduleMode} />
                   ))}
                 </div>
               </section>
@@ -453,7 +474,7 @@ export default function MatchList({
         ) : (
           <div className="grid gap-2">
             {displayMatches.map((match) => (
-              <MatchCard key={match.matchId || match.id} match={match} />
+              <MatchCard key={match.matchId || match.id} match={match} variant={scheduleMode} />
             ))}
           </div>
         )}
