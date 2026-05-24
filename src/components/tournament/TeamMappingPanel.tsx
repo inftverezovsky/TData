@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import { dispatchTeamMappingsUpdated } from "@/lib/utils/clientEvents";
 import { buildTeamMappingLookup, findTeamMapping } from "@/lib/teams/mappingLookup";
@@ -48,6 +48,13 @@ type AutoMappingPreview = {
   unmapped: AutoMappingPreviewItem[];
   invalid: AutoMappingPreviewItem[];
   conflicts: AutoMappingPreviewItem[];
+};
+
+type AdminTeamSuggestion = {
+  platformId: string;
+  platformName: string;
+  score: number;
+  matchType: "exact" | "starts_with" | "contains" | "fuzzy";
 };
 
 export default function TeamMappingPanel({
@@ -320,10 +327,35 @@ export default function TeamMappingPanel({
       [name]: {
         ...prev[name],
         [field]: value,
-        ...(field === "platformId" ? { displayAdminName: "", adminTeamName: null, nameSource: undefined } : {}),
-        ...(field === "canonicalName" ? { displayAdminName: undefined, nameSource: undefined } : {}),
+        ...(field === "platformId" ? { displayAdminName: undefined, adminTeamName: null, nameSource: undefined } : {}),
+        ...(field === "canonicalName"
+          ? {
+              displayAdminName: undefined,
+              adminTeamName: null,
+              nameSource: undefined,
+              ...(prev[name]?.nameSource === "admin" ? { platformId: "" } : {}),
+            }
+          : {}),
         saved: false,
       }
+    }));
+  }
+
+  function handleAdminTeamSelect(name: string, suggestion: AdminTeamSuggestion) {
+    setMappings((prev) => ({
+      ...prev,
+      [name]: {
+        ...prev[name],
+        canonicalName: suggestion.platformName,
+        displayAdminName: suggestion.platformName,
+        adminTeamName: suggestion.platformName,
+        platformId: suggestion.platformId,
+        nameSource: "admin",
+        status: "manual_mapped",
+        matchMethod: "manual_suggest",
+        confidenceScore: suggestion.score * 100,
+        saved: false,
+      },
     }));
   }
 
@@ -403,6 +435,7 @@ export default function TeamMappingPanel({
                 const entry = mappings[name] ?? { platformId: "", canonicalName: "", saved: false };
                 const isSaving = saving === name;
                 const adminNameValue = entry.displayAdminName ?? entry.canonicalName ?? "";
+                const isPersistedMapping = Boolean(entry.saved && entry.platformId);
                 
                 return (
                   <tr key={name} className="group hover:bg-slate-50/50 transition-colors">
@@ -411,17 +444,12 @@ export default function TeamMappingPanel({
                     </td>
                     <td className="py-4 px-6">
                       <div className="flex items-center gap-2">
-                        <input
-                          type="text"
+                        <AdminTeamNameCombobox
                           value={adminNameValue}
-                          disabled={entry.saved}
-                          onChange={(e) => handleChange(name, "canonicalName", e.target.value)}
-                          placeholder="—"
-                          className={`h-9 min-w-0 flex-1 rounded-lg border px-3 text-sm font-medium transition-all outline-none ${
-                            entry.saved
-                              ? "bg-slate-50 border-slate-100 text-slate-400 cursor-not-allowed"
-                              : "bg-white border-slate-200 text-slate-900 focus:border-slate-400 focus:ring-slate-400/5"
-                            }`}
+                          disciplineSlug={disciplineSlug}
+                          disabled={isPersistedMapping}
+                          onChange={(value) => handleChange(name, "canonicalName", value)}
+                          onSelect={(suggestion) => handleAdminTeamSelect(name, suggestion)}
                         />
                         <NameSourceIcon entry={entry} />
                       </div>
@@ -430,11 +458,11 @@ export default function TeamMappingPanel({
                       <input
                         type="text"
                         value={entry.platformId || ""}
-                        disabled={entry.saved}
+                        disabled={isPersistedMapping}
                         onChange={(e) => handleChange(name, "platformId", e.target.value)}
                         placeholder="—"
                         className={`h-9 w-full rounded-lg border px-3 text-sm font-bold transition-all outline-none tabular-nums ${
-                          entry.saved 
+                          isPersistedMapping
                             ? "bg-slate-50 border-slate-100 text-slate-400 cursor-not-allowed" 
                             : "bg-white border-slate-200 text-slate-600 focus:border-slate-400 focus:ring-slate-400/5"
                         }`}
@@ -462,14 +490,14 @@ export default function TeamMappingPanel({
                       <div className="flex items-center justify-end gap-1">
                         <button
                           onClick={() => handleSave(name)}
-                          disabled={isSaving || entry.saved}
+                          disabled={isSaving || isPersistedMapping}
                           className={`min-w-[100px] px-3 py-1.5 rounded-full text-[10px] font-medium uppercase tracking-widest transition-all ${
-                            entry.saved
+                            isPersistedMapping
                               ? "text-emerald-600 bg-emerald-50 border border-emerald-100 cursor-default"
                               : "bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100 rounded-lg"
                           }`}
                         >
-                          {isSaving ? "..." : entry.saved ? "Сохранено" : "Сохранить"}
+                          {isSaving ? "..." : isPersistedMapping ? "Сохранено" : "Сохранить"}
                         </button>
                         <button
                           onClick={() => handleAutoMapSingle(name)}
@@ -500,6 +528,136 @@ export default function TeamMappingPanel({
   );
 }
 
+function AdminTeamNameCombobox({
+  value,
+  disciplineSlug,
+  disabled,
+  onChange,
+  onSelect,
+}: {
+  value: string;
+  disciplineSlug: string;
+  disabled: boolean;
+  onChange: (value: string) => void;
+  onSelect: (suggestion: AdminTeamSuggestion) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [items, setItems] = useState<AdminTeamSuggestion[]>([]);
+  const [adminTeamsCount, setAdminTeamsCount] = useState<number | null>(null);
+  const [error, setError] = useState("");
+  const listId = useId();
+  const canSearch = value.trim().length >= 2;
+
+  useEffect(() => {
+    if (disabled || !open || !canSearch) {
+      setItems([]);
+      setLoading(false);
+      setAdminTeamsCount(null);
+      setError("");
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      setLoading(true);
+      setError("");
+      try {
+        const params = new URLSearchParams({
+          disciplineSlug,
+          q: value,
+          limit: "8",
+        });
+        const response = await fetch(`/api/admin-teams/suggest?${params.toString()}`, {
+          credentials: "same-origin",
+          signal: controller.signal,
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Не удалось загрузить подсказки");
+        setItems(Array.isArray(data.items) ? data.items : []);
+        setAdminTeamsCount(typeof data.adminTeamsCount === "number" ? data.adminTeamsCount : null);
+      } catch (fetchError) {
+        if (fetchError instanceof DOMException && fetchError.name === "AbortError") return;
+        setItems([]);
+        setError(fetchError instanceof Error ? fetchError.message : "Не удалось загрузить подсказки");
+      } finally {
+        setLoading(false);
+      }
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [canSearch, disabled, disciplineSlug, open, value]);
+
+  return (
+    <div className="relative min-w-0 flex-1">
+      <input
+        type="text"
+        value={value}
+        disabled={disabled}
+        onFocus={() => setOpen(true)}
+        onBlur={() => window.setTimeout(() => setOpen(false), 120)}
+        onChange={(event) => {
+          setOpen(true);
+          onChange(event.target.value);
+        }}
+        placeholder="Начните вводить название..."
+        role="combobox"
+        aria-expanded={open}
+        aria-controls={listId}
+        aria-autocomplete="list"
+        className={`h-9 min-w-0 w-full rounded-lg border px-3 text-sm font-medium transition-all outline-none ${
+          disabled
+            ? "bg-slate-50 border-slate-100 text-slate-400 cursor-not-allowed"
+            : "bg-white border-slate-200 text-slate-900 focus:border-indigo-300 focus:ring-4 focus:ring-indigo-500/10"
+        }`}
+      />
+      {open && !disabled && (canSearch || loading || error) && (
+        <div id={listId} role="listbox" className="absolute left-0 right-0 top-full z-30 mt-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl shadow-slate-900/10">
+          {loading ? (
+            <div className="px-3 py-2 text-xs font-bold text-slate-400">Ищу в справочнике...</div>
+          ) : error ? (
+            <div className="px-3 py-2 text-xs font-bold text-rose-600">{error}</div>
+          ) : adminTeamsCount === 0 ? (
+            <div className="px-3 py-2 text-xs font-bold text-amber-700">Справочник команд для этой дисциплины не загружен.</div>
+          ) : items.length === 0 ? (
+            <div className="px-3 py-2 text-xs font-bold text-slate-400">Подходящих команд не найдено.</div>
+          ) : (
+            <div className="max-h-64 overflow-auto py-1">
+              {items.map((item) => (
+                <button
+                  key={`${item.platformId}-${item.platformName}`}
+                  type="button"
+                  role="option"
+                  aria-selected={false}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    onSelect(item);
+                    setOpen(false);
+                  }}
+                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs transition hover:bg-indigo-50"
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate font-black text-slate-900">{item.platformName}</span>
+                    <span className="mt-0.5 block text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      ID платформы {item.platformId}
+                    </span>
+                  </span>
+                  <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest text-slate-500">
+                    {formatSuggestionMatchType(item.matchType)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function buildMappingState(teamNames: string[], initialMappings: TeamMappingRecord[]) {
   const map: Record<string, Partial<TeamMappingRecord> & { saved: boolean }> = {};
   const mappingLookup = buildTeamMappingLookup(initialMappings);
@@ -508,7 +666,7 @@ function buildMappingState(teamNames: string[], initialMappings: TeamMappingReco
     const existing = findTeamMapping(mappingLookup, name);
     map[name] = {
       ...existing,
-      saved: !!existing?.platformId || existing?.status === 'manual_unmapped'
+      saved: Boolean(existing?.platformId)
     };
   }
   return map;
@@ -660,6 +818,21 @@ function formatMappingStatus(status: string | null | undefined) {
   }
 }
 
+function formatSuggestionMatchType(matchType: AdminTeamSuggestion["matchType"]) {
+  switch (matchType) {
+    case "exact":
+      return "точно";
+    case "starts_with":
+      return "начало";
+    case "contains":
+      return "внутри";
+    case "fuzzy":
+      return "похоже";
+    default:
+      return "найдено";
+  }
+}
+
 function formatMatchMethod(method: string | null | undefined) {
   switch (method) {
     case "exact":
@@ -673,6 +846,7 @@ function formatMatchMethod(method: string | null | undefined) {
     case "manual":
     case "manual_save":
     case "manual_bulk":
+    case "manual_suggest":
       return "ручной ввод";
     case "manual_conflict_replace":
       return "замена конфликта вручную";

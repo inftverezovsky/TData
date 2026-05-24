@@ -34,6 +34,7 @@ test("admin auth protects settings endpoints and creates a usable session cookie
     () => request.delete("/api/team-mapping?name=Example&discipline=counterstrike"),
     () => request.post("/api/team-mapping/auto"),
     () => request.post("/api/team-mapping/fuzzy"),
+    () => request.get("/api/admin-teams/suggest?disciplineSlug=counterstrike&q=test"),
     () => request.post("/api/counterstrike/import-tournament"),
     () => request.post("/api/counterstrike/tournament/example/admin-mapping"),
     () => request.post("/api/counterstrike/tournament/example/platform-id"),
