@@ -4,6 +4,7 @@ import {
   buildScheduleFormatGroups,
   buildTbdAnnouncementSelectionId,
   expandScheduleAnnouncements,
+  getUploadableTbdAnnouncementSides,
   isAnnouncementScheduleMatch,
   isGeneratedScheduleMatrixRow,
   isUploadableScheduleEntry,
@@ -28,7 +29,7 @@ test("exact-time matches are upload-ready and not announcements", () => {
   assert.equal(isUploadableScheduleEntry(match), true);
 });
 
-test("date-only schedule rows are announcements, not upload-ready matches", () => {
+test("date-only schedule rows are hidden from schedule modes", () => {
   const match = {
     id: "announcement-1",
     matchDate: new Date("2026-05-23T00:00:00.000Z"),
@@ -41,8 +42,28 @@ test("date-only schedule rows are announcements, not upload-ready matches", () =
   };
 
   assert.equal(isUploadReadyScheduleMatch(match), false);
-  assert.equal(isAnnouncementScheduleMatch(match), true);
+  assert.equal(isAnnouncementScheduleMatch(match), false);
   assert.equal(isUploadableScheduleEntry(match), false);
+});
+
+test("exact-time matches with one real team and one TBD are upload-ready pairs", () => {
+  const match = {
+    id: "match-known-tbd",
+    matchDate: new Date("2026-06-02T10:30:00.000Z"),
+    matchDateTime: null,
+    rawText: "Monte vs TBD",
+    scoreA: null,
+    scoreB: null,
+    teamAName: "Monte",
+    teamBName: "TBD",
+    hasPlaceholderTeams: true,
+  };
+
+  assert.equal(isUploadReadyScheduleMatch(match), true);
+  assert.equal(isAnnouncementScheduleMatch(match), false);
+  assert.equal(isUploadableScheduleEntry(match), true);
+  assert.deepEqual(getUploadableTbdAnnouncementSides(match), []);
+  assert.deepEqual(expandScheduleAnnouncements([match]), []);
 });
 
 test("exact-time TBD slots are announcements, not upload-ready matches", () => {
@@ -61,6 +82,7 @@ test("exact-time TBD slots are announcements, not upload-ready matches", () => {
   assert.equal(isUploadReadyScheduleMatch(match), false);
   assert.equal(isAnnouncementScheduleMatch(match), true);
   assert.equal(isUploadableScheduleEntry(match), true);
+  assert.deepEqual(getUploadableTbdAnnouncementSides(match), ["teamA", "teamB"]);
 });
 
 test("exact-time TBD pairs expand into single-team announcement rows", () => {

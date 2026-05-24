@@ -48,9 +48,16 @@ export function isGeneratedScheduleMatrixRow(match: ScheduleViewMatch) {
 
 export function isUploadReadyScheduleMatch(match: ScheduleViewMatch) {
   if (isGeneratedScheduleMatrixRow(match)) return false;
-  if (isSchedulePlaceholderMatch(match)) return false;
   if (!hasExactMatchTime(match)) return false;
-  return !hasScore(match);
+  if (hasScore(match)) return false;
+
+  const teamA = getScheduleTeamState(match.teamAName);
+  const teamB = getScheduleTeamState(match.teamBName);
+
+  if (teamA.unsupportedPlaceholder || teamB.unsupportedPlaceholder) return false;
+  if (teamA.placeholder && teamB.placeholder) return false;
+
+  return true;
 }
 
 export function isUploadableScheduleEntry(match: ScheduleViewMatch) {
@@ -58,22 +65,28 @@ export function isUploadableScheduleEntry(match: ScheduleViewMatch) {
   if (hasScore(match)) return false;
   if (!hasExactMatchTime(match)) return false;
 
-  const teamAIsPlaceholder = isPlaceholderTeam(match.teamAName);
-  const teamBIsPlaceholder = isPlaceholderTeam(match.teamBName);
-  const teamAIsUploadableTbd = isTbdPlaceholderTeam(match.teamAName);
-  const teamBIsUploadableTbd = isTbdPlaceholderTeam(match.teamBName);
+  const teamA = getScheduleTeamState(match.teamAName);
+  const teamB = getScheduleTeamState(match.teamBName);
 
   return (
-    (!teamAIsPlaceholder || teamAIsUploadableTbd) &&
-    (!teamBIsPlaceholder || teamBIsUploadableTbd)
+    (!teamA.placeholder || teamA.tbd) &&
+    (!teamB.placeholder || teamB.tbd)
   );
 }
 
 export function isAnnouncementScheduleMatch(match: ScheduleViewMatch) {
   if (isGeneratedScheduleMatrixRow(match)) return false;
   if (hasScore(match)) return false;
-  if (isSchedulePlaceholderMatch(match)) return true;
-  return !hasExactMatchTime(match);
+  if (!hasExactMatchTime(match)) return false;
+
+  const teamA = getScheduleTeamState(match.teamAName);
+  const teamB = getScheduleTeamState(match.teamBName);
+
+  if (teamA.real || teamB.real) {
+    return teamA.unsupportedPlaceholder || teamB.unsupportedPlaceholder;
+  }
+
+  return Boolean(match.hasPlaceholderTeams || teamA.placeholder || teamB.placeholder);
 }
 
 export function buildTbdAnnouncementSelectionId(matchId: string, side: TbdAnnouncementSide) {
@@ -94,9 +107,13 @@ export function getUploadableTbdAnnouncementSides(match: ScheduleViewMatch): Tbd
   if (hasScore(match)) return [];
   if (!hasExactMatchTime(match)) return [];
 
+  const teamA = getScheduleTeamState(match.teamAName);
+  const teamB = getScheduleTeamState(match.teamBName);
+  if (!(teamA.tbd && teamB.tbd)) return [];
+
   const sides: TbdAnnouncementSide[] = [];
-  if (isTbdPlaceholderTeam(match.teamAName)) sides.push("teamA");
-  if (isTbdPlaceholderTeam(match.teamBName)) sides.push("teamB");
+  if (teamA.tbd) sides.push("teamA");
+  if (teamB.tbd) sides.push("teamB");
   return sides;
 }
 
@@ -149,6 +166,17 @@ export function buildScheduleFormatGroups<T extends ScheduleViewMatch>(matches: 
 
 function hasScore(match: ScheduleViewMatch) {
   return match.scoreA != null || match.scoreB != null;
+}
+
+function getScheduleTeamState(name: string | null | undefined) {
+  const tbd = isTbdPlaceholderTeam(name);
+  const placeholder = isPlaceholderTeam(name);
+  return {
+    tbd,
+    placeholder,
+    real: Boolean(name && !placeholder),
+    unsupportedPlaceholder: placeholder && !tbd,
+  };
 }
 
 function getBestOfSortValue(label: string) {

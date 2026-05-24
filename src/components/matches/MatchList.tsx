@@ -210,6 +210,7 @@ export default function MatchList({
   }
 
   function formatAnnouncementDate(match: DisplayMatch) {
+    if (getMatchDateObj(match)) return formatNeutralDate(match);
     return match.matchDateTime?.trim() || "без точного времени";
   }
 
