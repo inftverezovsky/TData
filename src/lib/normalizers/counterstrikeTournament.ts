@@ -149,7 +149,7 @@ export function normalizeCounterStrikeTournament(input: {
   };
 
   /* ── Extract sub-pages ── */
-  const subPages = input.parsedHtml ? extractSubPages(input.parsedHtml, input.pageUrl) : [];
+  const subPages = extractSubPages(input.wikitext, input.parsedHtml || "", input.pageUrl);
 
   /* ── Extract matches: staged pipeline ── */
   const htmlMatches = input.parsedHtml
@@ -802,11 +802,12 @@ const EVENT_SUBPAGE_BLOCKLIST = [
   "MENA"
 ];
 
-function extractSubPages(html: string, pageUrl: string): string[] {
+function extractSubPages(wikitext: string, html: string, pageUrl: string): string[] {
   const $ = cheerio.load(html);
   const subPages: string[] = [];
   const baseUrl = pageUrl.replace(/\/+$/, "");
   const basePath = new URL(baseUrl).pathname.replace(/\/+$/, "");
+  const rawBase = decodeURIComponent(basePath.split("/").slice(2).join("/")).replace(/ /g, "_");
 
   const pushIfRelevant = (href: string | undefined | null) => {
     if (!href || href.startsWith("#") || href.includes("action=edit")) return;
@@ -829,11 +830,37 @@ function extractSubPages(html: string, pageUrl: string): string[] {
 
     subPages.push(`${parsed.origin}${path}`);
   };
+
+  const pushTitleIfRelevant = (rawTitle: string | undefined | null) => {
+    if (!rawTitle) return;
+    const title = rawTitle
+      .trim()
+      .replace(/\{\{\s*#var:home\s*\}\}/gi, rawBase)
+      .replace(/\{\{\s*FULLPAGENAME\s*\}\}/gi, rawBase)
+      .replace(/^:+/, "")
+      .replace(/ /g, "_")
+      .split("#")[0]
+      .replace(/\/+$/, "");
+    if (!title || !title.startsWith(`${rawBase}/`)) return;
+    pushIfRelevant(`/counterstrike/${title}`);
+  };
   
   // Look for Tabs (standard Liquipedia structure for multi-page tournaments)
   $(".tabs-static a, .nav-tabs a").each((_, el) => {
     pushIfRelevant($(el).attr("href"));
   });
+
+  const wikiLinkRegex = /\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]*)?\]\]/g;
+  let wikiMatch: RegExpExecArray | null;
+  while ((wikiMatch = wikiLinkRegex.exec(wikitext))) {
+    pushTitleIfRelevant(wikiMatch[1]);
+  }
+
+  const templatePageRefRegex = /\|\s*(?:tournament|page)\s*=\s*([^|}\n<]+)/gi;
+  let refMatch: RegExpExecArray | null;
+  while ((refMatch = templatePageRefRegex.exec(wikitext))) {
+    pushTitleIfRelevant(refMatch[1]);
+  }
 
   return Array.from(new Set(subPages));
 }

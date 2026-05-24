@@ -987,6 +987,7 @@ function extractSubPages(wikitext: string, html: string, pageUrl: string): strin
   const subPages: string[] = [];
   const baseUrl = pageUrl.replace(/\/+$/, "");
   const basePath = new URL(baseUrl).pathname.replace(/\/+$/, "");
+  const rawBase = decodeURIComponent(basePath.split("/").slice(2).join("/")).replace(/ /g, "_");
 
   const pushIfRelevant = (href: string | undefined | null) => {
     if (!href || href.startsWith("#") || href.includes("action=edit")) return;
@@ -1023,6 +1024,20 @@ function extractSubPages(wikitext: string, html: string, pageUrl: string): strin
       subPages.push(`${candidateUrl.origin}${path}`);
     }
   };
+
+  const pushTitleIfRelevant = (rawTitle: string | undefined | null) => {
+    if (!rawTitle) return;
+    const title = rawTitle
+      .trim()
+      .replace(/\{\{\s*#var:home\s*\}\}/gi, rawBase)
+      .replace(/\{\{\s*FULLPAGENAME\s*\}\}/gi, rawBase)
+      .replace(/^:+/, "")
+      .replace(/ /g, "_")
+      .split("#")[0]
+      .replace(/\/+$/, "");
+    if (!title || !title.startsWith(`${rawBase}/`)) return;
+    pushTabStaticRelative(`/leagueoflegends/${title}`);
+  };
   
   // 1. HTML Tabs
   if (html) {
@@ -1036,11 +1051,13 @@ function extractSubPages(wikitext: string, html: string, pageUrl: string): strin
   const wikiLinkRegex = /\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]*)?\]\]/g;
   let match: RegExpExecArray | null;
   while ((match = wikiLinkRegex.exec(wikitext))) {
-    const rawTitle = match[1].trim().replace(/ /g, "_");
-    const rawBase = decodeURIComponent(basePath.split("/").slice(2).join("/")).replace(/ /g, "_");
-    if (rawTitle.startsWith(`${rawBase}/`)) {
-      pushTabStaticRelative(`/leagueoflegends/${rawTitle}`);
-    }
+    pushTitleIfRelevant(match[1]);
+  }
+
+  const templatePageRefRegex = /\|\s*(?:tournament|page)\s*=\s*([^|}\n<]+)/gi;
+  let refMatch: RegExpExecArray | null;
+  while ((refMatch = templatePageRefRegex.exec(wikitext))) {
+    pushTitleIfRelevant(refMatch[1]);
   }
 
   return Array.from(new Set(subPages));

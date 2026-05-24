@@ -41,6 +41,9 @@ export function isPlaceholderTeam(name: string | null | undefined): boolean {
 
   // Real Counter-Strike org. This conflicts with Liquipedia seed labels like A1/B2/G2.
   if (n === "g2") return false;
+
+  // Liquipedia bracket seeds like #1, #8, #10 are not team names.
+  if (/^#\s*\d{1,3}$/.test(n)) return true;
   
   // Bracket seeds (A1, B2, C12, etc.) - expanded range
   if (/^[a-h][1-9][0-9]?$/i.test(n)) return true;

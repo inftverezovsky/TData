@@ -987,6 +987,7 @@ function extractSubPages(wikitext: string, html: string, pageUrl: string): strin
   const subPages: string[] = [];
   const baseUrl = pageUrl.replace(/\/+$/, "");
   const basePath = new URL(baseUrl).pathname.replace(/\/+$/, "");
+  const rawBase = decodeURIComponent(basePath.split("/").slice(2).join("/")).replace(/ /g, "_");
 
   const pushIfRelevant = (href: string | undefined | null) => {
     if (!href || href.startsWith("#") || href.includes("action=edit")) return;
@@ -1009,6 +1010,21 @@ function extractSubPages(wikitext: string, html: string, pageUrl: string): strin
 
     subPages.push(`${parsed.origin}${path}`);
   };
+
+  const pushTitleIfRelevant = (rawTitle: string | undefined | null) => {
+    if (!rawTitle) return;
+    const title = rawTitle
+      .trim()
+      .replace(/\{\{\s*#var:home\s*\}\}/gi, rawBase)
+      .replace(/\{\{\s*FULLPAGENAME\s*\}\}/gi, rawBase)
+      .replace(/^:+/, "")
+      .replace(/ /g, "_")
+      .split("#")[0]
+      .replace(/\/+$/, "");
+
+    if (!title || !title.startsWith(`${rawBase}/`)) return;
+    pushIfRelevant(`/dota2/${title}`);
+  };
   
   // Look for tabs, but avoid qualification region pages. Those pages are expensive
   // to parse and do not belong to the selected main event schedule.
@@ -1020,11 +1036,15 @@ function extractSubPages(wikitext: string, html: string, pageUrl: string): strin
   const wikiLinkRegex = /\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]*)?\]\]/g;
   let wikiMatch: RegExpExecArray | null;
   while ((wikiMatch = wikiLinkRegex.exec(wikitext))) {
-    const rawTitle = wikiMatch[1].trim().replace(/ /g, "_");
-    const rawBase = decodeURIComponent(basePath.split("/").slice(2).join("/")).replace(/ /g, "_");
-    if (rawTitle.startsWith(`${rawBase}/`)) {
-      pushIfRelevant(`/dota2/${rawTitle}`);
-    }
+    pushTitleIfRelevant(wikiMatch[1]);
+  }
+
+  // Templates such as GroupTableLeague/CrossTableLeague often reference the
+  // detailed schedule as |tournament=Event/Group_Stage without a normal link.
+  const templatePageRefRegex = /\|\s*(?:tournament|page)\s*=\s*([^|}\n<]+)/gi;
+  let refMatch: RegExpExecArray | null;
+  while ((refMatch = templatePageRefRegex.exec(wikitext))) {
+    pushTitleIfRelevant(refMatch[1]);
   }
 
   return Array.from(new Set(subPages));

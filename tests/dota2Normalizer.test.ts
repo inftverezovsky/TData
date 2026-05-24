@@ -49,6 +49,21 @@ test("Dota2 normalizer does not treat regional qualifier tabs as event subpages"
   assert.deepEqual(normalized.subPages, ["https://liquipedia.net/dota2/DreamLeague/29/Playoffs"]);
 });
 
+test("Dota2 normalizer discovers schedule subpages from template tournament refs", () => {
+  const normalized = normalizeDota2Tournament({
+    title: "BLAST/Slam/7",
+    pageUrl: "https://liquipedia.net/dota2/BLAST/Slam/7",
+    wikitext: `
+      {{Infobox league|name=BLAST Slam VII|sdate=2026-05-26|edate=2026-06-07}}
+      {{GroupTableLeague|tournament=BLAST/Slam/7/Group_Stage}}
+      [[{{#var:home}}/Group_Stage#Matches|HERE]]
+    `,
+    parsedHtml: "",
+  });
+
+  assert.deepEqual(normalized.subPages, ["https://liquipedia.net/dota2/BLAST/Slam/7/Group_Stage"]);
+});
+
 test("Dota2 normalizer ignores crosstable matrix rows as match sources", () => {
   const html = `
     <div class="mw-heading mw-heading2"><h2>Group Stage</h2></div>

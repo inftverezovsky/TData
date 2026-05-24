@@ -667,6 +667,7 @@ function extractSubPages(wikitext: string, html: string, pageUrl: string): strin
   const subPages: string[] = [];
   const baseUrl = pageUrl.replace(/\/+$/, "");
   const basePath = new URL(baseUrl).pathname.replace(/\/+$/, "");
+  const rawBase = decodeURIComponent(basePath.split("/").slice(2).join("/")).replace(/ /g, "_");
 
   const pushIfRelevant = (href: string | undefined | null) => {
     if (!href || href.startsWith("#") || href.includes("action=edit")) return;
@@ -695,7 +696,21 @@ function extractSubPages(wikitext: string, html: string, pageUrl: string): strin
       pushIfRelevant($(el).attr("href"));
     });
   }
-  const titlePart = decodeURIComponent(basePath.split("/").slice(2).join("/")).replace(/_/g, " ");
+  const titlePart = rawBase.replace(/_/g, " ");
+  const pushTitleIfRelevant = (rawTitle: string | undefined | null) => {
+    if (!rawTitle) return;
+    const title = rawTitle
+      .trim()
+      .replace(/\{\{\s*#var:home\s*\}\}/gi, rawBase)
+      .replace(/\{\{\s*FULLPAGENAME\s*\}\}/gi, rawBase)
+      .replace(/^:+/, "")
+      .replace(/ /g, "_")
+      .split("#")[0]
+      .replace(/\/+$/, "");
+    if (!title || !title.startsWith(`${rawBase}/`)) return;
+    pushIfRelevant(`/valorant/${title}`);
+  };
+
   const subLinkRegex = /\[\[([^|\]]+\/[^|\]]+)(?:\|[^\]]*)?\]\]/g;
   let match;
   while ((match = subLinkRegex.exec(wikitext))) {
@@ -703,6 +718,13 @@ function extractSubPages(wikitext: string, html: string, pageUrl: string): strin
     if (subPath.startsWith(titlePart) && subPath !== titlePart) {
       pushIfRelevant(`/valorant/${subPath.replace(/ /g, "_")}`);
     }
+    pushTitleIfRelevant(match[1]);
+  }
+
+  const templatePageRefRegex = /\|\s*(?:tournament|page)\s*=\s*([^|}\n<]+)/gi;
+  let refMatch: RegExpExecArray | null;
+  while ((refMatch = templatePageRefRegex.exec(wikitext))) {
+    pushTitleIfRelevant(refMatch[1]);
   }
   return Array.from(new Set(subPages));
 }
