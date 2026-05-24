@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { clearCacheFiles, type CacheSource } from "@/lib/cache/cacheMaintenance";
 import { requireAdmin } from "@/lib/auth/adminAuth";
 
-const CACHE_SOURCES = new Set<CacheSource>(["hltv", "liquipedia", "all"]);
+const CACHE_SOURCES = new Set<CacheSource>(["hltv", "vlr", "dltv", "fandom", "liquipedia", "all"]);
 
 export async function POST(request: Request) {
   try {

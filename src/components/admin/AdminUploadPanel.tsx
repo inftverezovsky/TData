@@ -33,20 +33,26 @@ function buildSelectedIdsQuery(selectedMatchIds: string[]) {
   return selectedMatchIds.map((id) => encodeURIComponent(id)).join(',');
 }
 
+function getFriendlyErrorMessage(error: unknown, fallback: string) {
+  return typeof error === 'string' && error.trim() ? error : fallback;
+}
+
 export default function AdminUploadPanel({ 
   tournamentId, 
   disciplineSlug,
   tournamentName,
+  initialSettings,
   selectedMatchIds = []
 }: { 
   tournamentId: string; 
   disciplineSlug: string;
   tournamentName: string;
+  initialSettings: Settings;
   selectedMatchIds?: string[];
 }) {
   const router = useRouter();
   const [mapping, setMapping] = useState<AdminMapping>({ adminShapkaId: '', adminShapkaName: '' });
-  const [settings, setSettings] = useState<Settings | null>(null);
+  const settings = initialSettings;
   const [preview, setPreview] = useState<PreviewData | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -56,24 +62,20 @@ export default function AdminUploadPanel({
   const selectedMatchKey = selectedMatchIds.join('\u0001');
 
   const loadAdminData = useCallback(async () => {
-    const [mappingRes, settingsRes] = await Promise.all([
-      fetch(`/api/${disciplineSlug}/tournament/${tournamentId}/admin-mapping`, {
-        cache: 'no-store',
-        credentials: 'same-origin',
-      }),
-      fetch(`/api/admin-settings/${disciplineSlug}`, {
-        cache: 'no-store',
-        credentials: 'same-origin',
-      })
-    ]);
+    const mappingRes = await fetch(`/api/${disciplineSlug}/tournament/${tournamentId}/admin-mapping`, {
+      cache: 'no-store',
+      credentials: 'same-origin',
+    });
 
-    const mappingData = await mappingRes.json();
-    const settingsData = await settingsRes.json();
+    const mappingData = await mappingRes.json().catch(() => null);
 
-    if (!mappingRes.ok || !settingsRes.ok) {
+    if (!mappingRes.ok) {
       setResult({
         type: 'error',
-        text: mappingData?.error || settingsData?.error || 'Ошибка загрузки данных админки',
+        text: getFriendlyErrorMessage(
+          mappingData?.error,
+          'Ошибка загрузки данных админки'
+        ),
       });
       return;
     }
@@ -83,7 +85,6 @@ export default function AdminUploadPanel({
       adminShapkaName: mappingData.adminShapkaName || '',
     });
     setLastSavedId(mappingData.adminShapkaId || '');
-    setSettings(settingsData);
   }, [disciplineSlug, tournamentId]);
 
   const handlePreview = useCallback(async () => {

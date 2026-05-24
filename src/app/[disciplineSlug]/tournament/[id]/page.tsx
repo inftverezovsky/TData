@@ -14,6 +14,7 @@ import { buildAdminTeamDisplayLookup, resolveTeamMappingDisplay } from "@/lib/te
 import { normalizeTeamName } from "@/lib/teams/teams";
 import { collectTournamentTeamNames } from "@/lib/teams/tournamentTeamNames";
 import { detectTournamentSource, getTournamentSourceLabel } from "@/lib/utils/tournamentSource";
+import { resolveAdminSettings } from "@/lib/adminUpload/resolveAdminSettings";
 
 export const dynamic = "force-dynamic";
 
@@ -111,6 +112,7 @@ export default async function TournamentPage({
 
   const source = detectTournamentSource(tournament.sourceUrl);
   const disciplineName = discipline?.name || slug.charAt(0).toUpperCase() + slug.slice(1);
+  const adminSettings = await resolveAdminSettings(slug);
 
   return (
     <div className="space-y-6">
@@ -152,6 +154,15 @@ export default async function TournamentPage({
         tournament={tournamentForView} 
         mappingMap={mappingMap} 
         disciplineSlug={slug} 
+        adminSettings={{
+          apiUrl: adminSettings.apiUrl || "",
+          adminSportId: adminSettings.adminSportId || "",
+          adminMax: adminSettings.adminMax,
+          defaultShapkaId: adminSettings.defaultShapkaId || "",
+          timezone: adminSettings.timezone,
+          dateFormat: adminSettings.dateFormat,
+          requestMode: adminSettings.requestMode,
+        }}
       />
 
       {/* Advanced Settings: Team Mapping */}

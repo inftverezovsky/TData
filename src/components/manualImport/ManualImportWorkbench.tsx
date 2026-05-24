@@ -413,21 +413,6 @@ export default function ManualImportWorkbench() {
 
     try {
       if (shouldUploadImage) {
-        if (textForParse.trim()) {
-          setRecognitionStep("local-parser", "Сначала проверяю введённый текст.");
-          try {
-            const data = await postManualParse({ mode: "text", text: textForParse, signal: controller.signal });
-            applyParsedData(data);
-            setRecognitionStep("done", `Найдено матчей: ${(data.rawMatches || []).length}.`);
-            setMessage({
-              type: "info",
-              text: `${getParseSourceLabel(data.parseSource)}. Найдено матчей: ${(data.rawMatches || []).length}.`,
-            });
-            return;
-          } catch {
-            setRecognitionStep("local-parser", "Текст не собрал матчи, перехожу к AI распознаванию.");
-          }
-        }
         await parseImageBatchWithAiFirst(controller);
         return;
       }
@@ -721,7 +706,8 @@ export default function ManualImportWorkbench() {
     const resetController = resetProgress ? beginRecognition() : null;
     const requestSignal = signal || resetController?.signal;
     const nextOcrText = ocrTextOverride ?? ocrText;
-    const fallbackImageItem = imageFallback ? imageItemsRef.current[0] || null : null;
+    const fallbackImageItems = imageFallback ? imageItemsRef.current : [];
+    const fallbackImageItem = fallbackImageItems[0] || null;
     if (!nextOcrText.trim() && !rawText.trim() && !fallbackImageItem) {
       setMessage({ type: "error", text: "Нет текста или фото для AI fallback." });
       if (resetController) finishRecognition(resetController);
@@ -731,6 +717,11 @@ export default function ManualImportWorkbench() {
     setRecognitionStep("ai-fallback", introDetail);
 
     try {
+      if (!nextOcrText.trim() && fallbackImageItems.length > 1 && resetController) {
+        await parseImageBatchWithAiFirst(resetController);
+        return;
+      }
+
       const data = await postManualParse({
         mode: "ai",
         text: rawText,

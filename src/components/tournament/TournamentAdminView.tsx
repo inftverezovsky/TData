@@ -18,18 +18,27 @@ interface Props {
   tournament: any;
   mappingMap: any;
   disciplineSlug: string;
+  adminSettings: {
+    apiUrl: string;
+    adminSportId: string;
+    adminMax: string;
+    defaultShapkaId: string;
+    timezone: string;
+    dateFormat: string;
+    requestMode: string;
+  };
 }
 
-export default function TournamentAdminView({ tournament: initialTournament, mappingMap, disciplineSlug }: Props) {
+export default function TournamentAdminView({ tournament: initialTournament, mappingMap, disciplineSlug, adminSettings }: Props) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [activeTab, setActiveTab] = useState<"schedule" | "upload">("schedule");
   const selectedMatchIds = useMemo(() => Array.from(selectedIds), [selectedIds]);
 
-  // SWR for caching (SAFE: Only hits local DB, not Liquipedia)
   const { data: tournament, error: refreshError, mutate } = useSWR(
     `/api/${disciplineSlug}/tournament/${initialTournament.id}/data`,
     fetcher,
-    { 
-      fallbackData: initialTournament, 
+    {
+      fallbackData: initialTournament,
       refreshInterval: 0,
       revalidateOnFocus: false,
       revalidateOnReconnect: false
@@ -47,6 +56,11 @@ export default function TournamentAdminView({ tournament: initialTournament, map
   useEffect(() => {
     mutate(initialTournament, { revalidate: true });
   }, [initialTournament, mutate]);
+
+  useEffect(() => {
+    const currentTab = new URL(window.location.href).searchParams.get("tab");
+    setActiveTab(currentTab === "upload" ? "upload" : "schedule");
+  }, []);
 
   useEffect(() => {
     const handleRefresh = (event: Event) => {
@@ -74,7 +88,6 @@ export default function TournamentAdminView({ tournament: initialTournament, map
   return (
     <div className="grid gap-8 lg:grid-cols-[1fr_360px] animate-in">
       <div className="space-y-8">
-        {/* Matches section */}
         <section className="premium-card p-6">
           <div className="mb-6 flex items-center justify-between border-b border-slate-100 pb-6">
             <div className="flex items-center gap-3">
@@ -103,23 +116,49 @@ export default function TournamentAdminView({ tournament: initialTournament, map
         </section>
       </div>
 
-      <div className="space-y-8">
-        <ClientErrorBoundary title="Панель заливки временно недоступна">
-          <AdminUploadPanel
-            tournamentId={tournament.id}
-            disciplineSlug={disciplineSlug}
-            tournamentName={tournament.name}
-            selectedMatchIds={selectedMatchIds}
-          />
-        </ClientErrorBoundary>
+      <div className="space-y-4">
+        <div className="flex items-center gap-1 border-b border-slate-200">
+          <button
+            type="button"
+            onClick={() => setActiveTab("schedule")}
+            className={`relative px-6 py-4 text-xs font-black uppercase tracking-[0.2em] transition-all duration-200 ${
+              activeTab === "schedule" ? "text-indigo-600" : "text-slate-400 hover:text-slate-600"
+            }`}
+          >
+            Расписание
+            {activeTab === "schedule" && <div className="absolute inset-x-0 bottom-0 h-1 rounded-t-full bg-indigo-600" />}
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("upload")}
+            className={`relative px-6 py-4 text-xs font-black uppercase tracking-[0.2em] transition-all duration-200 ${
+              activeTab === "upload" ? "text-indigo-600" : "text-slate-400 hover:text-slate-600"
+            }`}
+          >
+            Загрузка
+            {activeTab === "upload" && <div className="absolute inset-x-0 bottom-0 h-1 rounded-t-full bg-indigo-600" />}
+          </button>
+        </div>
 
-        <ClientErrorBoundary title="Экспорт временно недоступен">
-          <ExportPanel
-            tournamentId={tournament.id}
-            disciplineSlug={disciplineSlug}
-            selectedMatchIds={selectedMatchIds}
-          />
-        </ClientErrorBoundary>
+        <div className="space-y-8">
+          <ClientErrorBoundary title="Панель заливки временно недоступна">
+            <AdminUploadPanel
+              tournamentId={tournament.id}
+              disciplineSlug={disciplineSlug}
+              tournamentName={tournament.name}
+              initialSettings={adminSettings}
+              selectedMatchIds={selectedMatchIds}
+            />
+          </ClientErrorBoundary>
+
+          <ClientErrorBoundary title="Экспорт временно недоступен">
+            <ExportPanel
+              tournamentId={tournament.id}
+              disciplineSlug={disciplineSlug}
+              selectedMatchIds={selectedMatchIds}
+            />
+          </ClientErrorBoundary>
+        </div>
       </div>
     </div>
   );

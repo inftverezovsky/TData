@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 
-export type CacheSource = "hltv" | "liquipedia" | "all";
+export type CacheSource = "hltv" | "vlr" | "dltv" | "fandom" | "liquipedia" | "all";
 
 export type CacheClearScope = {
   source?: CacheSource;
@@ -17,7 +17,7 @@ export function clearCacheFiles(scope: CacheClearScope = {}) {
 
 function getCacheRoots(source: CacheSource, disciplineSlug?: string) {
   const cacheRoot = path.join(process.cwd(), "cache");
-  const sources = source === "all" ? ["hltv", "liquipedia"] : [source];
+  const sources = source === "all" ? ["hltv", "vlr", "dltv", "fandom", "liquipedia"] : [source];
 
   return sources.map((item) => {
     const root = path.join(cacheRoot, item);

@@ -16,6 +16,7 @@ export default function LoadTournamentButton({
   initialTournamentId,
   force = false,
   source,
+  targetTab,
   size = "md"
 }: {
   pageId?: number | null;
@@ -25,15 +26,21 @@ export default function LoadTournamentButton({
   initialTournamentId?: string;
   force?: boolean;
   source?: TournamentSource;
+  targetTab?: string;
   size?: "sm" | "md";
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  function buildTournamentUrl(tournamentId: string) {
+    const baseUrl = `/${disciplineSlug}/tournament/${tournamentId}`;
+    return targetTab ? `${baseUrl}?tab=${encodeURIComponent(targetTab)}` : baseUrl;
+  }
+
   async function loadTournament() {
     if (initialTournamentId && !force) {
-      router.push(`/${disciplineSlug}/tournament/${initialTournamentId}`);
+      router.push(buildTournamentUrl(initialTournamentId));
       return;
     }
     
@@ -64,7 +71,7 @@ export default function LoadTournamentButton({
         throw new Error(data.userMessage || getLiquipediaUserMessage(data.errorClass, data.error ?? "Не удалось загрузить турнир"));
       }
 
-      router.push(`/${disciplineSlug}/tournament/${data.tournament.id}`);
+      router.push(buildTournamentUrl(data.tournament.id));
       router.refresh();
       dispatchTournamentDataUpdated({ tournamentId: data.tournament.id, disciplineSlug });
     } catch (err) {

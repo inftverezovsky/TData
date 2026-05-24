@@ -172,3 +172,27 @@ test("format groups work for announcement rows", () => {
   assert.deepEqual(groups.map((group) => group.format), ["BO1", "BO3"]);
   assert.deepEqual(groups.map((group) => group.matches.length), [1, 1]);
 });
+
+test("DLTV exact-time TBD rows expand into uploadable announcements", () => {
+  const entries = expandScheduleAnnouncements([
+    {
+      id: "dltv-db-row",
+      matchId: "dltv-426647",
+      matchDate: new Date("2026-06-05T09:00:00.000Z"),
+      matchDateTime: "2026-06-05 09:00:00",
+      rawText: "Blast Slam 7 Semifinals TBD 0 - 0 Best of 3 Предстоящие",
+      scoreA: null,
+      scoreB: null,
+      teamAName: "TBD1",
+      teamBName: "TBD2",
+      hasPlaceholderTeams: true,
+    },
+  ]);
+
+  assert.equal(entries.length, 2);
+  assert.deepEqual(entries.map((entry) => entry.selectionId), [
+    buildTbdAnnouncementSelectionId("dltv-426647", "teamA"),
+    buildTbdAnnouncementSelectionId("dltv-426647", "teamB"),
+  ]);
+  assert.equal(entries.every(isUploadableScheduleEntry), true);
+});

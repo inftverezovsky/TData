@@ -35,7 +35,7 @@ export function hasExactMatchTime(match: MatchTimeInput) {
 
 function isTrustedExactDate(match: MatchTimeInput, date: Date) {
   if (hasExplicitTimeText(match.matchDateTime, match.rawText)) return true;
-  if (match.sourceUrl && /(?:^|\/\/)(?:www\.)?hltv\.org\//i.test(match.sourceUrl)) return true;
+  if (match.sourceUrl && /(?:^|\/\/)(?:www\.)?(?:hltv\.org|vlr\.gg)\//i.test(match.sourceUrl)) return true;
   return date.getUTCHours() !== 0 || date.getUTCMinutes() !== 0 || date.getUTCSeconds() !== 0;
 }
 

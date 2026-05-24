@@ -1,16 +1,27 @@
-export type TournamentSource = "liquipedia" | "hltv";
+export type TournamentSource = "liquipedia" | "hltv" | "vlr" | "dltv" | "fandom";
 
 export function detectTournamentSource(pageUrl?: string | null): TournamentSource {
   if (!pageUrl) return "liquipedia";
 
   try {
     const host = new URL(pageUrl).hostname.toLowerCase();
-    return host === "hltv.org" || host.endsWith(".hltv.org") ? "hltv" : "liquipedia";
+    if (host === "hltv.org" || host.endsWith(".hltv.org")) return "hltv";
+    if (host === "vlr.gg" || host.endsWith(".vlr.gg")) return "vlr";
+    if (host === "dltv.org" || host.endsWith(".dltv.org")) return "dltv";
+    if (host === "lol.fandom.com") return "fandom";
+    return "liquipedia";
   } catch {
-    return /(^|\/\/)(www\.)?hltv\.org\//i.test(pageUrl) ? "hltv" : "liquipedia";
+    if (/(^|\/\/)(www\.)?hltv\.org\//i.test(pageUrl)) return "hltv";
+    if (/(^|\/\/)(www\.)?vlr\.gg\//i.test(pageUrl)) return "vlr";
+    if (/(^|\/\/)(?:ru\.)?dltv\.org\//i.test(pageUrl)) return "dltv";
+    if (/(^|\/\/)lol\.fandom\.com\//i.test(pageUrl)) return "fandom";
+    return "liquipedia";
   }
 }
 
 export function getTournamentSourceLabel(source: TournamentSource) {
+  if (source === "vlr") return "Источник: VLR";
+  if (source === "dltv") return "Источник: DLTV";
+  if (source === "fandom") return "Источник: Fandom";
   return source === "hltv" ? "Источник: HLTV" : "Источник: Liquipedia";
 }

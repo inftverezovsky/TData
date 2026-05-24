@@ -1,6 +1,7 @@
 param(
   [string]$Username = "inftverezovsky",
   [string]$Tag = "latest",
+  [string]$SshKeyPath = "$env:USERPROFILE\.ssh\tcyber_vps_82_147_67_231",
   [switch]$Prune
 )
 
@@ -23,7 +24,7 @@ Write-Host "==> Phase 1: Building and pushing Docker image to Docker Hub..." -Fo
 # 2. Run remote SSH Deploy
 Write-Host ""
 Write-Host "==> Phase 2: Connecting to production VPS and pulling latest image..." -ForegroundColor Yellow
-node "$ProjectRoot\scratch\ssh-deploy.js"
+& "$PSScriptRoot\ssh-redeploy.ps1" -KeyPath $SshKeyPath
 
 if ($LASTEXITCODE -ne 0) {
   Write-Error "Remote SSH deployment phase failed."

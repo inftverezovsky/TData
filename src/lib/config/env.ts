@@ -10,12 +10,20 @@ export function getLiquipediaLolApiUrl() {
   return process.env.LIQUIPEDIA_LOL_API_URL ?? "https://liquipedia.net/leagueoflegends/api.php";
 }
 
+export function getFandomLolApiUrl() {
+  return process.env.FANDOM_LOL_API_URL ?? "https://lol.fandom.com/api.php";
+}
+
 export function getLiquipediaValorantApiUrl() {
   return process.env.LIQUIPEDIA_VALORANT_API_URL ?? "https://liquipedia.net/valorant/api.php";
 }
 
 export function getLiquipediaUserAgent() {
   return process.env.LIQUIPEDIA_USER_AGENT ?? "liquipedia-local-dev/0.1 (contact: change-me@example.com)";
+}
+
+export function getFandomUserAgent() {
+  return process.env.FANDOM_USER_AGENT ?? getLiquipediaUserAgent();
 }
 
 export function getGenericMinIntervalMs() {

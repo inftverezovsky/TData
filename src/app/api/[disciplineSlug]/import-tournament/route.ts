@@ -6,6 +6,9 @@ import { getNormalizer } from "@/lib/normalizers/registry";
 import { importTournamentRecursive } from "@/lib/liquipedia/importer";
 import { dedupeTournamentMatches } from "@/lib/matches/dedupe";
 import { importHltvTournament } from "@/lib/importSources/hltv";
+import { importVlrTournament } from "@/lib/importSources/vlr";
+import { importDltvTournament } from "@/lib/importSources/dltv";
+import { importFandomTournament } from "@/lib/importSources/fandom";
 import { getLiquipediaResponseStatus, toLiquipediaUserFacingError } from "@/lib/liquipedia/userFacingErrors";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +18,7 @@ type Body = {
   pageId?: unknown;
   title?: unknown;
   pageUrl?: unknown;
-  source?: "liquipedia" | "hltv";
+  source?: "liquipedia" | "hltv" | "vlr" | "dltv" | "fandom";
   force?: boolean;
 };
 
@@ -32,7 +35,7 @@ export async function POST(
   const title = typeof body.title === "string" ? body.title.trim() : "";
   const pageUrl = typeof body.pageUrl === "string" && body.pageUrl.trim().length > 0
     ? body.pageUrl.trim()
-    : (source === 'hltv' ? "" : makeLiquipediaPageUrl(title, slug));
+    : (source === "hltv" || source === "vlr" || source === "dltv" || source === "fandom" ? "" : makeLiquipediaPageUrl(title, slug));
 
   if (!pageId && title.length < 2) {
     return NextResponse.json({ error: "Нужен pageId или title выбранной страницы" }, { status: 400 });
@@ -64,6 +67,57 @@ export async function POST(
       return NextResponse.json(
         { error: error instanceof Error ? error.message : "Не удалось загрузить HLTV турнир" },
         { status: slug !== "counterstrike" ? 400 : 500 }
+      );
+    }
+  }
+
+  if (source === "vlr") {
+    try {
+      return NextResponse.json(await importVlrTournament({
+        slug,
+        title,
+        pageUrl,
+        force: body.force,
+      }));
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Не удалось загрузить VLR турнир" },
+        { status: slug !== "valorant" ? 400 : 500 }
+      );
+    }
+  }
+
+  if (source === "dltv") {
+    try {
+      return NextResponse.json(await importDltvTournament({
+        slug,
+        title,
+        pageUrl,
+        force: body.force,
+      }));
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Не удалось загрузить DLTV турнир" },
+        { status: slug !== "dota2" ? 400 : 500 }
+      );
+    }
+  }
+
+  if (source === "fandom") {
+    try {
+      return NextResponse.json(await importFandomTournament({
+        slug,
+        disciplineId: discipline.id,
+        pageId,
+        title,
+        pageUrl,
+        force: body.force,
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Не удалось загрузить Fandom турнир";
+      return NextResponse.json(
+        { error: message, userMessage: message },
+        { status: slug !== "leagueoflegends" ? 400 : 500 }
       );
     }
   }

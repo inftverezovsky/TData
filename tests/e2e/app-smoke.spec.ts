@@ -229,6 +229,76 @@ test("manual import accepts multiple pasted screenshots and deduplicates batch m
   expect(ocrCalled).toBe(false);
 });
 
+test("manual import processes every uploaded screenshot even when text is present", async ({ page }) => {
+  let parseCalls = 0;
+  let automapBody: any = null;
+
+  await page.route("**/api/admin-auth/session", async route => {
+    await route.fulfill({ json: { authenticated: true } });
+  });
+  await page.route("**/api/manual-import/parse", async route => {
+    parseCalls += 1;
+    await route.fulfill({
+      json: {
+        ok: true,
+        rawMatches: [
+          {
+            tournament: "Manual Import",
+            team1: parseCalls === 1 ? "Photo One Alpha" : "Photo Two Alpha",
+            team2: parseCalls === 1 ? "Photo One Beta" : "Photo Two Beta",
+            date: parseCalls === 1 ? "24.05.2026 11:50:00" : "24.05.2026 12:50:00",
+          },
+        ],
+        mappedMatches: [],
+        normalizedText: parseCalls === 1 ? "photo one" : "photo two",
+        ocrText: "",
+        ocrConfidence: null,
+        parseSource: "ai",
+        warnings: [],
+      },
+    });
+  });
+  await page.route("**/api/manual-import/automap", async route => {
+    automapBody = route.request().postDataJSON();
+    await route.fulfill({
+      json: {
+        ok: true,
+        mappedMatches: (automapBody.matches || []).map((match: any, index: number) => ({
+          id: `manual-upload-${index}`,
+          tournament: "Manual Import",
+          team1: { name: match.team1, platformId: String(100 + index) },
+          team2: { name: match.team2, platformId: String(200 + index) },
+          date: match.date,
+          isReady: true,
+        })),
+        readyMatchesCount: automapBody.matches?.length || 0,
+        savedMappings: [],
+        savedCount: 0,
+        skippedCount: 0,
+        conflictCount: 0,
+        overwrittenCount: 0,
+      },
+    });
+  });
+
+  await page.goto("/manual-import");
+  await page.waitForLoadState("networkidle");
+  await page.getByPlaceholder("Вставьте текст расписания или OCR...").fill("Text Alpha\nText Beta\n24 May, 10:00 | Table 1");
+  await page.locator('input[type="file"][accept="image/*"]').setInputFiles([
+    { name: "upload-one.png", mimeType: "image/png", buffer: Buffer.from("image-one") },
+    { name: "upload-two.png", mimeType: "image/png", buffer: Buffer.from("image-two") },
+  ]);
+
+  await expect(page.getByText("upload-one.png")).toBeVisible();
+  await expect(page.getByText("upload-two.png")).toBeVisible();
+  await page.getByRole("button", { name: /распознать/i }).click();
+
+  await expect(page.locator("tbody tr")).toHaveCount(2);
+  await expect(page.getByText(/Батч готов: скринов 2, успешно 2, без матчей 0, ошибок 0, матчей 2/)).toBeVisible();
+  await expect.poll(() => parseCalls).toBe(2);
+  await expect.poll(() => automapBody?.matches?.length).toBe(2);
+});
+
 test("manual import shows manual OCR fallback when AI image recognition fails", async ({ page }) => {
   const parseBodies: string[] = [];
   let ocrCalls = 0;
