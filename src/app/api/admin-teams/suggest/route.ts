@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth/adminAuth";
 import { prisma } from "@/lib/db/db";
 import { buildAdminTeamSuggestions } from "@/lib/adminTeams/suggest";
 import { normalizeFuzzyName } from "@/lib/teams/fuzzyMatch";
@@ -7,9 +6,6 @@ import { normalizeFuzzyName } from "@/lib/teams/fuzzyMatch";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
-
   const { searchParams } = new URL(request.url);
   const disciplineSlug = String(searchParams.get("disciplineSlug") || "").trim().toLowerCase();
   const query = String(searchParams.get("q") || "").trim();

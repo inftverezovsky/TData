@@ -34,8 +34,6 @@ test("admin auth protects settings endpoints and creates a usable session cookie
     () => request.delete("/api/team-mapping?name=Example&discipline=counterstrike"),
     () => request.post("/api/team-mapping/auto"),
     () => request.post("/api/team-mapping/fuzzy"),
-    () => request.get("/api/admin-teams/suggest?disciplineSlug=counterstrike&q=test"),
-    () => request.post("/api/counterstrike/import-tournament"),
     () => request.post("/api/counterstrike/tournament/example/admin-mapping"),
     () => request.post("/api/counterstrike/tournament/example/platform-id"),
     () => request.get("/api/disciplines/counterstrike/platform-id"),
@@ -50,6 +48,14 @@ test("admin auth protects settings endpoints and creates a usable session cookie
     const response = await makeRequest();
     expect(response.status()).toBe(401);
   }
+
+  const publicSuggestValidation = await request.get("/api/admin-teams/suggest?q=test");
+  expect(publicSuggestValidation.status()).toBe(400);
+
+  const publicImportValidation = await request.post("/api/counterstrike/import-tournament", {
+    data: { title: "" },
+  });
+  expect(publicImportValidation.status()).toBe(400);
 
   const badLogin = await request.post("/api/admin-auth/login", {
     data: { password: "wrong-password" },

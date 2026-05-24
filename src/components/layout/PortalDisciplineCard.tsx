@@ -84,10 +84,12 @@ export default function PortalDisciplineCard({ slug, name, iconUrl, bgUrl, tourn
 
 function TournamentRow({ tournament, slug }: { tournament: PortalTournament; slug: string }) {
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
   const handleLoad = async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch(`/api/${slug}/import-tournament`, {
         method: "POST",
@@ -98,11 +100,11 @@ function TournamentRow({ tournament, slug }: { tournament: PortalTournament; slu
       if (data.tournament?.id) {
         router.push(`/${slug}/tournament/${data.tournament.id}`);
       } else {
-        alert(data.userMessage || getLiquipediaUserMessage(data.errorClass, data.error || "Ошибка"));
+        setError(data.userMessage || getLiquipediaUserMessage(data.errorClass, data.error || "Ошибка"));
       }
     } catch (err) {
       console.error(err);
-      alert(getLiquipediaUserMessage(null, err instanceof Error ? err.message : "Ошибка"));
+      setError(getLiquipediaUserMessage(null, err instanceof Error ? err.message : "Ошибка"));
     } finally {
       setLoading(false);
     }
@@ -136,6 +138,7 @@ function TournamentRow({ tournament, slug }: { tournament: PortalTournament; slu
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
         </a>
       </div>
+      {error ? <p className="text-[10px] font-bold leading-snug text-rose-600">{error}</p> : null}
     </div>
   );
 }

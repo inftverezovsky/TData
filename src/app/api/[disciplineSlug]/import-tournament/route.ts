@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/db";
-import { requireAdmin } from "@/lib/auth/adminAuth";
 import { getOrCreateDiscipline } from "@/lib/config/disciplines";
 import { makeLiquipediaPageUrl } from "@/lib/liquipedia/client";
 import { getNormalizer } from "@/lib/normalizers/registry";
@@ -26,9 +25,6 @@ export async function POST(
 ) {
   const { disciplineSlug } = await params;
   const slug = disciplineSlug.trim().toLowerCase();
-
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
 
   const body = (await request.json()) as Body;
   const source = body.source || "liquipedia";

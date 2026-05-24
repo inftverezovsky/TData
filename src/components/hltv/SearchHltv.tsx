@@ -69,6 +69,7 @@ export default function SearchHltv({ disciplineSlug }: { disciplineSlug: string 
 
   const handleImport = async (hltvEvent: HltvEvent) => {
     setImportingId(hltvEvent.id);
+    setError(null);
     try {
       const response = await fetch(`/api/${disciplineSlug}/import-tournament`, {
         method: "POST",
@@ -93,9 +94,8 @@ export default function SearchHltv({ disciplineSlug }: { disciplineSlug: string 
       if (data.tournament?.id) {
         router.push(`/${disciplineSlug}/tournament/${data.tournament.id}`);
       }
-    } catch (err: any) {
-      setError(err.message);
-      alert(err.message);
+    } catch (err) {
+      setError(getHltvSearchErrorMessage(null, err instanceof Error ? err.message : "Не удалось загрузить турнир"));
     } finally {
       setImportingId(null);
     }
