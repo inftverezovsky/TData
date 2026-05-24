@@ -35,9 +35,10 @@ export function isPlaceholderTeam(name: string | null | undefined): boolean {
   const n = name.trim().toLowerCase();
   
   if (isTbdPlaceholderTeam(n)) return true;
+  if (n.includes("{{") || n.includes("}}")) return true;
 
   // Basic placeholders
-  if (["tba", "slot", "seed", "qualified team", "unknown", "placeholder"].includes(n)) return true;
+  if (["tba", "slot", "seed", "qualified team", "unknown", "placeholder", "teamopponent", "literalopponent"].includes(n)) return true;
 
   // Real Counter-Strike org. This conflicts with Liquipedia seed labels like A1/B2/G2.
   if (n === "g2") return false;

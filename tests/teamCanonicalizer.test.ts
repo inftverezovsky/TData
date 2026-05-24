@@ -19,6 +19,7 @@ test("G2 is treated as a real team, not a bracket seed", () => {
   assert.equal(isPlaceholderTeam("A1"), true);
   assert.equal(isPlaceholderTeam("#8"), true);
   assert.equal(isPlaceholderTeam("#10"), true);
+  assert.equal(isPlaceholderTeam("{{TeamOpponent"), true);
 });
 
 test("team canonicalizer prefers the full participant name for short Liquipedia labels", () => {
