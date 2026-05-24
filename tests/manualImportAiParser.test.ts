@@ -179,6 +179,77 @@ test("manual import fast ai image parse does not call chat fallback on primary 5
   }
 });
 
+test("manual import fast ai image parse handles empty successful AI output", async () => {
+  const previousApiKey = process.env.ARCCODEX_API_KEY;
+  const previousFetch = globalThis.fetch;
+  process.env.ARCCODEX_API_KEY = "test-key";
+  let fetchCalls = 0;
+
+  globalThis.fetch = (async () => {
+    fetchCalls += 1;
+    return new Response(
+      JSON.stringify({
+        id: "resp_empty",
+        status: "completed",
+        output: [{ type: "message", role: "assistant", content: [] }],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } }
+    );
+  }) as typeof fetch;
+
+  try {
+    const result = await parseManualMatchesWithAi({
+      disciplineSlug: "73",
+      mode: "ai",
+      fast: true,
+      imageBuffer: Buffer.from("empty-ai-output-image"),
+      imageMime: "image/jpeg",
+    });
+
+    assert.equal(fetchCalls, 1);
+    assert.equal(result.ok, false);
+    assert.equal(result.matches.length, 0);
+    assert.equal(result.parseSource, "fallback");
+    assert.equal(result.error, "AI did not return valid JSON.");
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousApiKey === undefined) delete process.env.ARCCODEX_API_KEY;
+    else process.env.ARCCODEX_API_KEY = previousApiKey;
+  }
+});
+
+test("manual import fast ai image parse handles non-json AI output without raw JSON errors", async () => {
+  const previousApiKey = process.env.ARCCODEX_API_KEY;
+  const previousFetch = globalThis.fetch;
+  process.env.ARCCODEX_API_KEY = "test-key";
+
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: "I cannot parse this image." }] }],
+      }),
+      { status: 200, headers: { "content-type": "application/json" } }
+    )) as typeof fetch;
+
+  try {
+    const result = await parseManualMatchesWithAi({
+      disciplineSlug: "73",
+      mode: "ai",
+      fast: true,
+      imageBuffer: Buffer.from("non-json-ai-output-image"),
+      imageMime: "image/jpeg",
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.parseSource, "fallback");
+    assert.equal(result.error, "AI returned a non-JSON response.");
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousApiKey === undefined) delete process.env.ARCCODEX_API_KEY;
+    else process.env.ARCCODEX_API_KEY = previousApiKey;
+  }
+});
+
 test("manual import ai image parse uses chat fallback only for unsupported primary endpoint", async () => {
   const previousApiKey = process.env.ARCCODEX_API_KEY;
   const previousFetch = globalThis.fetch;

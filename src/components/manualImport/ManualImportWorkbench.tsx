@@ -2030,8 +2030,8 @@ async function resizeImageForAi(file: File) {
   return resizeImage(file, {
     maxSide: 1600,
     maxPassthroughBytes: 1.25 * 1024 * 1024,
-    outputType: "image/webp",
-    quality: 0.86,
+    outputType: "image/jpeg",
+    quality: 0.9,
     suffix: "ai",
   });
 }

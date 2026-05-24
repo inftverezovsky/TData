@@ -199,8 +199,21 @@ export async function parseManualMatchesWithAi(input: AiParseInput): Promise<AiP
       );
     }
 
+    if (body?.status && body.status !== "completed") {
+      return fallbackParse(
+        aiInput,
+        body?.error?.message || body?.incomplete_details?.reason || `AI response status: ${body.status}.`,
+        ocrResult,
+        warnings,
+        { aiMs }
+      );
+    }
+
     const outputText = extractResponsesText(body);
     const parsed = parseAiJson(outputText);
+    if (!parsed) {
+      return fallbackParse(aiInput, getInvalidAiJsonMessage(outputText), ocrResult, warnings, { aiMs });
+    }
     if (!parsed.matches.length) {
       return fallbackParse(aiInput, "AI did not return matches.", ocrResult, warnings, { aiMs });
     }
@@ -275,8 +288,11 @@ async function parseManualMatchesWithChatCompletions(
       return fallbackParse(input, body?.error?.message || bodyText || previousError, ocrResult, warnings, { aiMs });
     }
 
-    const outputText = body?.choices?.[0]?.message?.content || "";
+    const outputText = extractChatCompletionsText(body);
     const parsed = parseAiJson(outputText);
+    if (!parsed) {
+      return fallbackParse(input, getInvalidAiJsonMessage(outputText, previousError), ocrResult, warnings, { aiMs });
+    }
     if (!parsed.matches.length) {
       return fallbackParse(input, "AI did not return matches.", ocrResult, warnings, { aiMs });
     }
@@ -416,7 +432,9 @@ function extractResponsesText(body: any) {
   for (const item of output) {
     const content = Array.isArray(item?.content) ? item.content : [];
     for (const part of content) {
+      if (typeof part === "string") fragments.push(part);
       if (typeof part?.text === "string") fragments.push(part.text);
+      if (typeof part?.content === "string") fragments.push(part.content);
       if (typeof part?.json === "object") fragments.push(JSON.stringify(part.json));
     }
   }
@@ -424,14 +442,44 @@ function extractResponsesText(body: any) {
   return fragments.join("\n").trim();
 }
 
-function parseAiJson(text: string): { matches: ManualImportRawMatch[]; normalizedText: string } {
+function extractChatCompletionsText(body: any) {
+  const content = body?.choices?.[0]?.message?.content;
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+
+  return content
+    .map((part) => {
+      if (typeof part === "string") return part;
+      if (typeof part?.text === "string") return part.text;
+      if (typeof part?.content === "string") return part.content;
+      if (typeof part?.json === "object") return JSON.stringify(part.json);
+      return "";
+    })
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+}
+
+function parseAiJson(text: string): { matches: ManualImportRawMatch[]; normalizedText: string } | null {
   const raw = text.trim().replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
-  const data = JSON.parse(raw);
+  if (!raw) return null;
+
+  let data: any;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+
   const matches = Array.isArray(data?.matches) ? data.matches : [];
   return {
     matches: matches.filter((match: any) => match && typeof match === "object"),
     normalizedText: typeof data?.normalizedText === "string" ? data.normalizedText : "",
   };
+}
+
+function getInvalidAiJsonMessage(outputText: string, fallback = "AI did not return valid JSON.") {
+  return outputText.trim() ? "AI returned a non-JSON response." : fallback;
 }
 
 async function fallbackParse(
