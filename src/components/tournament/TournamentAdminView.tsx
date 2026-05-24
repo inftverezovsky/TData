@@ -12,12 +12,14 @@ import {
   TEAM_MAPPINGS_UPDATED_EVENT,
   TOURNAMENT_DATA_UPDATED_EVENT,
 } from "@/lib/utils/clientEvents";
+import type { TournamentSource } from "@/lib/utils/tournamentSource";
 import { CalendarDays } from "lucide-react";
 
 interface Props {
   tournament: any;
   mappingMap: any;
   disciplineSlug: string;
+  source: TournamentSource;
   adminSettings: {
     apiUrl: string;
     adminSportId: string;
@@ -29,9 +31,8 @@ interface Props {
   };
 }
 
-export default function TournamentAdminView({ tournament: initialTournament, mappingMap, disciplineSlug, adminSettings }: Props) {
+export default function TournamentAdminView({ tournament: initialTournament, mappingMap, disciplineSlug, source, adminSettings }: Props) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [activeTab, setActiveTab] = useState<"schedule" | "upload">("schedule");
   const selectedMatchIds = useMemo(() => Array.from(selectedIds), [selectedIds]);
 
   const { data: tournament, error: refreshError, mutate } = useSWR(
@@ -56,11 +57,6 @@ export default function TournamentAdminView({ tournament: initialTournament, map
   useEffect(() => {
     mutate(initialTournament, { revalidate: true });
   }, [initialTournament, mutate]);
-
-  useEffect(() => {
-    const currentTab = new URL(window.location.href).searchParams.get("tab");
-    setActiveTab(currentTab === "upload" ? "upload" : "schedule");
-  }, []);
 
   useEffect(() => {
     const handleRefresh = (event: Event) => {
@@ -108,6 +104,7 @@ export default function TournamentAdminView({ tournament: initialTournament, map
               matches={normalizedMatches}
               mappings={mappingMap}
               disciplineSlug={disciplineSlug}
+              source={source}
               selectedIds={selectedIds}
               setSelectedIds={setSelectedIds}
               mutate={mutate}
@@ -117,29 +114,6 @@ export default function TournamentAdminView({ tournament: initialTournament, map
       </div>
 
       <div className="space-y-4">
-        <div className="flex items-center gap-1 border-b border-slate-200">
-          <button
-            type="button"
-            onClick={() => setActiveTab("schedule")}
-            className={`relative px-6 py-4 text-xs font-black uppercase tracking-[0.2em] transition-all duration-200 ${
-              activeTab === "schedule" ? "text-indigo-600" : "text-slate-400 hover:text-slate-600"
-            }`}
-          >
-            Расписание
-            {activeTab === "schedule" && <div className="absolute inset-x-0 bottom-0 h-1 rounded-t-full bg-indigo-600" />}
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveTab("upload")}
-            className={`relative px-6 py-4 text-xs font-black uppercase tracking-[0.2em] transition-all duration-200 ${
-              activeTab === "upload" ? "text-indigo-600" : "text-slate-400 hover:text-slate-600"
-            }`}
-          >
-            Загрузка
-            {activeTab === "upload" && <div className="absolute inset-x-0 bottom-0 h-1 rounded-t-full bg-indigo-600" />}
-          </button>
-        </div>
-
         <div className="space-y-8">
           <ClientErrorBoundary title="Панель заливки временно недоступна">
             <AdminUploadPanel

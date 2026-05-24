@@ -13,6 +13,7 @@ import { createHash } from "crypto";
 import { generateInternalTeamId, isPlaceholderTeam } from "@/lib/teams/teams";
 import { applyTbdPairCycling } from "@/lib/matches/tbdCycling";
 import { getBestOfLabel } from "@/lib/matches/format";
+import { findLiquipediaBracketRoundLabel } from "@/lib/liquipedia/bracketLabels";
 
 /* ───── Types ───── */
 
@@ -455,10 +456,10 @@ function extractMatchesFromParsedHtml(html: string, pageUrl: string): Normalized
       stage = findSectionForElement(matchEl);
     }
 
-    let round: string | null = null;
+    let round: string | null = findLiquipediaBracketRoundLabel($, matchEl);
     const rawHtml = $.html(matchEl)?.slice(0, 500) || "";
     const commentMatch = rawHtml.match(/<!--\s*(.+?)\s*-->/);
-    if (commentMatch) round = commentMatch[1];
+    if (!round && commentMatch) round = commentMatch[1];
 
     const formatText = $popup.find(".match-bm-lbl, .brkts-popup-header-dev-match-type").text().trim() || null;
     const rawText = $.html(matchEl)?.slice(0, 2500) || null;
@@ -592,8 +593,6 @@ function normalizeMatchCandidate(
     court: candidate.court || null
   };
 }
-
-// applyTbdPairCycling is now imported from @/lib/matches/tbdCycling
 
 /* ───── Deduplication ───── */
 

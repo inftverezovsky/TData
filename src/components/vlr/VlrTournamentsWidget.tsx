@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Check, Loader2, RotateCw, Trophy } from "lucide-react";
+import { Loader2, RotateCw, Trophy } from "lucide-react";
 import LoadTournamentButton from "@/components/ui/LoadTournamentButton";
 import { TournamentSkeleton } from "@/components/ui/Skeleton";
 
@@ -144,11 +144,6 @@ function TournamentRow({ t, disciplineSlug }: { t: VlrTournament; disciplineSlug
             <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">
               {t.status === "ongoing" ? "Ongoing" : "Upcoming"}
             </span>
-            {t.isLinked && (
-              <span className="flex items-center gap-1 rounded border border-rose-100 bg-rose-50 px-1.5 py-0.5 text-[8px] font-black uppercase text-rose-500">
-                <Check className="h-2.5 w-2.5" /> В базе данных
-              </span>
-            )}
           </div>
           <h3 className="break-words text-sm font-black leading-tight text-slate-950 transition-colors group-hover:text-rose-600" title={t.title}>
             {t.title}
@@ -162,11 +157,6 @@ function TournamentRow({ t, disciplineSlug }: { t: VlrTournament; disciplineSlug
           <a href={t.url} target="_blank" rel="noopener noreferrer" className="text-[10px] font-black uppercase tracking-widest text-slate-400 underline decoration-slate-200 underline-offset-4 transition-colors hover:text-slate-950">
             VLR
           </a>
-          {t.dbId && (
-            <Link href={`/valorant/tournament/${t.dbId}`} className="text-[10px] font-black uppercase tracking-widest text-slate-400 underline decoration-slate-200 underline-offset-4 transition-colors hover:text-slate-950">
-              Открыть в админке
-            </Link>
-          )}
         </div>
 
         <LoadTournamentButton

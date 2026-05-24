@@ -94,6 +94,7 @@ test("Fandom LoL parser extracts scheduled matchlist rows with UTC time", () => 
   assert.equal(normalized.matches[0].teamAName, "Ozarox Esports");
   assert.equal(normalized.matches[0].teamBName, "PCIFIC Esports");
   assert.equal(normalized.matches[0].matchDate?.toISOString(), "2026-05-26T15:00:00.000Z");
+  assert.equal(normalized.leagueOfLegendsDiagnostics?.coverage.withExactTime, 1);
 });
 
 test("Fandom LoL parser ignores finished scored matchlist rows", () => {
@@ -149,6 +150,8 @@ test("Fandom LoL parser extracts exact future matches from MatchSchedule cargo r
   assert.equal(normalized.matches[0].teamBName, "G2 Esports");
   assert.equal(normalized.matches[0].matchDate?.toISOString(), "2026-07-15T12:00:00.000Z");
   assert.equal(normalized.matches[0].format, "BO3");
+  assert.equal(normalized.leagueOfLegendsDiagnostics?.fandom?.cargoRowsFound, 1);
+  assert.equal(normalized.leagueOfLegendsDiagnostics?.fandom?.cargoRowsUsed, 1);
 });
 
 test("Fandom LoL cargo extraction skips finished rows and rows without exact time", () => {
@@ -161,4 +164,46 @@ test("Fandom LoL cargo extraction skips finished rows and rows without exact tim
   assert.equal(matches.length, 1);
   assert.equal(matches[0].teamAName, "Echo Esports");
   assert.equal(matches[0].teamBName, "Foxtrot Esports");
+});
+
+test("Fandom LoL diagnostics records cargo rows without exact time", () => {
+  const normalized = normalizeFandomLeagueOfLegendsTournament({
+    title: "Parser Cup",
+    pageUrl: "https://lol.fandom.com/wiki/Parser_Cup",
+    wikitext: fandomInfobox,
+    parsedHtml: "",
+    cargoMatches: [
+      { title: { Team1: "Charlie Esports", Team2: "Delta Esports", DateTime_UTC: "2026-07-15 00:00:00", HasTime: "0" } },
+    ],
+  });
+
+  assert.equal(normalized.matches.length, 0);
+  assert.equal(normalized.leagueOfLegendsDiagnostics?.skipReasons.no_exact_time, 1);
+  assert.equal(normalized.leagueOfLegendsDiagnostics?.issues[0].reason, "no_exact_time");
+});
+
+test("Fandom LoL parser uses HTML fallback dates and normalizes BestOf", () => {
+  const normalized = normalizeFandomLeagueOfLegendsTournament({
+    title: "Parser Cup",
+    pageUrl: "https://lol.fandom.com/wiki/Parser_Cup",
+    wikitext: fandomInfobox,
+    parsedHtml: `
+      <table>
+        <tr class="matchlist-row" data-timestamp="1784116800">
+          <td class="matchlist-team1 ml-team" data-teamhighlight="G2 Esports"></td>
+          <td class="matchlist-score"></td>
+          <td class="matchlist-score"></td>
+          <td><span class="countdowndate">1784116800</span></td>
+          <td class="matchlist-team2 ml-team" data-teamhighlight="TBD"></td>
+          <td>Best of 3</td>
+        </tr>
+      </table>
+    `,
+  });
+
+  assert.equal(normalized.matches.length, 1);
+  assert.equal(normalized.matches[0].teamAName, "G2 Esports");
+  assert.equal(normalized.matches[0].teamBName, "TBD");
+  assert.equal(normalized.matches[0].matchDate?.toISOString(), "2026-07-15T12:00:00.000Z");
+  assert.equal(normalized.matches[0].format, "BO3");
 });

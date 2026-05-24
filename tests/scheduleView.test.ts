@@ -4,6 +4,8 @@ import {
   buildScheduleFormatGroups,
   buildTbdAnnouncementSelectionId,
   expandScheduleAnnouncements,
+  expandScheduleAnnouncementsForDiscipline,
+  getStageSlotAnnouncementLabel,
   getUploadableTbdAnnouncementSides,
   isAnnouncementScheduleMatch,
   isGeneratedScheduleMatrixRow,
@@ -194,5 +196,205 @@ test("DLTV exact-time TBD rows expand into uploadable announcements", () => {
     buildTbdAnnouncementSelectionId("dltv-426647", "teamA"),
     buildTbdAnnouncementSelectionId("dltv-426647", "teamB"),
   ]);
-  assert.equal(entries.every(isUploadableScheduleEntry), true);
+  assert.equal(entries.every((entry) => isUploadableScheduleEntry(entry)), true);
+});
+
+test("all sourced TBD-vs-TBD slots render as one stage announcement", () => {
+  const baseMatch = {
+    id: "source-stage-row",
+    matchId: "source-stage-1",
+    matchDate: new Date("2026-06-04T09:00:00.000Z"),
+    matchDateTime: "2026-06-04 12:00 MSK",
+    rawText: "TBD vs TBD Quarterfinals Best of 3",
+    scoreA: null,
+    scoreB: null,
+    teamAName: "TBD1",
+    teamBName: "TBD2",
+    stage: "Playoffs",
+    round: "Quarterfinals (bo3)",
+    hasPlaceholderTeams: true,
+  };
+
+  const cases = [
+    ["counterstrike", "liquipedia"],
+    ["counterstrike", "hltv"],
+    ["dota2", "dltv"],
+    ["leagueoflegends", "fandom"],
+    ["valorant", "vlr"],
+  ] as const;
+
+  for (const [disciplineSlug, source] of cases) {
+    const entries = expandScheduleAnnouncementsForDiscipline([baseMatch], disciplineSlug, source);
+
+    assert.equal(entries.length, 1, source);
+    assert.equal(entries[0].isStageAnnouncement, true, source);
+    assert.equal(entries[0].isSingleTeamAnnouncement, true, source);
+    assert.equal(entries[0].singleAnnouncementTeamName, "Quarterfinals", source);
+    assert.equal(entries[0].selectionId, buildTbdAnnouncementSelectionId("source-stage-1", "stage"), source);
+    assert.equal(isUploadableScheduleEntry(entries[0], { disciplineSlug, source }), true, source);
+    assert.deepEqual(getUploadableTbdAnnouncementSides(entries[0], { disciplineSlug, source }), ["stage"], source);
+  }
+});
+
+test("source-less TBD-vs-TBD slots keep numbered TBD announcements", () => {
+  const entries = expandScheduleAnnouncementsForDiscipline([
+    {
+      id: "unknown-stage-row",
+      matchId: "unknown-stage-1",
+      matchDate: new Date("2026-06-04T09:00:00.000Z"),
+      matchDateTime: "2026-06-04 12:00 MSK",
+      rawText: "TBD vs TBD Quarterfinals Best of 3",
+      scoreA: null,
+      scoreB: null,
+      teamAName: "TBD1",
+      teamBName: "TBD2",
+      stage: "Playoffs",
+      round: "Quarterfinals (bo3)",
+      hasPlaceholderTeams: true,
+    },
+  ], "dota2");
+
+  assert.equal(entries.length, 2);
+  assert.deepEqual(entries.map((entry) => entry.singleAnnouncementTeamName), ["TBD1", "TBD2"]);
+});
+
+test("Team-vs-TBD stays an uploadable normal match for stage-supporting sources", () => {
+  const match = {
+    id: "dota-known-tbd",
+    matchDate: new Date("2026-06-04T09:00:00.000Z"),
+    matchDateTime: "2026-06-04 12:00 MSK",
+    rawText: "Monte vs TBD",
+    scoreA: null,
+    scoreB: null,
+    teamAName: "Monte",
+    teamBName: "TBD",
+    stage: "Swiss Round 2 #1",
+    hasPlaceholderTeams: true,
+  };
+
+  for (const source of ["liquipedia", "hltv", "dltv", "fandom", "vlr"] as const) {
+    assert.equal(isUploadReadyScheduleMatch(match), true, source);
+    assert.equal(isUploadableScheduleEntry(match, { disciplineSlug: "dota2", source }), true, source);
+    assert.deepEqual(expandScheduleAnnouncementsForDiscipline([match], "dota2", source), [], source);
+  }
+});
+
+test("stage slots without exact time or with results are not uploadable", () => {
+  const baseMatch = {
+    id: "stage-row",
+    matchId: "stage-1",
+    rawText: "TBD vs TBD Semifinals Best of 3",
+    teamAName: "TBD1",
+    teamBName: "TBD2",
+    round: "Semifinals",
+    hasPlaceholderTeams: true,
+  };
+
+  assert.equal(
+    isUploadableScheduleEntry({ ...baseMatch, matchDate: null }, { disciplineSlug: "counterstrike", source: "hltv" }),
+    false,
+  );
+  assert.deepEqual(
+    expandScheduleAnnouncementsForDiscipline([{ ...baseMatch, matchDate: null }], "counterstrike", "hltv"),
+    [],
+  );
+  assert.equal(
+    isUploadableScheduleEntry(
+      { ...baseMatch, matchDate: new Date("2026-06-04T09:00:00.000Z"), scoreA: 1, scoreB: 0 },
+      { disciplineSlug: "counterstrike", source: "hltv" },
+    ),
+    false,
+  );
+});
+
+test("stage slot labels prefer round and normalize group stage", () => {
+  assert.equal(
+    getStageSlotAnnouncementLabel({
+      teamAName: "TBD1",
+      teamBName: "TBD2",
+      stage: "DreamLeague 29 Group Stage (Round-Robin)",
+    }),
+    "Group Stage",
+  );
+  assert.equal(
+    getStageSlotAnnouncementLabel({
+      teamAName: "TBD1",
+      teamBName: "TBD2",
+      round: "Blast Slam 7 Losers' Round 1",
+    }),
+    "Losers' Round 1",
+  );
+  assert.equal(
+    getStageSlotAnnouncementLabel({
+      teamAName: "TBD1",
+      teamBName: "TBD2",
+      rawText: "Blast Slam 7 Round of 6 TBD vs TBD Best of 3",
+    }),
+    "Round of 6",
+  );
+  assert.equal(
+    getStageSlotAnnouncementLabel({
+      teamAName: "TBD1",
+      teamBName: "TBD2",
+      rawText: "Esports World Cup 2026 Regular Season TBD vs TBD BO1",
+    }),
+    "Regular Season",
+  );
+  assert.equal(
+    getStageSlotAnnouncementLabel({
+      teamAName: "TBD1",
+      teamBName: "TBD2",
+      rawText: "League Season Week 1 TBD vs TBD BO1",
+    }),
+    "Week 1",
+  );
+  assert.equal(
+    getStageSlotAnnouncementLabel({
+      teamAName: "TBD1",
+      teamBName: "TBD2",
+      round: '#8 #9 May 30, 2026 - 14:00 CEST #8 ( ) #9 Game 1 <div class="generic-label" data',
+      stage: "Upper Bracket Semifinals",
+    }),
+    "Upper Bracket Semifinals",
+  );
+  assert.equal(
+    getStageSlotAnnouncementLabel({
+      teamAName: "TBD1",
+      teamBName: "TBD2",
+      rawText: "Regional Finals LCQ Round 1 TBD vs TBD BO3",
+    }),
+    "LCQ Round 1",
+  );
+  assert.equal(
+    getStageSlotAnnouncementLabel({
+      teamAName: "TBD1",
+      teamBName: "TBD2",
+      rawText: '<div class="brkts-header">Upper Bracket Semifinals</div><div class="brkts-match">TBD vs TBD</div>',
+    }),
+    "Upper Bracket Semifinals",
+  );
+  assert.equal(
+    getStageSlotAnnouncementLabel({
+      teamAName: "TBD1",
+      teamBName: "TBD2",
+      rawText: "Advance to Playoffs TBD vs TBD",
+    }),
+    "To Playoff",
+  );
+  assert.equal(
+    getStageSlotAnnouncementLabel({
+      teamAName: "TBD1",
+      teamBName: "TBD2",
+      rawText: "TBD vs TBD BO1",
+    }),
+    "Group Stage",
+  );
+  assert.equal(
+    getStageSlotAnnouncementLabel({
+      teamAName: "TBD1",
+      teamBName: "TBD2",
+      rawText: "IEM Cologne Major 2026 Stage 2 TBD vs TBD BO1",
+    }),
+    "Stage 2",
+  );
 });

@@ -84,8 +84,7 @@ export function applyTbdPairCycling(matches: TbdMatchLike[], sourceTitle: string
     m.teamBId = `tbd_${tbdB.toLowerCase()}`;
     m.hasPlaceholderTeams = true;
 
-    // Only update matchId and lpNumericalId if they are not from HLTV (HLTV IDs are prefixed with hltv-)
-    if (sourceTitle && (!m.matchId || !m.matchId.startsWith('hltv-'))) {
+    if (sourceTitle && shouldRegenerateTbdMatchId(m.matchId)) {
       m.matchId = createStableMatchId({
         sourceTitle,
         matchDate: m.matchDate,
@@ -99,4 +98,9 @@ export function applyTbdPairCycling(matches: TbdMatchLike[], sourceTitle: string
       m.lpNumericalId = stringToNumericalId(m.matchId);
     }
   });
+}
+
+function shouldRegenerateTbdMatchId(matchId: string | null | undefined) {
+  if (!matchId) return true;
+  return matchId.startsWith("match_") || matchId.startsWith("fallback_");
 }

@@ -1,11 +1,13 @@
+import { Prisma, type ImportStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/db";
+import { buildDota2Diagnostics, type Dota2DiagnosticIssue } from "@/lib/matches/parsingDiagnostics";
 import { dedupeTournamentMatches } from "@/lib/matches/dedupe";
 import { getBestOfLabel } from "@/lib/matches/format";
 import { resolveExactMatchDate } from "@/lib/matches/time";
 import { applyTbdPairCycling } from "@/lib/matches/tbdCycling";
 import { classifyParserError } from "@/lib/proxy/parserErrors";
 import { runDltv } from "@/lib/dltv/queue";
-import type { DltvEventPage, DltvMatch } from "@/lib/dltv/types";
+import type { DltvMatch, DltvRunResult } from "@/lib/dltv/types";
 import { getTeamMappingLookupKeys } from "@/lib/teams/canonicalize";
 import { generateInternalTeamId, isPlaceholderTeam } from "@/lib/teams/teams";
 
@@ -14,14 +16,6 @@ type ImportDltvTournamentInput = {
   title: string;
   pageUrl: string;
   force?: boolean;
-};
-
-type DltvData = {
-  ok?: boolean;
-  error?: string;
-  errorClass?: string | null;
-  event?: DltvEventPage;
-  matches?: DltvMatch[];
 };
 
 export async function importDltvTournament(input: ImportDltvTournamentInput) {
@@ -45,7 +39,7 @@ export async function importDltvTournament(input: ImportDltvTournamentInput) {
     },
   });
 
-  let dltvData: DltvData = { ok: false };
+  let dltvData: DltvRunResult = { ok: false };
   try {
     dltvData = await runDltv("event", input.pageUrl, { noCache: !!input.force });
   } catch (err) {
@@ -56,8 +50,9 @@ export async function importDltvTournament(input: ImportDltvTournamentInput) {
     };
   }
 
+  let savedMatchesCount = 0;
   if (dltvData.ok && dltvData.matches) {
-    await saveDltvTournamentMatches({
+    const saveResult = await saveDltvTournamentMatches({
       tournamentId: tournament.id,
       slug: input.slug,
       title: input.title,
@@ -65,6 +60,7 @@ export async function importDltvTournament(input: ImportDltvTournamentInput) {
       participants: dltvData.event?.participants || [],
       force: !!input.force,
     });
+    savedMatchesCount = saveResult.savedCount;
 
     if (dltvData.event) {
       await prisma.tournament.update({
@@ -82,6 +78,48 @@ export async function importDltvTournament(input: ImportDltvTournamentInput) {
     }
   }
 
+  const matchUrlsFound = dltvData.event?.matchUrls.length ?? dltvData.matches?.length ?? 0;
+  const matchPagesFailed = dltvData.matchPageFailures?.length ?? (dltvData.ok ? 0 : 1);
+  const normalizedStatus = resolveDltvImportStatus({
+    ok: !!dltvData.ok,
+    matchUrlsFound,
+    matchPagesFailed,
+    savedMatchesCount,
+  });
+  const diagnostics = buildDota2Diagnostics({
+    source: "dltv",
+    rawCandidates: matchUrlsFound,
+    candidates: (dltvData.matches ?? []).map((match) => ({
+      ...match,
+      teamAName: match.team1,
+      teamBName: match.team2,
+      sourceUrl: match.url,
+      format: getBestOfLabel(match.format || match.rawText),
+    })),
+    savedMatches: savedMatchesCount,
+    extraIssues: buildDltvExtraIssues(dltvData),
+    dltv: {
+      matchUrlsFound,
+      matchPagesFetched: dltvData.matches?.length ?? 0,
+      matchPagesFailed,
+      cacheHit: dltvData.cacheHit,
+      stale: dltvData.stale,
+    },
+  });
+
+  await prisma.tournament.update({
+    where: { id: tournament.id },
+    data: {
+      extractionStatus: normalizedStatus,
+      normalization: {
+        warnings: [dltvData.warning, dltvData.error].filter((item): item is string => typeof item === "string" && item.length > 0),
+        cacheHit: !!dltvData.cacheHit,
+        stale: !!dltvData.stale,
+        dota2Diagnostics: diagnostics,
+      } as Prisma.InputJsonValue,
+    },
+  }).catch(() => {});
+
   const fullTournament = await prisma.tournament.findUnique({
     where: { id: tournament.id },
     include: { participants: true, matches: true, lastImport: true },
@@ -89,7 +127,7 @@ export async function importDltvTournament(input: ImportDltvTournamentInput) {
 
   return {
     tournament: fullTournament ? { ...fullTournament, matches: dedupeTournamentMatches(fullTournament.matches) } : null,
-    normalized: { status: dltvData?.ok ? "SUCCESS" : "PARTIAL", error: dltvData?.error },
+    normalized: { status: normalizedStatus, error: dltvData?.error },
   };
 }
 
@@ -100,7 +138,7 @@ async function saveDltvTournamentMatches(params: {
   matches: DltvMatch[];
   participants: Array<{ name: string; url?: string }>;
   force: boolean;
-}) {
+}): Promise<{ savedCount: number }> {
   const dltvMatches = dedupeTournamentMatches(params.matches.map((m) => {
     const hasPlaceholderTeams = isPlaceholderTeam(m.team1) || isPlaceholderTeam(m.team2);
     const teamAId = isPlaceholderTeam(m.team1) ? "tbd" : generateInternalTeamId(m.team1);
@@ -224,6 +262,38 @@ async function saveDltvTournamentMatches(params: {
       ...participantRefresh,
     ]);
   }
+
+  return { savedCount: dltvMatches.length };
+}
+
+function buildDltvExtraIssues(data: DltvRunResult): Dota2DiagnosticIssue[] {
+  const issues: Dota2DiagnosticIssue[] = [];
+  for (const failure of data.matchPageFailures ?? []) {
+    issues.push({
+      reason: "parse_failed",
+      message: failure.error || "Не удалось разобрать страницу матча DLTV.",
+      sourceUrl: failure.url,
+    });
+  }
+  if (!data.ok && data.error) {
+    issues.push({
+      reason: "parse_failed",
+      message: data.error,
+    });
+  }
+  return issues;
+}
+
+export function resolveDltvImportStatus(input: {
+  ok: boolean;
+  matchUrlsFound: number;
+  matchPagesFailed: number;
+  savedMatchesCount: number;
+}): ImportStatus {
+  if (!input.ok) return "PARTIAL";
+  if (input.matchPagesFailed > 0) return "PARTIAL";
+  if (input.matchUrlsFound > 0 && input.savedMatchesCount === 0) return "PARTIAL";
+  return "SUCCESS";
 }
 
 function parseDltvRangeDate(value: string | null | undefined, part: "start" | "end") {

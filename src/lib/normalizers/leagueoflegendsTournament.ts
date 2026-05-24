@@ -13,6 +13,12 @@ import { createHash } from "crypto";
 import { generateInternalTeamId, isPlaceholderTeam } from "@/lib/teams/teams";
 import { applyTbdPairCycling } from "@/lib/matches/tbdCycling";
 import { getBestOfLabel } from "@/lib/matches/format";
+import { hasExplicitTimeText } from "@/lib/matches/time";
+import { findLiquipediaBracketRoundLabel } from "@/lib/liquipedia/bracketLabels";
+import {
+  buildEsportsParsingDiagnostics,
+  type LeagueOfLegendsParsingDiagnostics,
+} from "@/lib/matches/parsingDiagnostics";
 
 /* ───── Types ───── */
 
@@ -63,6 +69,7 @@ export type NormalizedTournament = {
   subPages: string[];
   warnings: string[];
   status: ImportStatus;
+  leagueOfLegendsDiagnostics?: LeagueOfLegendsParsingDiagnostics;
 };
 
 /* ───── Main entry point ───── */
@@ -171,6 +178,13 @@ export function normalizeLeagueOfLegendsTournament(input: {
   applyTbdPairCycling(normalizedMatches, input.title);
 
   const matches = dedupeMatches(normalizedMatches);
+  const leagueOfLegendsDiagnostics = buildEsportsParsingDiagnostics({
+    source: "liquipedia",
+    rawCandidates: allCandidates.length,
+    candidates: normalizedMatches,
+    savedMatches: matches.length,
+    duplicateMatches: Math.max(0, normalizedMatches.length - matches.length),
+  });
 
   /* ── Diagnostics ── */
   if (participants.length === 0) {
@@ -229,7 +243,8 @@ export function normalizeLeagueOfLegendsTournament(input: {
     matches,
     subPages,
     warnings,
-    status
+    status,
+    leagueOfLegendsDiagnostics
   };
 }
 
@@ -239,19 +254,54 @@ function extractMatchesFromParsedHtml(html: string, pageUrl: string): Normalized
   const $ = cheerio.load(html);
   const matches: NormalizedMatch[] = [];
 
-  const getMatchTimer = ($scope: any) => {
-    const timer = $scope.find(".timer-object").first();
-    const timestamp = timer.attr("data-timestamp");
-    const dateText = timer.text().trim() || null;
-    const finished = timer.attr("data-finished");
-
-    let matchDate: Date | null = null;
-    if (timestamp) {
-      const ts = parseInt(timestamp, 10);
-      if (!isNaN(ts)) matchDate = new Date(ts * 1000);
+  const extractDateFromScope = ($scope: any) => {
+    const timeSelector = [
+      ".timer-object",
+      ".match-info-countdown",
+      ".brkts-popup-date",
+      ".match-bm-date",
+      ".brkts-matchlist-date",
+      "time",
+      "[datetime]",
+      "[data-timestamp]",
+      "[data-unix]",
+      "[data-time]",
+      "[data-date]",
+    ].join(", ");
+    const $candidates = $scope.find(timeSelector);
+    let $time = $candidates.filter((_: number, el: any) => {
+      const $el = $(el);
+      return Boolean(getTimestampAttr($el) || $el.attr("datetime") || $el.attr("data-time") || $el.attr("data-date") || $el.text().trim());
+    }).first();
+    if (!$time.length && ($scope.attr("datetime") || getTimestampAttr($scope) || $scope.attr("data-time") || $scope.attr("data-date"))) {
+      $time = $scope;
     }
 
-    return { timer, timestamp, dateText, finished, matchDate };
+    const timestamp = getTimestampAttr($time);
+    const explicitText = firstClean(
+      $time.attr("datetime"),
+      $time.attr("data-date"),
+      $time.attr("data-time"),
+      $time.text(),
+    );
+    const rawContext = [
+      $time.attr("datetime"),
+      $time.attr("data-date"),
+      $time.attr("data-time"),
+      $time.text(),
+      $scope.find(".brkts-match-info-popup, .match-info-header, .match-info-top-row").first().text(),
+    ].filter(Boolean).join(" ");
+    const dateText = explicitText || null;
+    const matchDate =
+      parseTimestampDate(timestamp) ||
+      (hasExplicitTimeText(rawContext) ? parseWikiDate(rawContext) : null) ||
+      (dateText && hasExplicitTimeText(dateText) ? parseWikiDate(dateText) : null);
+
+    return {
+      dateText,
+      finished: $time.attr("data-finished") || $scope.attr("data-finished"),
+      matchDate,
+    };
   };
 
   function findSectionForElement(el: any): string {
@@ -293,42 +343,62 @@ function extractMatchesFromParsedHtml(html: string, pageUrl: string): Normalized
   }
 
   function isNonTeamTitle(value: string) {
-    return /^(time|date)$/i.test(value) || value.includes("(page does not exist)");
+    return /^(time|date|vs|versus|score|winner)$/i.test(value) || value.includes("(page does not exist)");
+  }
+
+  function cleanHtmlTeamValue(value: string | null | undefined) {
+    const cleaned = normalizeTeamName(value || "");
+    if (!cleaned || isNonTeamTitle(cleaned)) return null;
+    return cleaned;
   }
 
   function getOpponentNameFromElement($opp: any): string {
-    const aria = $opp.attr("aria-label")?.trim();
-    if (aria && aria !== "TBD") return aria;
-    const parentAria = $opp.closest("[aria-label]").attr("aria-label")?.trim();
-    if (parentAria && parentAria !== "TBD") return parentAria;
+    const directValue = cleanHtmlTeamValue(
+      $opp.attr("data-name") ||
+      $opp.attr("data-team") ||
+      $opp.attr("data-highlightingclass") ||
+      $opp.attr("aria-label") ||
+      $opp.closest("[aria-label]").attr("aria-label")
+    );
+    if (directValue) return directValue;
+    const templateText = cleanHtmlTeamValue($opp.find(".team-template-text, .team-template-team-standard, .team-template-team-short, .team-template-team-name").first().text());
+    if (templateText) return templateText;
     const nameLink = $opp.find(".name a").first();
-    const linkTitle = nameLink.attr("title")?.trim();
-    if (linkTitle && !isNonTeamTitle(linkTitle)) return linkTitle;
-    const linkText = nameLink.text().trim();
-    if (linkText && !isNonTeamTitle(linkText)) return linkText;
+    const linkTitle = cleanHtmlTeamValue(nameLink.attr("title"));
+    if (linkTitle) return linkTitle;
+    const linkText = cleanHtmlTeamValue(nameLink.text());
+    if (linkText) return linkText;
     const teamLink = $opp.find("a[href*='/leagueoflegends/']").first();
-    const teamTitle = teamLink.attr("title")?.trim();
-    if (teamTitle && !isNonTeamTitle(teamTitle)) return teamTitle;
-    const teamText = teamLink.text().trim();
-    if (teamText && !isNonTeamTitle(teamText)) return teamText;
-    const literalText = $opp.find(".brkts-opponent-block-literal").first().text().trim();
-    if (literalText && !isNonTeamTitle(literalText)) return literalText;
-    const nameText = $opp.find(".name").text().trim();
+    const teamTitle = cleanHtmlTeamValue(teamLink.attr("title"));
+    if (teamTitle) return teamTitle;
+    const teamText = cleanHtmlTeamValue(teamLink.text());
+    if (teamText) return teamText;
+    const literalText = cleanHtmlTeamValue($opp.find(".brkts-opponent-block-literal").first().text());
+    if (literalText) return literalText;
+    const nameText = cleanHtmlTeamValue($opp.find(".name").text());
     if (nameText) return nameText;
     return "TBD";
   }
 
   function getFullTeamName(oppEl: any): string | null {
     const $opp = $(oppEl);
-    const aria = $opp.attr("aria-label")?.trim();
-    if (aria && aria !== "TBD") return aria;
-    const parentAria = $opp.closest("[aria-label]").attr("aria-label")?.trim();
-    if (parentAria && parentAria !== "TBD") return parentAria;
-    const linkTitle = $opp.find(".name a").attr("title")?.trim();
-    if (linkTitle && !isNonTeamTitle(linkTitle)) return linkTitle;
-    const teamLink = $opp.find("a[href*='/leagueoflegends/']").attr("title")?.trim();
-    if (teamLink && !isNonTeamTitle(teamLink)) return teamLink;
-    const nameText = $opp.find(".name").text().trim();
+    const directValue = cleanHtmlTeamValue(
+      $opp.attr("data-name") ||
+      $opp.attr("data-team") ||
+      $opp.attr("data-highlightingclass") ||
+      $opp.attr("aria-label") ||
+      $opp.closest("[aria-label]").attr("aria-label")
+    );
+    if (directValue) return directValue;
+    const templateText = cleanHtmlTeamValue($opp.find(".team-template-text, .team-template-team-standard, .team-template-team-short, .team-template-team-name").first().text());
+    if (templateText) return templateText;
+    const linkTitle = cleanHtmlTeamValue($opp.find(".name a").attr("title"));
+    if (linkTitle) return linkTitle;
+    const teamLink = cleanHtmlTeamValue($opp.find("a[href*='/leagueoflegends/']").attr("title"));
+    if (teamLink) return teamLink;
+    const teamText = cleanHtmlTeamValue($opp.find("a[href*='/leagueoflegends/']").first().text());
+    if (teamText) return teamText;
+    const nameText = cleanHtmlTeamValue($opp.find(".name").text());
     if (nameText) return nameText;
     return "TBD";
   }
@@ -347,16 +417,7 @@ function extractMatchesFromParsedHtml(html: string, pageUrl: string): Normalized
     const scoreAText = scoreCells.eq(0).text().trim();
     const scoreBText = scoreCells.eq(1).text().trim();
 
-    const timer = $match.find(".timer-object").first();
-    const timestamp = timer.attr("data-timestamp");
-    const dateText = timer.text().trim() || null;
-    const finished = timer.attr("data-finished");
-
-    let matchDate: Date | null = null;
-    if (timestamp) {
-      const ts = parseInt(timestamp, 10);
-      if (!isNaN(ts)) matchDate = new Date(ts * 1000);
-    }
+    const { finished, dateText, matchDate } = extractDateFromScope($match);
 
     const $matchlist = $match.closest(".brkts-matchlist");
     const matchlistTitle = $matchlist.find(".brkts-matchlist-title b").text().trim();
@@ -383,7 +444,7 @@ function extractMatchesFromParsedHtml(html: string, pageUrl: string): Normalized
       teamBName,
       scoreA: scoreAText ? parseInt(scoreAText, 10) : null,
       scoreB: scoreBText ? parseInt(scoreBText, 10) : null,
-      format: getBestOfLabel(rawText),
+      format: getBestOfLabel($match.find(".brkts-matchlist-format, .match-bm-lbl, [data-bestof], [data-matchtype]").text()) || getBestOfLabel(rawText),
       status: matchStatus,
       court: null,
       sourceUrl: pageUrl,
@@ -405,7 +466,7 @@ function extractMatchesFromParsedHtml(html: string, pageUrl: string): Normalized
 
     const teamAName = getOpponentNameFromElement(opponents.eq(0));
     const teamBName = getOpponentNameFromElement(opponents.eq(1));
-    const { finished, dateText, matchDate } = getMatchTimer($match);
+    const { finished, dateText, matchDate } = extractDateFromScope($match);
 
     const scoreTexts = opponents.map((_, el) => {
       const $opp = $(el);
@@ -515,16 +576,7 @@ function extractMatchesFromParsedHtml(html: string, pageUrl: string): Normalized
     const isWinB = opponents.eq(1).find(".brkts-opponent-win").length > 0;
 
     const $popup = $match.find(".brkts-match-info-popup");
-    const timer = $popup.find(".timer-object").first();
-    const timestamp = timer.attr("data-timestamp");
-    const dateText = timer.text().trim() || null;
-    const finished = timer.attr("data-finished");
-
-    let matchDate: Date | null = null;
-    if (timestamp) {
-      const ts = parseInt(timestamp, 10);
-      if (!isNaN(ts)) matchDate = new Date(ts * 1000);
-    }
+    const { finished, dateText, matchDate } = extractDateFromScope($popup.length ? $popup : $match);
 
     const $bracket = $match.closest(".brkts-bracket");
     let stage = $bracket.attr("data-matchsection") || "";
@@ -532,12 +584,16 @@ function extractMatchesFromParsedHtml(html: string, pageUrl: string): Normalized
       stage = findSectionForElement(matchEl);
     }
 
-    let round: string | null = null;
+    let round: string | null = findLiquipediaBracketRoundLabel($, matchEl);
     const rawHtml = $.html(matchEl)?.slice(0, 500) || "";
     const commentMatch = rawHtml.match(/<!--\s*(.+?)\s*-->/);
-    if (commentMatch) round = commentMatch[1];
+    if (!round && commentMatch) round = commentMatch[1];
 
-    const formatText = $popup.find(".match-bm-lbl, .brkts-popup-header-dev-match-type").text().trim() || null;
+    const formatText = [
+      $popup.find(".match-bm-lbl, .brkts-popup-header-dev-match-type, [data-bestof], [data-matchtype]").text().trim(),
+      $match.attr("data-bestof"),
+      $match.attr("data-matchtype"),
+    ].filter(Boolean).join(" ") || null;
     const rawText = $.html(matchEl)?.slice(0, 2500) || null;
 
     let matchStatus: string | null = null;
@@ -595,15 +651,16 @@ function extractMatchesFromWikitext(wikitext: string): NormalizedMatch[] {
     const teamAName = rawTeamA ? (normalizeTeamName(rawTeamA) ?? rawTeamA) : null;
     const teamBName = rawTeamB ? (normalizeTeamName(rawTeamB) ?? rawTeamB) : null;
 
-    const dateVal = parseWikiDate(params.date ?? params.time ?? params.datetime);
+    const dateText = buildTemplateDateText(params);
+    const dateVal = parseWikiDate(dateText);
 
-    const formatText = firstClean(params.bestof, params.bo, params.format);
+    const formatText = firstClean(params.bestof, params.bo, params.format, params.matchtype, params.type);
 
     matches.push({
       stage: firstClean(params.stage, params.section),
       round: firstClean(params.round, params.match, params.title),
       matchDate: dateVal,
-      matchDateTime: firstClean(params.date, params.time, params.datetime),
+      matchDateTime: dateText,
       teamAName,
       teamBName,
       scoreA: parseInteger(params.score1 ?? params.team1score ?? params.p1score ?? params.games1),
@@ -676,8 +733,6 @@ export function stringToNumericalId(str: string): bigint {
   return BigInt("0x" + hash);
 }
 
-// applyTbdPairCycling is now imported from @/lib/matches/tbdCycling
-
 /* ───── Deduplication ───── */
 
 function dedupeMatches(matches: NormalizedMatch[]): NormalizedMatch[] {
@@ -689,21 +744,21 @@ function dedupeMatches(matches: NormalizedMatch[]): NormalizedMatch[] {
 
     if (seen.has(id)) {
       const existing = seen.get(id)!;
-      if (!existing.matchDate && match.matchDate) seen.set(id, { ...existing, ...match });
+      if (scoreMatchCompleteness(match) > scoreMatchCompleteness(existing)) {
+        seen.set(id, { ...existing, ...match });
+      }
       continue;
     }
 
     const pairKey = matchDedupeKey(match);
 
-    const existingByPair = [...seen.values()].find((m) => {
-      return matchDedupeKey(m) === pairKey;
-    });
+    const existingByPair = [...seen.entries()].find(([, m]) => matchDedupeKey(m) === pairKey);
 
     if (existingByPair) {
-      const isTbdMatch = !match.teamAName || isPlaceholderTeam(match.teamAName) || !match.teamBName || isPlaceholderTeam(match.teamBName);
-      if (!isTbdMatch) {
-        continue;
+      if (scoreMatchCompleteness(match) > scoreMatchCompleteness(existingByPair[1])) {
+        seen.set(existingByPair[0], match);
       }
+      continue;
     }
 
     seen.set(id, match);
@@ -740,6 +795,19 @@ function createStableMatchId(input: {
   ].join("|");
   const hash = createHash("md5").update(data).digest("hex").slice(0, 12);
   return `match_${hash}`;
+}
+
+function scoreMatchCompleteness(match: NormalizedMatch) {
+  let score = 0;
+  if (match.matchDate) score += 20;
+  if (hasExplicitTimeText(match.matchDateTime, match.rawText)) score += 10;
+  if (match.teamAName && !isPlaceholderTeam(match.teamAName)) score += 8;
+  if (match.teamBName && !isPlaceholderTeam(match.teamBName)) score += 8;
+  if (getBestOfLabel(match.format) || getBestOfLabel(match.rawText)) score += 5;
+  if (match.stage) score += 2;
+  if (match.round) score += 2;
+  if (match.sourceUrl) score += 1;
+  return score;
 }
 
 function matchDedupeKey(match: NormalizedMatch) {
@@ -820,6 +888,29 @@ function firstClean(...values: Array<string | null | undefined>) {
   return null;
 }
 
+function buildTemplateDateText(params: Record<string, string | undefined>) {
+  const direct = firstClean(
+    params.datetime,
+    params.timestamp,
+    params.starttime,
+    params.start_time,
+    params.date,
+    params.time,
+  );
+  if (direct && hasExplicitTimeText(direct)) return direct;
+
+  const date = firstClean(params.date, params.day, params.startdate, params.start_date);
+  const time = firstClean(params.time, params.hour);
+  const minute = firstClean(params.minute, params.min);
+  const timezone = firstClean(params.timezone, params.tz, params.zone);
+  if (date && time) {
+    const clock = minute && /^\d{1,2}$/.test(time) ? `${time}:${minute.padStart(2, "0")}` : time;
+    return [date, clock, timezone].filter(Boolean).join(" ");
+  }
+
+  return direct || null;
+}
+
 function normalizeTeamName(raw: string) {
   const cleaned = cleanWikiValue(raw);
   if (!cleaned) return null;
@@ -828,6 +919,19 @@ function normalizeTeamName(raw: string) {
     .replace(/_/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function getTimestampAttr($el: any) {
+  return $el.attr("data-timestamp") || $el.attr("data-unix") || null;
+}
+
+function parseTimestampDate(value: string | null | undefined) {
+  if (!value) return null;
+  const raw = Number(value);
+  if (!Number.isFinite(raw) || raw <= 0) return null;
+  const ms = raw > 9_999_999_999 ? raw : raw * 1000;
+  const date = new Date(ms);
+  return Number.isFinite(date.getTime()) ? date : null;
 }
 
 function isLikelyTeamName(name: string) {

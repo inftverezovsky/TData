@@ -234,6 +234,8 @@ export default function ManualImportWorkbench() {
   }).length;
   const hasValidDisciplineId = isValidManualAdminId(disciplineId);
   const hasValidShapkaId = isValidManualAdminId(shapkaId);
+  const uploadControlsReady = selectedCount > 0 && hasValidDisciplineId && hasValidShapkaId;
+  const tableMutationLocked = previewing || sending || autoMapping;
 
   async function handleTeamFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0] || null;
@@ -769,8 +771,8 @@ export default function ManualImportWorkbench() {
   function finishRecognition(controller: AbortController) {
     if (activeRecognitionController.current === controller) {
       activeRecognitionController.current = null;
+      setParsing(false);
     }
-    setParsing(false);
   }
 
   function abortRecognition() {
@@ -868,6 +870,10 @@ export default function ManualImportWorkbench() {
   }
 
   async function runPreview() {
+    if (!hasValidDisciplineId || !hasValidShapkaId) {
+      setMessage({ type: "error", text: "Укажите ID дисциплины и ID шапки перед формированием payload." });
+      return;
+    }
     if (selectedMatches.length === 0) {
       setMessage({
         type: "error",
@@ -900,6 +906,10 @@ export default function ManualImportWorkbench() {
   }
 
   async function sendToAdmin() {
+    if (!hasValidDisciplineId || !hasValidShapkaId) {
+      setMessage({ type: "error", text: "Укажите ID дисциплины и ID шапки перед заливкой." });
+      return;
+    }
     if (selectedMatches.length === 0) {
       setMessage({ type: "error", text: "Выберите матчи для заливки." });
       return;
@@ -1105,6 +1115,10 @@ export default function ManualImportWorkbench() {
   }
 
   async function openServiceUpload() {
+    if (!hasValidDisciplineId || !hasValidShapkaId) {
+      setMessage({ type: "error", text: "Укажите ID дисциплины и ID шапки перед заливкой через сервис." });
+      return;
+    }
     if (selectedMatches.length === 0) {
       setMessage({ type: "error", text: "Выберите матчи для заливки через сервис." });
       return;
@@ -1154,6 +1168,7 @@ export default function ManualImportWorkbench() {
   }
 
   function addEmptyMatch() {
+    if (tableMutationLocked) return;
     setMatches((current) => [
       ...current,
       {
@@ -1173,6 +1188,7 @@ export default function ManualImportWorkbench() {
   }
 
   function updateMatch(index: number, field: keyof ManualMatch, value: string) {
+    if (tableMutationLocked) return;
     setMatches((current) => current.map((match, i) => (i === index ? { ...match, [field]: value } : match)));
     const side = getTeamSideFromMatchField(field);
     if (side) {
@@ -1186,6 +1202,7 @@ export default function ManualImportWorkbench() {
   }
 
   function removeMatch(index: number) {
+    if (tableMutationLocked) return;
     setMatches((current) => current.filter((_, i) => i !== index));
     setMappedMatches((current) => current.filter((_, i) => i !== index));
     setSelectedMatchIndexes((current) => {
@@ -1206,6 +1223,7 @@ export default function ManualImportWorkbench() {
   }
 
   function toggleMatchSelection(index: number) {
+    if (tableMutationLocked) return;
     setSelectedMatchIndexes((current) => {
       const next = new Set(current);
       if (next.has(index)) {
@@ -1220,6 +1238,7 @@ export default function ManualImportWorkbench() {
   }
 
   function toggleAllMatchesSelection() {
+    if (tableMutationLocked) return;
     setSelectedMatchIndexes((current) =>
       current.size === matches.length ? new Set() : createAllSelectedIndexes(matches.length)
     );
@@ -1228,6 +1247,7 @@ export default function ManualImportWorkbench() {
   }
 
   function applyTimeShift(direction: -1 | 1) {
+    if (tableMutationLocked) return;
     const minutes = Math.trunc(Number(timeShiftMinutes.replace(",", ".")));
     if (!Number.isFinite(minutes) || minutes <= 0) {
       setMessage({ type: "error", text: "Введите количество минут больше нуля." });
@@ -1332,6 +1352,8 @@ export default function ManualImportWorkbench() {
               onChange={(event) => {
                 const nextDisciplineId = event.target.value.replace(/[^\d]/g, "");
                 setDisciplineId(nextDisciplineId);
+                setMatches((current) => current.map(clearManualMatchPlatformIds));
+                setMappedMatches([]);
                 setLockedTeamCells(new Set());
                 setEditingTeamCells(new Set());
                 setPreview(null);
@@ -1765,7 +1787,7 @@ export default function ManualImportWorkbench() {
           <div className="mt-5 space-y-3">
             <button
               onClick={runPreview}
-              disabled={previewing || selectedCount === 0}
+              disabled={previewing || !uploadControlsReady}
               className="flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white px-4 text-xs font-black uppercase tracking-widest text-slate-950 transition hover:bg-indigo-50 disabled:bg-white/10 disabled:text-slate-500"
             >
               {previewing ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileJson className="h-4 w-4" />}
@@ -1773,7 +1795,7 @@ export default function ManualImportWorkbench() {
             </button>
             <button
               onClick={sendToAdmin}
-              disabled={sending || !preview?.phpArray || selectedCount === 0}
+              disabled={sending || !preview?.phpArray || !uploadControlsReady}
               className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-indigo-500 px-4 text-xs font-black uppercase tracking-widest text-white transition hover:bg-indigo-400 disabled:bg-white/10 disabled:text-slate-500"
             >
               {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
@@ -1781,7 +1803,7 @@ export default function ManualImportWorkbench() {
             </button>
             <button
               onClick={openServiceUpload}
-              disabled={sending || selectedCount === 0}
+              disabled={sending || !uploadControlsReady}
               className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 text-xs font-black uppercase tracking-widest text-white transition hover:bg-emerald-400 disabled:bg-white/10 disabled:text-slate-500"
             >
               {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
@@ -1789,6 +1811,9 @@ export default function ManualImportWorkbench() {
             </button>
             {matches.length > 0 && selectedCount === 0 && (
               <p className="text-[11px] font-bold text-slate-400">Выберите хотя бы один матч в таблице ниже.</p>
+            )}
+            {selectedCount > 0 && (!hasValidDisciplineId || !hasValidShapkaId) && (
+              <p className="text-[11px] font-bold text-amber-200">Для заливки нужны ID дисциплины и ID шапки.</p>
             )}
           </div>
 
@@ -2149,6 +2174,14 @@ function mergeMatchesWithMappedIds(matches: ManualMatch[], mappedMatches: Mapped
       team2PlatformId: match.team2PlatformId || mapped?.team2.platformId || "",
     };
   });
+}
+
+function clearManualMatchPlatformIds(match: ManualMatch): ManualMatch {
+  return {
+    ...match,
+    team1PlatformId: "",
+    team2PlatformId: "",
+  };
 }
 
 function createAllSelectedIndexes(length: number) {

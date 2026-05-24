@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const port = Number(process.env.PLAYWRIGHT_PORT ?? process.env.PORT ?? 3010);
+const port = Number(process.env.PLAYWRIGHT_PORT ?? process.env.PORT ?? 3012);
 const baseURL = `http://127.0.0.1:${port}`;
 const useProductionServer = process.env.PLAYWRIGHT_PROD_SERVER === "1";
 const webServerEnv: Record<string, string> = {
@@ -34,7 +34,7 @@ export default defineConfig({
       ? `npx next start -p ${port} -H 127.0.0.1`
       : `npx next dev -p ${port} -H 127.0.0.1`,
     url: baseURL,
-    reuseExistingServer: !process.env.CI && !useProductionServer,
+    reuseExistingServer: Boolean(process.env.PLAYWRIGHT_REUSE_EXISTING_SERVER) && !useProductionServer,
     timeout: 120_000,
     env: webServerEnv,
   },

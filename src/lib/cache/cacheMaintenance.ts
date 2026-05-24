@@ -10,9 +10,15 @@ export type CacheClearScope = {
 
 export function clearCacheFiles(scope: CacheClearScope = {}) {
   const source = scope.source || "all";
+  if (scope.disciplineSlug && !isValidCacheDisciplineSlug(scope.disciplineSlug)) return 0;
+
   const roots = getCacheRoots(source, scope.disciplineSlug);
 
   return roots.reduce((count, root) => count + deleteCacheFiles(root), 0);
+}
+
+export function isValidCacheDisciplineSlug(value: string) {
+  return /^[a-z0-9][a-z0-9_-]*$/i.test(value);
 }
 
 function getCacheRoots(source: CacheSource, disciplineSlug?: string) {
@@ -25,16 +31,16 @@ function getCacheRoots(source: CacheSource, disciplineSlug?: string) {
   });
 }
 
-function deleteCacheFiles(cacheDir: string): number {
-  if (!isPathInsideCache(cacheDir) || !fs.existsSync(cacheDir)) return 0;
+function deleteCacheFiles(cacheDir: string, allowedRoot = cacheDir): number {
+  if (!isPathInside(cacheDir, allowedRoot) || !isPathInsideCache(cacheDir) || !fs.existsSync(cacheDir)) return 0;
   let deletedCount = 0;
 
   for (const file of fs.readdirSync(cacheDir, { withFileTypes: true })) {
     const fullPath = path.join(cacheDir, file.name);
-    if (!isPathInsideCache(fullPath)) continue;
+    if (!isPathInside(fullPath, allowedRoot) || !isPathInsideCache(fullPath)) continue;
 
     if (file.isDirectory()) {
-      deletedCount += deleteCacheFiles(fullPath);
+      deletedCount += deleteCacheFiles(fullPath, allowedRoot);
       continue;
     }
 
@@ -49,6 +55,11 @@ function deleteCacheFiles(cacheDir: string): number {
 
 function isPathInsideCache(targetPath: string) {
   const cacheRoot = path.resolve(process.cwd(), "cache");
+  return isPathInside(targetPath, cacheRoot);
+}
+
+function isPathInside(targetPath: string, rootPath: string) {
+  const cacheRoot = path.resolve(rootPath);
   const resolvedTarget = path.resolve(targetPath);
   return resolvedTarget === cacheRoot || resolvedTarget.startsWith(`${cacheRoot}${path.sep}`);
 }

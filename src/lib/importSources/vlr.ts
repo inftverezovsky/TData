@@ -1,12 +1,15 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/db";
 import { dedupeTournamentMatches } from "@/lib/matches/dedupe";
 import { getBestOfLabel } from "@/lib/matches/format";
+import { buildEsportsParsingDiagnostics, type EsportsDiagnosticIssue } from "@/lib/matches/parsingDiagnostics";
 import { resolveExactMatchDate } from "@/lib/matches/time";
 import { applyTbdPairCycling } from "@/lib/matches/tbdCycling";
 import { classifyParserError } from "@/lib/proxy/parserErrors";
 import { getTeamMappingLookupKeys } from "@/lib/teams/canonicalize";
 import { generateInternalTeamId, isPlaceholderTeam } from "@/lib/teams/teams";
-import { getVlrEventId, runVlrScraper } from "@/lib/vlr/scraper";
+import type { VlrMatch } from "@/lib/vlr/parse";
+import { getVlrEventId, runVlrScraper, type VlrDiagnosticsStats } from "@/lib/vlr/scraper";
 
 type ImportVlrTournamentInput = {
   slug: string;
@@ -15,7 +18,35 @@ type ImportVlrTournamentInput = {
   force?: boolean;
 };
 
-type VlrData = { ok?: boolean; error?: string; errorClass?: string | null; matches?: any[]; title?: string };
+type VlrData = {
+  ok?: boolean;
+  error?: string;
+  errorClass?: string | null;
+  matches?: VlrMatch[];
+  title?: string;
+  cacheHit?: boolean;
+  cacheLayer?: string | null;
+  stale?: boolean;
+  warning?: string | null;
+  diagnostics?: {
+    vlr?: VlrDiagnosticsStats;
+  };
+};
+
+type PersistableVlrMatch = VlrMatch & {
+  matchId: string;
+  teamAName: string;
+  teamBName: string;
+  teamAId: string;
+  teamBId: string;
+  hasPlaceholderTeams: boolean;
+  matchDate: Date;
+  matchDateTime: string | null;
+  format: string | null;
+  stage: string | null;
+  sourceUrl: string;
+  rawText: string | null;
+};
 
 export async function importVlrTournament(input: ImportVlrTournamentInput) {
   if (input.slug !== "valorant") {
@@ -49,7 +80,7 @@ export async function importVlrTournament(input: ImportVlrTournamentInput) {
       const query = normalizeSearch(input.title);
       vlrData = {
         ...data,
-        matches: (data.matches || []).filter((match: any) => normalizeSearch(match.tournament).includes(query) || query.includes(normalizeSearch(match.tournament))),
+        matches: (data.matches || []).filter((match) => normalizeSearch(match.tournament).includes(query) || query.includes(normalizeSearch(match.tournament))),
       };
     }
   } catch (err) {
@@ -60,15 +91,56 @@ export async function importVlrTournament(input: ImportVlrTournamentInput) {
     };
   }
 
+  let savedMatchesCount = 0;
   if (vlrData.ok && vlrData.matches) {
-    await saveVlrTournamentMatches({
+    const saveResult = await saveVlrTournamentMatches({
       tournamentId: tournament.id,
       slug: input.slug,
       title: input.title,
       matches: vlrData.matches,
       force: !!input.force,
     });
+    savedMatchesCount = saveResult.savedCount;
   }
+
+  const diagnostics = buildEsportsParsingDiagnostics({
+    source: "vlr",
+    rawCandidates: vlrData.diagnostics?.vlr?.matchUrlsFound ?? vlrData.matches?.length ?? 0,
+    candidates: (vlrData.matches ?? []).map(toVlrDiagnosticCandidate),
+    savedMatches: savedMatchesCount,
+    extraIssues: buildVlrExtraIssues(vlrData),
+    vlr: {
+      matchUrlsFound: vlrData.diagnostics?.vlr?.matchUrlsFound ?? vlrData.matches?.length ?? 0,
+      matchPagesFetched: vlrData.diagnostics?.vlr?.matchPagesFetched ?? (vlrData.ok ? vlrData.matches?.length ?? 0 : 0),
+      matchPagesFailed: vlrData.diagnostics?.vlr?.matchPagesFailed ?? (vlrData.ok ? 0 : 1),
+      cacheHit: vlrData.cacheHit || vlrData.diagnostics?.vlr?.cacheHit,
+      stale: vlrData.stale || vlrData.diagnostics?.vlr?.stale,
+    },
+  });
+  const normalizedStatus = resolveVlrImportStatus({
+    ok: !!vlrData.ok,
+    matchUrlsFound: diagnostics.vlr?.matchUrlsFound ?? 0,
+    matchPagesFailed: diagnostics.vlr?.matchPagesFailed ?? 0,
+    savedMatchesCount,
+  });
+
+  await prisma.tournament.update({
+    where: { id: tournament.id },
+    data: {
+      name: vlrData.title || input.title,
+      extractionStatus: normalizedStatus,
+      normalization: {
+        warnings: [
+          vlrData.warning,
+          vlrData.error,
+          diagnostics.vlr?.matchPagesFailed ? `Не удалось загрузить detail-страниц VLR: ${diagnostics.vlr.matchPagesFailed}.` : null,
+        ].filter((item): item is string => typeof item === "string" && item.length > 0),
+        cacheHit: !!vlrData.cacheHit,
+        stale: !!vlrData.stale,
+        valorantDiagnostics: diagnostics,
+      } as Prisma.InputJsonValue,
+    },
+  }).catch(() => {});
 
   const fullTournament = await prisma.tournament.findUnique({
     where: { id: tournament.id },
@@ -85,22 +157,24 @@ async function saveVlrTournamentMatches(params: {
   tournamentId: string;
   slug: string;
   title: string;
-  matches: any[];
+  matches: VlrMatch[];
   force: boolean;
-}) {
-  const vlrMatches = dedupeTournamentMatches(params.matches.map((m: any) => {
+}): Promise<{ savedCount: number }> {
+  const vlrMatches = dedupeTournamentMatches(params.matches.map((m): PersistableVlrMatch | null => {
     const hasPlaceholderTeams = isPlaceholderTeam(m.team1) || isPlaceholderTeam(m.team2);
     const teamAId = isPlaceholderTeam(m.team1) ? "tbd" : generateInternalTeamId(m.team1);
     const teamBId = isPlaceholderTeam(m.team2) ? "tbd" : generateInternalTeamId(m.team2);
-    const format = getBestOfLabel(m.format || m.matchFormat || m.bestOf || m.rawText);
+    const format = getBestOfLabel(m.format || m.rawText);
     const sourceUrl = m.url || `https://www.vlr.gg/${m.id}/match`;
     const candidate = {
       ...m,
       matchDate: m.unix_time ? new Date(Number(m.unix_time) * 1000) : null,
-      matchDateTime: m.utcTimestamp ? `data-utc-ts="${m.utcTimestamp}"` : null,
+      matchDateTime: m.utcTimestamp ? `data-utc-ts="${String(m.utcTimestamp)}"` : null,
       sourceUrl,
     };
     const matchDate = resolveExactMatchDate(candidate);
+    if (!matchDate) return null;
+
     return {
       ...m,
       matchId: `vlr-${m.id}`,
@@ -114,12 +188,13 @@ async function saveVlrTournamentMatches(params: {
       format,
       stage: m.stage || null,
       sourceUrl,
+      rawText: m.rawText || null,
     };
-  }).filter((m: any) => m.matchDate));
+  }).filter((m): m is PersistableVlrMatch => Boolean(m)));
 
   applyTbdPairCycling(vlrMatches, params.title);
 
-  const matchUpserts = vlrMatches.map((m: any) => {
+  const matchUpserts = vlrMatches.map((m) => {
     const matchDate = m.matchDate ? new Date(m.matchDate) : null;
     return prisma.tournamentMatch.upsert({
       where: { matchId: m.matchId },
@@ -136,6 +211,7 @@ async function saveVlrTournamentMatches(params: {
         matchDateTime: m.matchDateTime,
         format: m.format,
         sourceUrl: m.sourceUrl,
+        rawText: m.rawText,
         status: m.isLive ? "live" : "upcoming",
       },
       update: {
@@ -148,6 +224,7 @@ async function saveVlrTournamentMatches(params: {
         matchDate,
         matchDateTime: m.matchDateTime,
         sourceUrl: m.sourceUrl,
+        rawText: m.rawText,
         status: m.isLive ? "live" : "upcoming",
         ...(m.format ? { format: m.format } : {}),
       },
@@ -210,6 +287,53 @@ async function saveVlrTournamentMatches(params: {
       ...participantRefresh,
     ]);
   }
+
+  return { savedCount: vlrMatches.length };
+}
+
+function toVlrDiagnosticCandidate(match: VlrMatch) {
+  const sourceUrl = match.url || (match.id ? `https://www.vlr.gg/${match.id}/match` : null);
+  const matchDate = match.unix_time ? new Date(Number(match.unix_time) * 1000) : null;
+  const matchDateTime = match.utcTimestamp ? `data-utc-ts="${match.utcTimestamp}"` : match.dateLabel || null;
+  return {
+    ...match,
+    teamAName: match.team1,
+    teamBName: match.team2,
+    matchDate,
+    matchDateTime,
+    format: getBestOfLabel(match.format || match.rawText),
+    sourceUrl,
+  };
+}
+
+function buildVlrExtraIssues(data: VlrData): EsportsDiagnosticIssue[] {
+  const issues: EsportsDiagnosticIssue[] = [];
+  const failed = data.diagnostics?.vlr?.matchPagesFailed ?? 0;
+  if (failed > 0) {
+    issues.push({
+      reason: "parse_failed",
+      message: `Не удалось загрузить или разобрать detail-страницы VLR: ${failed}.`,
+    });
+  }
+  if (!data.ok && data.error) {
+    issues.push({
+      reason: "parse_failed",
+      message: data.error,
+    });
+  }
+  return issues;
+}
+
+export function resolveVlrImportStatus(input: {
+  ok: boolean;
+  matchUrlsFound: number;
+  matchPagesFailed: number;
+  savedMatchesCount: number;
+}) {
+  if (!input.ok) return "PARTIAL";
+  if (input.matchPagesFailed > 0) return "PARTIAL";
+  if (input.matchUrlsFound > 0 && input.savedMatchesCount === 0) return "PARTIAL";
+  return "SUCCESS";
 }
 
 function normalizeSearch(value: string) {

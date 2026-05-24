@@ -1,5 +1,11 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/db";
+import {
+  finalizeDota2Diagnostics,
+  finalizeEsportsParsingDiagnostics,
+  mergeDota2Diagnostics,
+  mergeEsportsParsingDiagnostics,
+} from "@/lib/matches/parsingDiagnostics";
 import { processSinglePage } from "./singlePage";
 import {
   clearTournamentForceRefreshState,
@@ -7,6 +13,7 @@ import {
   appendTournamentWarning,
   titleFromLiquipediaUrl,
   buildMatchIdentity,
+  isPlainObject,
   ForceRefreshCleanupStats,
 } from "./helpers";
 import { dedupeTournamentMatches } from "@/lib/matches/dedupe";
@@ -70,7 +77,12 @@ export async function importTournamentRecursive(params: {
 
   const allMatches = [...(mainResult.matches || [])];
   const allMatchIds = [...(mainResult.processedMatchIds || [])];
+  const dota2Diagnostics = [mainResult.normalized.dota2Diagnostics];
+  const leagueOfLegendsDiagnostics = [mainResult.normalized.leagueOfLegendsDiagnostics];
+  const valorantDiagnostics = [mainResult.normalized.valorantDiagnostics];
   let finalProcessedMatchIds = allMatchIds;
+  let finalSavedMatchCount = allMatches.length;
+  let finalDuplicateMatchCount = 0;
 
   // 2. Process Sub-pages (parallel in batches for speed)
   if (mainResult.normalized.subPages && mainResult.normalized.subPages.length > 0) {
@@ -104,6 +116,13 @@ export async function importTournamentRecursive(params: {
         if (result.status === "fulfilled") {
           if (result.value.matches) allMatches.push(...result.value.matches);
           if (result.value.processedMatchIds) finalProcessedMatchIds.push(...result.value.processedMatchIds);
+          if (result.value.normalized.dota2Diagnostics) dota2Diagnostics.push(result.value.normalized.dota2Diagnostics);
+          if (result.value.normalized.leagueOfLegendsDiagnostics) {
+            leagueOfLegendsDiagnostics.push(result.value.normalized.leagueOfLegendsDiagnostics);
+          }
+          if (result.value.normalized.valorantDiagnostics) {
+            valorantDiagnostics.push(result.value.normalized.valorantDiagnostics);
+          }
         } else {
           console.error(`[Importer] Failed to process sub-page:`, result.reason);
         }
@@ -164,6 +183,7 @@ export async function importTournamentRecursive(params: {
       const { _identity, ...rest } = m;
       return rest;
     });
+    finalDuplicateMatchCount = Math.max(0, allMatches.length - deduplicatedMatches.length);
     finalProcessedMatchIds = deduplicatedMatches.map((match: any) => match.matchId).filter(Boolean);
     qualityScore = computeMatchSetQuality(deduplicatedMatches, existingBeforeFinal);
 
@@ -181,9 +201,11 @@ export async function importTournamentRecursive(params: {
     if (qualityGateKeptPrevious) {
       qualityGateWarning = `Новый импорт выглядит хуже предыдущего snapshot (${deduplicatedMatches.length} vs ${existingBeforeFinal.length} матчей, quality=${qualityScore}). Старые матчи сохранены.`;
       finalProcessedMatchIds = existingBeforeFinal.map((match: any) => match.matchId).filter(Boolean);
+      finalSavedMatchCount = existingBeforeFinal.length;
       await appendTournamentWarning(mainResult.tournament.id, qualityGateWarning);
       console.warn(`[Importer] ${qualityGateWarning}`);
     } else {
+      finalSavedMatchCount = deduplicatedMatches.length;
       await prisma.tournamentMatch.deleteMany({
         where: { tournamentId: mainResult.tournament.id }
       });
@@ -204,11 +226,67 @@ export async function importTournamentRecursive(params: {
     if (qualityGateKeptPrevious) {
       qualityGateWarning = `Источник вернул 0 матчей, поэтому предыдущие ${existingBeforeFinal.length} матчей сохранены.`;
       finalProcessedMatchIds = existingBeforeFinal.map((match: any) => match.matchId).filter(Boolean);
+      finalSavedMatchCount = existingBeforeFinal.length;
       await appendTournamentWarning(mainResult.tournament.id, qualityGateWarning);
       console.warn(`[Importer] ${qualityGateWarning}`);
     } else {
+      finalSavedMatchCount = 0;
       await prisma.tournamentMatch.deleteMany({
         where: { tournamentId: mainResult.tournament.id }
+      });
+    }
+  }
+
+  if (disciplineSlug === "dota2") {
+    const mergedDiagnostics = finalizeDota2Diagnostics(mergeDota2Diagnostics(dota2Diagnostics), {
+      savedMatches: finalSavedMatchCount,
+      duplicateMatches: finalDuplicateMatchCount,
+      extraIssues: qualityGateWarning
+        ? [{ reason: "parse_failed", message: qualityGateWarning }]
+        : [],
+    });
+
+    if (mergedDiagnostics) {
+      await persistMergedDiagnostics({
+        tournamentId: mainResult.tournament.id,
+        key: "dota2Diagnostics",
+        diagnostics: mergedDiagnostics,
+      });
+    }
+  }
+
+  if (disciplineSlug === "leagueoflegends") {
+    const mergedDiagnostics = finalizeEsportsParsingDiagnostics(mergeEsportsParsingDiagnostics(leagueOfLegendsDiagnostics), {
+      savedMatches: finalSavedMatchCount,
+      duplicateMatches: finalDuplicateMatchCount,
+      extraIssues: qualityGateWarning
+        ? [{ reason: "parse_failed", message: qualityGateWarning }]
+        : [],
+    });
+
+    if (mergedDiagnostics) {
+      await persistMergedDiagnostics({
+        tournamentId: mainResult.tournament.id,
+        key: "leagueOfLegendsDiagnostics",
+        diagnostics: mergedDiagnostics,
+      });
+    }
+  }
+
+  if (disciplineSlug === "valorant") {
+    const mergedDiagnostics = finalizeEsportsParsingDiagnostics(mergeEsportsParsingDiagnostics(valorantDiagnostics), {
+      savedMatches: finalSavedMatchCount,
+      duplicateMatches: finalDuplicateMatchCount,
+      extraIssues: qualityGateWarning
+        ? [{ reason: "parse_failed", message: qualityGateWarning }]
+        : [],
+    });
+
+    if (mergedDiagnostics) {
+      await persistMergedDiagnostics({
+        tournamentId: mainResult.tournament.id,
+        key: "valorantDiagnostics",
+        diagnostics: mergedDiagnostics,
       });
     }
   }
@@ -240,4 +318,28 @@ function buildSyncedIdentityKey(match: any, identity: ReturnType<typeof buildMat
     identity.format,
     identity.sourceSlot,
   ].join("|");
+}
+
+async function persistMergedDiagnostics(params: {
+  tournamentId: string;
+  key: "dota2Diagnostics" | "leagueOfLegendsDiagnostics" | "valorantDiagnostics";
+  diagnostics: unknown;
+}) {
+  const latestTournament = await prisma.tournament.findUnique({
+    where: { id: params.tournamentId },
+    select: { normalization: true },
+  });
+  const normalization = isPlainObject(latestTournament?.normalization)
+    ? latestTournament?.normalization as Record<string, unknown>
+    : {};
+
+  await prisma.tournament.update({
+    where: { id: params.tournamentId },
+    data: {
+      normalization: {
+        ...normalization,
+        [params.key]: params.diagnostics,
+      } as Prisma.InputJsonValue,
+    },
+  }).catch(() => {});
 }

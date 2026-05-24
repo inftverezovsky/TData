@@ -12,6 +12,11 @@ import {
 import type { NormalizedMatch, NormalizedParticipant, NormalizedTournament } from "@/lib/normalizers/types";
 import { getBestOfLabel } from "@/lib/matches/format";
 import { applyTbdPairCycling } from "@/lib/matches/tbdCycling";
+import { hasExplicitTimeText } from "@/lib/matches/time";
+import {
+  buildEsportsParsingDiagnostics,
+  type EsportsDiagnosticIssue,
+} from "@/lib/matches/parsingDiagnostics";
 import { generateInternalTeamId, isPlaceholderTeam } from "@/lib/teams/teams";
 
 export function normalizeFandomLeagueOfLegendsTournament(input: {
@@ -21,6 +26,10 @@ export function normalizeFandomLeagueOfLegendsTournament(input: {
   wikitext: string;
   parsedHtml?: string;
   cargoMatches?: unknown[];
+  cargoFailed?: boolean;
+  cargoError?: string | null;
+  cacheHit?: boolean;
+  stale?: boolean;
 }): NormalizedTournament {
   const warnings: string[] = [];
   const infobox = extractFirstTemplateByPrefix(input.wikitext, "Infobox");
@@ -38,17 +47,44 @@ export function normalizeFandomLeagueOfLegendsTournament(input: {
 
   const participants = extractFandomParticipants(input.wikitext, input.parsedHtml);
   const teamNameMap = buildTeamNameMap(participants);
-  const matches = [
-    ...extractFandomCargoScheduleMatches(input.cargoMatches || [], input.pageUrl),
-    ...extractFandomTopScheduleMatches(input.parsedHtml || "", input.pageUrl, input.title),
-    ...extractFandomMatchlistMatches(input.parsedHtml || "", input.pageUrl),
-    ...extractFandomBracketMatches(input.parsedHtml || "", input.pageUrl),
-    ...extractFandomWikitextMatches(input.wikitext, input.pageUrl),
-  ]
+  const diagnosticIssues: EsportsDiagnosticIssue[] = [];
+  if (input.cargoFailed) {
+    diagnosticIssues.push({
+      reason: "parse_failed",
+      message: input.cargoError || "Fandom Cargo недоступен, использован HTML/wikitext fallback.",
+      sourceUrl: input.pageUrl,
+    });
+  }
+  const cargoRowsFound = input.cargoMatches?.length ?? 0;
+  const cargoMatches = extractFandomCargoScheduleMatches(input.cargoMatches || [], input.pageUrl, diagnosticIssues);
+  const rawMatches = [
+    ...cargoMatches,
+    ...extractFandomTopScheduleMatches(input.parsedHtml || "", input.pageUrl, input.title, diagnosticIssues),
+    ...extractFandomMatchlistMatches(input.parsedHtml || "", input.pageUrl, diagnosticIssues),
+    ...extractFandomBracketMatches(input.parsedHtml || "", input.pageUrl, diagnosticIssues),
+    ...extractFandomWikitextMatches(input.wikitext, input.pageUrl, diagnosticIssues),
+  ];
+  const matches = rawMatches
     .map((match, index) => normalizeFandomMatch(match, input.title, String(index), teamNameMap))
     .filter((match): match is NormalizedMatch => Boolean(match));
 
   applyTbdPairCycling(matches, input.title);
+  const dedupedMatches = dedupeFandomMatches(matches);
+  const leagueOfLegendsDiagnostics = buildEsportsParsingDiagnostics({
+    source: "fandom",
+    rawCandidates: rawMatches.length + diagnosticIssues.length,
+    candidates: matches,
+    savedMatches: dedupedMatches.length,
+    duplicateMatches: Math.max(0, matches.length - dedupedMatches.length),
+    extraIssues: diagnosticIssues,
+    fandom: {
+      cargoRowsFound,
+      cargoRowsUsed: cargoMatches.length,
+      cargoFailed: Boolean(input.cargoFailed),
+      cacheHit: input.cacheHit,
+      stale: input.stale,
+    },
+  });
 
   if (!parsedInfobox) warnings.push("Fandom infobox не найден. Карточка турнира будет неполной.");
   if (!startDate && !endDate) warnings.push("Даты турнира не извлечены из Fandom infobox.");
@@ -68,10 +104,11 @@ export function normalizeFandomLeagueOfLegendsTournament(input: {
     formatText,
     tournamentStatus: inferTournamentStatus(startDate, endDate),
     participants,
-    matches: dedupeFandomMatches(matches),
+    matches: dedupedMatches,
     subPages: [],
     warnings,
     status: (matches.length > 0 || participants.length > 0 ? "SUCCESS" : "PARTIAL") as ImportStatus,
+    leagueOfLegendsDiagnostics,
   };
 }
 
@@ -147,7 +184,7 @@ function isFandomShortAlias(shortName: string, longName: string) {
   return longName === `${shortName} esports` || longName === `team ${shortName}` || longName.startsWith(`${shortName} `);
 }
 
-function extractFandomMatchlistMatches(html: string, pageUrl: string): NormalizedMatch[] {
+function extractFandomMatchlistMatches(html: string, pageUrl: string, issues: EsportsDiagnosticIssue[] = []): NormalizedMatch[] {
   if (!html) return [];
   const $ = cheerio.load(html);
   const matches: NormalizedMatch[] = [];
@@ -167,12 +204,12 @@ function extractFandomMatchlistMatches(html: string, pageUrl: string): Normalize
     const scoreB = parseInteger(scores[1]);
     if (scoreA !== null || scoreB !== null) return;
 
-    const dateText =
-      $row.find(".countdowndate").first().text().trim() ||
-      $row.find(".TimeInLocal").first().text().trim() ||
-      "";
+    const dateText = extractFandomDateText($, $row);
     const matchDate = parseFandomDate(dateText);
-    if (!matchDate) return;
+    if (!matchDate || !hasFandomExactTime(dateText, $.html(rowEl))) {
+      pushNoExactTimeIssue(issues, teamAName, teamBName, dateText, findNearestHeading($, rowEl, "h2, .mw-headline") || null, pageUrl);
+      return;
+    }
 
     const rawText = $.html(rowEl)?.slice(0, 2500) || null;
     matches.push({
@@ -194,7 +231,7 @@ function extractFandomMatchlistMatches(html: string, pageUrl: string): Normalize
   return matches;
 }
 
-export function extractFandomCargoScheduleMatches(rows: unknown[], pageUrl: string): NormalizedMatch[] {
+export function extractFandomCargoScheduleMatches(rows: unknown[], pageUrl: string, issues: EsportsDiagnosticIssue[] = []): NormalizedMatch[] {
   const matches: NormalizedMatch[] = [];
 
   for (const item of rows) {
@@ -216,9 +253,22 @@ export function extractFandomCargoScheduleMatches(rows: unknown[], pageUrl: stri
     if (scoreA !== null || scoreB !== null) continue;
 
     const hasTime = parseCargoBoolean(firstCargoValue(row, "HasTime", "hasTime"));
-    const dateText = firstCargoValue(row, "DateTime_UTC", "DateTime UTC", "UTC", "DateTime");
+    const dateText = firstCargoValue(
+      row,
+      "DateTime_UTC",
+      "DateTime UTC",
+      "UTC",
+      "DateTime",
+      "Timestamp",
+      "UnixTimestamp",
+      "countdowndate",
+      "TimeInLocal",
+    );
     const matchDate = parseFandomDate(dateText);
-    if (!matchDate || hasTime === false) continue;
+    if (!matchDate || hasTime === false || !hasFandomExactTime(dateText)) {
+      pushNoExactTimeIssue(issues, teamAName, teamBName, dateText, firstCargoValue(row, "Tab", "Phase"), pageUrl);
+      continue;
+    }
 
     const bestOf = parseInteger(firstCargoValue(row, "BestOf", "bestof"));
     const rawText = JSON.stringify(row).slice(0, 2500);
@@ -249,7 +299,7 @@ export function extractFandomCargoScheduleMatches(rows: unknown[], pageUrl: stri
   return matches;
 }
 
-function extractFandomTopScheduleMatches(html: string, pageUrl: string, pageTitle: string): NormalizedMatch[] {
+function extractFandomTopScheduleMatches(html: string, pageUrl: string, pageTitle: string, issues: EsportsDiagnosticIssue[] = []): NormalizedMatch[] {
   if (!html) return [];
   const $ = cheerio.load(html);
   const matches: NormalizedMatch[] = [];
@@ -266,12 +316,12 @@ function extractFandomTopScheduleMatches(html: string, pageUrl: string, pageTitl
       .filter(Boolean);
     if (teams.length < 2) return;
 
-    const dateText =
-      $box.find(".countdowndate").first().text().trim() ||
-      $box.find(".TimeInLocal").first().text().trim() ||
-      "";
+    const dateText = extractFandomDateText($, $box);
     const matchDate = parseFandomDate(dateText);
-    if (!matchDate) return;
+    if (!matchDate || !hasFandomExactTime(dateText, $.html(boxEl))) {
+      pushNoExactTimeIssue(issues, teams[0], teams[1], dateText, "Match Schedule", pageUrl);
+      return;
+    }
 
     const rawText = $.html(boxEl)?.slice(0, 2500) || null;
     matches.push({
@@ -293,7 +343,7 @@ function extractFandomTopScheduleMatches(html: string, pageUrl: string, pageTitl
   return matches;
 }
 
-function extractFandomBracketMatches(html: string, pageUrl: string): NormalizedMatch[] {
+function extractFandomBracketMatches(html: string, pageUrl: string, issues: EsportsDiagnosticIssue[] = []): NormalizedMatch[] {
   if (!html) return [];
   const $ = cheerio.load(html);
   const matches: NormalizedMatch[] = [];
@@ -319,12 +369,20 @@ function extractFandomBracketMatches(html: string, pageUrl: string): NormalizedM
       const teamBName = getFandomTeamName($, $teamB);
       if (!teamAName && !teamBName) continue;
 
+      const $matchScope = $teamA.add($teamB).closest(".bracket-game, .bracket-match, .bracket").first();
+      const dateText = extractFandomDateText($, $matchScope.length ? $matchScope : $teamA.add($teamB));
+      const matchDate = parseFandomDate(dateText);
       const rawText = [$.html(teams[index]), $.html(teams[index + 1])].filter(Boolean).join("\n").slice(0, 2500);
+      if (!matchDate || !hasFandomExactTime(dateText, rawText)) {
+        pushNoExactTimeIssue(issues, teamAName, teamBName, dateText, findNearestHeading($, teams[index], "h2, .mw-headline") || "Bracket", pageUrl);
+        continue;
+      }
+
       matches.push({
         stage: findNearestHeading($, teams[index], "h2, .mw-headline") || "Bracket",
         round: round === "unknown" ? null : `Round ${round}`,
-        matchDate: null,
-        matchDateTime: null,
+        matchDate,
+        matchDateTime: dateText,
         teamAName,
         teamBName,
         scoreA: null,
@@ -340,7 +398,7 @@ function extractFandomBracketMatches(html: string, pageUrl: string): NormalizedM
   return matches;
 }
 
-function extractFandomWikitextMatches(wikitext: string, pageUrl: string): NormalizedMatch[] {
+function extractFandomWikitextMatches(wikitext: string, pageUrl: string, issues: EsportsDiagnosticIssue[] = []): NormalizedMatch[] {
   const matches: NormalizedMatch[] = [];
   const regex = /\{\{\s*(?:MatchSchedule|Matchlist|Match)\b([\s\S]*?)\}\}/gi;
   let found: RegExpExecArray | null;
@@ -356,14 +414,18 @@ function extractFandomWikitextMatches(wikitext: string, pageUrl: string): Normal
     const scoreB = parseInteger(params.score2 ?? params.team2score);
     if (scoreA !== null || scoreB !== null) continue;
 
-    const matchDate = parseFandomDate(firstClean(params.date, params.time, params.datetime) || "");
-    if (!matchDate) continue;
+    const dateText = buildFandomTemplateDateText(params) || "";
+    const matchDate = parseFandomDate(dateText);
+    if (!matchDate || !hasFandomExactTime(dateText, found[0])) {
+      pushNoExactTimeIssue(issues, teamAName, teamBName, dateText, firstClean(params.stage, params.phase), pageUrl);
+      continue;
+    }
 
     matches.push({
       stage: firstClean(params.stage, params.phase),
       round: firstClean(params.round, params.match),
       matchDate,
-      matchDateTime: firstClean(params.date, params.time, params.datetime),
+      matchDateTime: dateText,
       teamAName,
       teamBName,
       scoreA: null,
@@ -417,9 +479,16 @@ function normalizeFandomMatch(
 function getFandomTeamName($: cheerio.CheerioAPI, $scope: cheerio.Cheerio<any>) {
   return cleanTeamName(
     $scope.attr("data-teamhighlight") ||
+    $scope.attr("data-team") ||
+    $scope.attr("data-name") ||
+    $scope.attr("aria-label") ||
     $scope.find("a.catlink-teams").first().attr("title") ||
+    $scope.find("a.catlink-teams").first().text() ||
     $scope.find(".teamname a").first().attr("title") ||
+    $scope.find(".teamname a").first().text() ||
+    $scope.find(".team-template-text, .team-template-team-standard, .team-template-team-short, .team-template-team-name").first().text() ||
     $scope.find("a").first().attr("title") ||
+    $scope.find("a").first().text() ||
     $scope.find(".teamname").first().text() ||
     $scope.text()
   );
@@ -467,9 +536,100 @@ function cleanTeamName(raw: unknown) {
   return normalized;
 }
 
+function extractFandomDateText($: cheerio.CheerioAPI, $scope: cheerio.Cheerio<any>) {
+  const $time = $scope.find(".countdowndate, .TimeInLocal, time, [datetime], [data-timestamp], [data-unix], [data-time], [data-date]").filter((_, el) => {
+    const $el = $(el);
+    return Boolean(
+      $el.attr("datetime") ||
+      $el.attr("data-timestamp") ||
+      $el.attr("data-unix") ||
+      $el.attr("data-time") ||
+      $el.attr("data-date") ||
+      $el.text().trim()
+    );
+  }).first();
+
+  if ($time.length) {
+    return firstClean(
+      $time.attr("datetime"),
+      $time.attr("data-timestamp"),
+      $time.attr("data-unix"),
+      $time.attr("data-time"),
+      $time.attr("data-date"),
+      $time.text(),
+    ) || "";
+  }
+
+  return firstClean(
+    $scope.attr("datetime"),
+    $scope.attr("data-timestamp"),
+    $scope.attr("data-unix"),
+    $scope.attr("data-time"),
+    $scope.attr("data-date"),
+  ) || "";
+}
+
+function pushNoExactTimeIssue(
+  issues: EsportsDiagnosticIssue[],
+  teamAName: string | null | undefined,
+  teamBName: string | null | undefined,
+  matchDateTime: string | null | undefined,
+  stage: string | null | undefined,
+  sourceUrl: string,
+) {
+  issues.push({
+    reason: "no_exact_time",
+    message: "Fandom/Leaguepedia не дал точное время для строки.",
+    teamAName: teamAName || null,
+    teamBName: teamBName || null,
+    matchDateTime: matchDateTime || null,
+    stage: stage || null,
+    sourceUrl,
+  });
+}
+
+function buildFandomTemplateDateText(params: Record<string, string | undefined>) {
+  const direct = firstClean(
+    params.DateTime_UTC,
+    params["DateTime UTC"],
+    params.datetime,
+    params.timestamp,
+    params.countdowndate,
+    params.TimeInLocal,
+    params.date,
+    params.time,
+  );
+  if (direct && hasFandomExactTime(direct)) return direct;
+
+  const date = firstClean(params.date, params.day, params.startdate, params.start_date);
+  const time = firstClean(params.time, params.hour);
+  const minute = firstClean(params.minute, params.min);
+  const timezone = firstClean(params.timezone, params.tz, params.zone);
+  if (date && time) {
+    const clock = minute && /^\d{1,2}$/.test(time) ? `${time}:${minute.padStart(2, "0")}` : time;
+    return [date, clock, timezone].filter(Boolean).join(" ");
+  }
+
+  return direct || null;
+}
+
+function hasFandomExactTime(...values: Array<unknown>) {
+  return values.some((value) => {
+    const text = typeof value === "string" ? value.trim() : "";
+    return Boolean(text && (/^\d{9,13}$/.test(text) || /^\d{4},\d{1,2},\d{1,2},\d{1,2},\d{2}$/.test(text) || hasExplicitTimeText(text)));
+  });
+}
+
 function parseFandomDate(value: string | null | undefined) {
   const text = String(value || "").trim();
   if (!text) return null;
+
+  if (/^\d{9,13}$/.test(text)) {
+    const raw = Number(text);
+    const ms = raw > 9_999_999_999 ? raw : raw * 1000;
+    const date = new Date(ms);
+    return Number.isFinite(date.getTime()) ? date : null;
+  }
 
   const isoUtc = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?(?:\s*(?:UTC|GMT|Z))?$/i);
   if (isoUtc) {
@@ -638,7 +798,23 @@ function dedupeFandomMatches(matches: NormalizedMatch[]) {
       (match.stage || "").toLowerCase(),
       (match.round || "").toLowerCase(),
     ].join("|");
-    if (!seen.has(key)) seen.set(key, match);
+    const existing = seen.get(key);
+    if (!existing || scoreFandomMatchCompleteness(match) > scoreFandomMatchCompleteness(existing)) {
+      seen.set(key, match);
+    }
   }
   return Array.from(seen.values());
+}
+
+function scoreFandomMatchCompleteness(match: NormalizedMatch) {
+  let score = 0;
+  if (match.matchDate) score += 20;
+  if (hasFandomExactTime(match.matchDateTime, match.rawText)) score += 10;
+  if (match.teamAName && !isPlaceholderTeam(match.teamAName)) score += 8;
+  if (match.teamBName && !isPlaceholderTeam(match.teamBName)) score += 8;
+  if (getBestOfLabel(match.format) || getBestOfLabel(match.rawText)) score += 5;
+  if (match.stage) score += 2;
+  if (match.round) score += 2;
+  if (match.sourceUrl) score += 1;
+  return score;
 }

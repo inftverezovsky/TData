@@ -60,6 +60,27 @@ export default function AdminUploadPanel({
   const [lastSavedId, setLastSavedId] = useState<string | null>(null);
   const [result, setResult] = useState<{ type: 'success' | 'error' | 'info'; text: string; raw?: string } | null>(null);
   const selectedMatchKey = selectedMatchIds.join('\u0001');
+  const selectedCount = selectedMatchIds.length;
+  const normalizedShapkaId = mapping.adminShapkaId.trim();
+  const savedShapkaId = (lastSavedId || '').trim();
+  const hasUnsavedShapkaId = normalizedShapkaId !== '' && normalizedShapkaId !== savedShapkaId;
+  const effectiveShapkaId = savedShapkaId || settings?.defaultShapkaId;
+  const readyCount = preview?.readyMatchesCount ?? selectedCount;
+  const uploadPayloadDisabledReason = hasUnsavedShapkaId
+    ? "Сначала сохраните ID шапки"
+    : !effectiveShapkaId
+      ? "Укажите ID шапки"
+      : !settings?.adminSportId
+        ? "Не настроен Sport ID"
+        : preview?.readyMatchesCount === 0
+          ? "Нет готовых матчей"
+          : selectedCount === 0
+            ? "Выберите матчи"
+            : null;
+  const sendDisabledReason = !settings?.apiUrl
+    ? "Не настроен API URL"
+    : uploadPayloadDisabledReason;
+  const serviceDisabledReason = uploadPayloadDisabledReason;
 
   const loadAdminData = useCallback(async () => {
     const mappingRes = await fetch(`/api/${disciplineSlug}/tournament/${tournamentId}/admin-mapping`, {
@@ -88,6 +109,11 @@ export default function AdminUploadPanel({
   }, [disciplineSlug, tournamentId]);
 
   const handlePreview = useCallback(async () => {
+    if (uploadPayloadDisabledReason) {
+      setResult({ type: 'error', text: uploadPayloadDisabledReason });
+      return;
+    }
+
     setActionLoading(true);
     setResult(null);
     try {
@@ -108,7 +134,7 @@ export default function AdminUploadPanel({
     } finally {
       setActionLoading(false);
     }
-  }, [disciplineSlug, tournamentId, selectedMatchIds]);
+  }, [disciplineSlug, tournamentId, selectedMatchIds, uploadPayloadDisabledReason]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -338,23 +364,7 @@ export default function AdminUploadPanel({
 
   if (loading) return <div className="p-4 text-slate-400 font-normal animate-pulse">Загрузка данных админки...</div>;
 
-  const effectiveShapkaId = mapping.adminShapkaId || settings?.defaultShapkaId;
   const isSaved = mapping.adminShapkaId !== '' && mapping.adminShapkaId === lastSavedId;
-  const selectedCount = selectedMatchIds.length;
-  const readyCount = preview?.readyMatchesCount ?? selectedCount;
-  const uploadPayloadDisabledReason = !effectiveShapkaId
-    ? "Укажите ID шапки"
-    : !settings?.adminSportId
-      ? "Не настроен Sport ID"
-      : preview?.readyMatchesCount === 0
-        ? "Нет готовых матчей"
-        : selectedCount === 0
-          ? "Выберите матчи"
-          : null;
-  const sendDisabledReason = !settings?.apiUrl
-    ? "Не настроен API URL"
-    : uploadPayloadDisabledReason;
-  const serviceDisabledReason = uploadPayloadDisabledReason;
 
   return (
     <div className="space-y-6">
@@ -423,7 +433,8 @@ export default function AdminUploadPanel({
             <button
               type="button"
               onClick={handlePreview}
-              disabled={actionLoading || selectedCount === 0}
+              disabled={actionLoading || Boolean(uploadPayloadDisabledReason)}
+              title={uploadPayloadDisabledReason ?? `Будет проверено матчей: ${selectedCount}`}
               className="min-h-[46px] rounded-lg border border-slate-200 bg-white px-4 text-xs font-black uppercase tracking-widest text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-50"
             >
               {actionLoading ? "Проверяю..." : `Проверить ${selectedCount || ""}`}

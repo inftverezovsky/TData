@@ -4,6 +4,8 @@ import { normalizeDota2Tournament } from "../src/lib/normalizers/dota2Tournament
 
 test("Dota2 normalizer preserves empty TBD playoff slots", () => {
   const html = `
+    <div class="brkts-column">
+      <div class="brkts-column-header">Quarterfinals (bo3)</div>
     <div class="brkts-match">
       <div class="brkts-opponent-entry"></div>
       <div class="brkts-opponent-entry"></div>
@@ -11,6 +13,7 @@ test("Dota2 normalizer preserves empty TBD playoff slots", () => {
         <span class="name">TBD</span>
         <span class="name">TBD</span>
       </div>
+    </div>
     </div>
   `;
 
@@ -24,6 +27,7 @@ test("Dota2 normalizer preserves empty TBD playoff slots", () => {
   assert.equal(normalized.matches.length, 1);
   assert.match(normalized.matches[0].teamAName || "", /^TBD\d+$/);
   assert.match(normalized.matches[0].teamBName || "", /^TBD\d+$/);
+  assert.equal(normalized.matches[0].round, "Quarterfinals (bo3)");
 });
 
 test("Dota2 normalizer does not treat regional qualifier tabs as event subpages", () => {
@@ -152,4 +156,50 @@ test("Dota2 normalizer derives BO format from Liquipedia map slots", () => {
 
   assert.equal(normalized.matches.length, 1);
   assert.equal(normalized.matches[0].format, "BO3");
+});
+
+test("Dota2 normalizer reports diagnostics and keeps Team vs TBD with exact time", () => {
+  const normalized = normalizeDota2Tournament({
+    title: "IEM Test Dota",
+    pageUrl: "https://liquipedia.net/dota2/IEM_Test_Dota",
+    wikitext: "{{Infobox league|name=IEM Test Dota|sdate=2026-06-01|edate=2026-06-02}}",
+    parsedHtml: `
+      <div class="brkts-matchlist">
+        <div class="brkts-matchlist-title"><b>Swiss Stage</b></div>
+        <div class="brkts-matchlist-match">
+          <div class="brkts-matchlist-opponent"><span class="name"><a title="Monte">Monte</a></span></div>
+          <div class="brkts-matchlist-score"></div>
+          <div class="brkts-matchlist-score"></div>
+          <div class="brkts-matchlist-opponent"><span class="name">TBD</span></div>
+          <span class="match-info-countdown" data-timestamp="1780309800">13:30</span>
+          <span class="brkts-matchlist-format">Best of 1</span>
+        </div>
+      </div>
+    `,
+  });
+
+  assert.equal(normalized.matches.length, 1);
+  assert.equal(normalized.matches[0].teamAName, "Monte");
+  assert.equal(normalized.matches[0].teamBName, "TBD");
+  assert.equal(normalized.matches[0].matchDate?.toISOString(), "2026-06-01T10:30:00.000Z");
+  assert.equal(normalized.matches[0].format, "BO1");
+  assert.equal(normalized.dota2Diagnostics?.rawCandidates, 1);
+  assert.equal(normalized.dota2Diagnostics?.savedMatches, 1);
+  assert.equal(normalized.dota2Diagnostics?.coverage.teamVsTbd, 1);
+});
+
+test("Dota2 normalizer puts rows without exact time into diagnostics", () => {
+  const normalized = normalizeDota2Tournament({
+    title: "No Time Cup",
+    pageUrl: "https://liquipedia.net/dota2/No_Time_Cup",
+    wikitext: `
+      {{Infobox league|name=No Time Cup|sdate=2026-06-01|edate=2026-06-02}}
+      {{Match|team1=Team Alpha|team2=Team Beta|bestof=3}}
+    `,
+  });
+
+  assert.equal(normalized.matches.length, 1);
+  assert.equal(normalized.dota2Diagnostics?.coverage.withoutExactTime, 1);
+  assert.equal(normalized.dota2Diagnostics?.skipReasons.no_exact_time, 1);
+  assert.equal(normalized.dota2Diagnostics?.issues[0].reason, "no_exact_time");
 });

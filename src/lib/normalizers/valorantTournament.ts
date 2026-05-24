@@ -13,10 +13,14 @@ import { createHash } from "crypto";
 import { generateInternalTeamId, isPlaceholderTeam } from "@/lib/teams/teams";
 import { applyTbdPairCycling } from "@/lib/matches/tbdCycling";
 import { getBestOfLabel } from "@/lib/matches/format";
+import { hasExplicitTimeText } from "@/lib/matches/time";
+import { findLiquipediaBracketRoundLabel } from "@/lib/liquipedia/bracketLabels";
+import {
+  buildEsportsParsingDiagnostics,
+  type ValorantParsingDiagnostics,
+} from "@/lib/matches/parsingDiagnostics";
 
-// applyTbdPairCycling is now imported from @/lib/matches/tbdCycling
-
-/* ───── Deduplication ───── */
+/* ───── Types ───── */
 
 export type NormalizedParticipant = {
   name: string;
@@ -65,6 +69,7 @@ export type NormalizedTournament = {
   subPages: string[];
   warnings: string[];
   status: ImportStatus;
+  valorantDiagnostics?: ValorantParsingDiagnostics;
 };
 
 /* ───── Main entry point ───── */
@@ -168,6 +173,13 @@ export function normalizeValorantTournament(input: {
   applyTbdPairCycling(normalizedMatches, input.title);
 
   const matches = dedupeMatches(normalizedMatches);
+  const valorantDiagnostics = buildEsportsParsingDiagnostics({
+    source: "liquipedia",
+    rawCandidates: allCandidates.length,
+    candidates: normalizedMatches,
+    savedMatches: matches.length,
+    duplicateMatches: Math.max(0, normalizedMatches.length - matches.length),
+  });
 
   if (matches.length === 0) {
     const diag: string[] = [];
@@ -199,7 +211,8 @@ export function normalizeValorantTournament(input: {
     matches,
     subPages,
     warnings,
-    status
+    status,
+    valorantDiagnostics
   };
 }
 
@@ -207,49 +220,212 @@ function extractMatchesFromParsedHtml(html: string, pageUrl: string): Normalized
   const $ = cheerio.load(html);
   const matches: NormalizedMatch[] = [];
 
+  const extractDateFromScope = ($scope: any) => {
+    const selector = [
+      ".timer-object",
+      ".match-info-countdown",
+      ".brkts-popup-date",
+      ".match-bm-date",
+      ".brkts-matchlist-date",
+      "time",
+      "[datetime]",
+      "[data-timestamp]",
+      "[data-unix]",
+      "[data-time]",
+      "[data-date]",
+    ].join(", ");
+    const $candidates = $scope.find(selector);
+    let $time = $candidates.filter((_: number, el: any) => {
+      const $el = $(el);
+      return Boolean(getTimestampAttr($el) || $el.attr("datetime") || $el.attr("data-time") || $el.attr("data-date") || $el.text().trim());
+    }).first();
+    if (!$time.length && ($scope.attr("datetime") || getTimestampAttr($scope) || $scope.attr("data-time") || $scope.attr("data-date"))) {
+      $time = $scope;
+    }
+
+    const timestamp = getTimestampAttr($time);
+    const dateText = firstClean(
+      $time.attr("datetime"),
+      $time.attr("data-date"),
+      $time.attr("data-time"),
+      $time.text(),
+    );
+    const rawContext = [
+      $time.attr("datetime"),
+      $time.attr("data-date"),
+      $time.attr("data-time"),
+      $time.text(),
+      $scope.find(".brkts-match-info-popup, .match-info-header, .match-info-top-row").first().text(),
+    ].filter(Boolean).join(" ");
+    const matchDate =
+      parseTimestampDate(timestamp) ||
+      (hasExplicitTimeText(rawContext) ? parseWikiDate(rawContext) : null) ||
+      (dateText && hasExplicitTimeText(dateText) ? parseWikiDate(dateText) : null);
+
+    return {
+      dateText: dateText || null,
+      finished: $time.attr("data-finished") || $scope.attr("data-finished"),
+      matchDate,
+    };
+  };
+
+  function findSectionForElement(el: any): string {
+    const $el = $(el);
+    let current = $el.closest("div, section, table").prev();
+    let attempts = 0;
+    while (current.length > 0 && attempts < 30) {
+      const tag = current.prop("tagName")?.toLowerCase() ?? "";
+      if (/^h[2-4]$/.test(tag)) {
+        return current.text().replace(/\[edit\]/g, "").trim();
+      }
+      current = current.prev();
+      attempts++;
+    }
+    return "";
+  }
+
+  function isNonTeamTitle(value: string) {
+    return /^(time|date|vs|versus|score|winner)$/i.test(value) || value.includes("(page does not exist)");
+  }
+
+  function cleanHtmlTeamValue(value: string | null | undefined) {
+    const cleaned = normalizeTeamName(value || "");
+    if (!cleaned || isNonTeamTitle(cleaned)) return null;
+    return cleaned;
+  }
+
   function getFullTeamName(oppEl: any): string | null {
     const $opp = $(oppEl);
-    const aria = $opp.attr("aria-label")?.trim();
-    if (aria && aria !== "TBD") return aria;
-    const linkTitle = $opp.find(".name a").attr("title")?.trim();
-    if (linkTitle && !linkTitle.includes("(page does not exist)")) return linkTitle;
-    const teamLink = $opp.find("a[href*='/valorant/']").attr("title")?.trim();
-    if (teamLink && !teamLink.includes("(page does not exist)")) return teamLink;
-    const nameText = $opp.find(".name").text().trim();
+    const directValue = cleanHtmlTeamValue(
+      $opp.attr("data-name") ||
+      $opp.attr("data-team") ||
+      $opp.attr("data-highlightingclass") ||
+      $opp.attr("aria-label") ||
+      $opp.closest("[aria-label]").attr("aria-label")
+    );
+    if (directValue) return directValue;
+    const templateText = cleanHtmlTeamValue($opp.find(".team-template-text, .team-template-team-standard, .team-template-team-short, .team-template-team-name").first().text());
+    if (templateText) return templateText;
+    const linkTitle = cleanHtmlTeamValue($opp.find(".name a").attr("title"));
+    if (linkTitle) return linkTitle;
+    const teamTitle = cleanHtmlTeamValue($opp.find("a[href*='/valorant/']").attr("title"));
+    if (teamTitle) return teamTitle;
+    const teamText = cleanHtmlTeamValue($opp.find("a[href*='/valorant/']").first().text());
+    if (teamText) return teamText;
+    const nameText = cleanHtmlTeamValue($opp.find(".name").text());
     if (nameText) return nameText;
     return "TBD";
   }
 
-  $(".brkts-matchlist-match, .brkts-match").each((_, matchEl) => {
+  $(".brkts-matchlist-match").each((_, matchEl) => {
     const $match = $(matchEl);
-    const oppCells = $match.find(".brkts-matchlist-opponent, .brkts-opponent-entry");
+    const oppCells = $match.find(".brkts-matchlist-opponent");
     if (oppCells.length < 2) return;
 
     const teamAName = getFullTeamName(oppCells.eq(0));
     const teamBName = getFullTeamName(oppCells.eq(1));
-    // Allow TBD matches
 
-    const scoreCells = $match.find(".brkts-matchlist-score, .brkts-opponent-score-inner");
+    const scoreCells = $match.find(".brkts-matchlist-score");
     const scoreAText = scoreCells.eq(0).text().trim();
     const scoreBText = scoreCells.eq(1).text().trim();
-
-    const timer = $match.find(".timer-object").first();
-    const timestamp = timer.attr("data-timestamp");
-    let matchDate: Date | null = null;
-    if (timestamp) {
-      const ts = parseInt(timestamp, 10);
-      if (!isNaN(ts)) matchDate = new Date(ts * 1000);
-    }
-
-    const rawText = $.html(matchEl)?.slice(0, 1000) || null;
+    const { finished, dateText, matchDate } = extractDateFromScope($match);
+    const $matchlist = $match.closest(".brkts-matchlist");
+    const stage = $matchlist.find(".brkts-matchlist-title b").first().text().trim() || findSectionForElement(matchEl) || null;
+    const round = $match.prevAll(".brkts-matchlist-header").first().text().trim() || null;
+    const rawText = $.html(matchEl)?.slice(0, 2500) || null;
+    const scoreA = parseInteger(scoreAText);
+    const scoreB = parseInteger(scoreBText);
 
     matches.push({
+      stage,
+      round,
       matchDate,
+      matchDateTime: dateText,
       teamAName,
       teamBName,
-      scoreA: scoreAText ? parseInt(scoreAText, 10) : null,
-      scoreB: scoreBText ? parseInt(scoreBText, 10) : null,
-      format: getBestOfLabel(rawText),
+      scoreA,
+      scoreB,
+      format: getBestOfLabel($match.find(".brkts-matchlist-format, .match-bm-lbl, [data-bestof], [data-matchtype]").text()) || getBestOfLabel(rawText),
+      status: finished === "finished" || scoreA != null || scoreB != null ? "finished" : "scheduled",
+      sourceUrl: pageUrl,
+      rawText
+    });
+  });
+
+  $(".match-info").each((_, matchEl) => {
+    const $match = $(matchEl);
+    if ($match.closest(".brkts-matchlist-match").length > 0) return;
+
+    const opponents = $match.find(".match-info-opponent-row, .match-info-header-opponent").filter((_, el) => {
+      return $(el).find(".name a, a[href*='/valorant/'], .team-template-text, .teamname").length > 0 || /TBD/i.test($(el).text());
+    });
+    if (opponents.length < 2) return;
+
+    const teamAName = getFullTeamName(opponents.eq(0));
+    const teamBName = getFullTeamName(opponents.eq(1));
+    const { finished, dateText, matchDate } = extractDateFromScope($match);
+    const scoreTexts = opponents.map((_, el) => {
+      const $opp = $(el);
+      return $opp.find(".match-info-opponent-score, .match-info-header-scoreholder-score").first().text().trim();
+    }).get();
+    const scoreA = parseInteger(scoreTexts[0]);
+    const scoreB = parseInteger(scoreTexts[1]);
+    const stage = $match.find(".match-info-stage").first().text().trim() || null;
+    const tournamentName = $match.find(".match-info-tournament-name a").first().text().trim() || null;
+    const formatText = $match.find(".match-bm-lbl, .brkts-popup-header-dev-match-type, [data-bestof], [data-matchtype]").first().text().trim() || null;
+    const rawText = $.html(matchEl)?.slice(0, 2500) || null;
+
+    matches.push({
+      stage: tournamentName || stage,
+      round: stage,
+      matchDate,
+      matchDateTime: dateText,
+      teamAName,
+      teamBName,
+      scoreA,
+      scoreB,
+      format: getBestOfLabel(formatText) || getBestOfLabel(rawText),
+      status: finished === "finished" || scoreA != null || scoreB != null ? "finished" : "scheduled",
+      sourceUrl: pageUrl,
+      rawText
+    });
+  });
+
+  $(".brkts-match").each((_, matchEl) => {
+    const $match = $(matchEl);
+    const opponents = $match.find(".brkts-opponent-entry");
+    if (opponents.length < 2) return;
+
+    const teamAName = getFullTeamName(opponents.eq(0));
+    const teamBName = getFullTeamName(opponents.eq(1));
+    const scoreAText = opponents.eq(0).find(".brkts-opponent-score-inner").text().trim();
+    const scoreBText = opponents.eq(1).find(".brkts-opponent-score-inner").text().trim();
+    const scoreA = parseInteger(scoreAText);
+    const scoreB = parseInteger(scoreBText);
+    const $popup = $match.find(".brkts-match-info-popup");
+    const { finished, dateText, matchDate } = extractDateFromScope($popup.length ? $popup : $match);
+    const $bracket = $match.closest(".brkts-bracket");
+    const stage = $bracket.attr("data-matchsection") || findSectionForElement(matchEl) || null;
+    const rawHtml = $.html(matchEl)?.slice(0, 500) || "";
+    const round = findLiquipediaBracketRoundLabel($, matchEl) || rawHtml.match(/<!--\s*(.+?)\s*-->/)?.[1] || null;
+    const formatText = [
+      $popup.find(".match-bm-lbl, .brkts-popup-header-dev-match-type, [data-bestof], [data-matchtype]").text().trim(),
+      $match.attr("data-bestof"),
+      $match.attr("data-matchtype"),
+    ].filter(Boolean).join(" ") || null;
+    const rawText = $.html(matchEl)?.slice(0, 2500) || null;
+
+    matches.push({
+      stage,
+      round,
+      matchDate,
+      matchDateTime: dateText,
+      teamAName,
+      teamBName,
+      scoreA,
+      scoreB,
+      format: getBestOfLabel(formatText) || getBestOfLabel(rawText),
+      status: finished === "finished" || scoreA != null || scoreB != null ? "finished" : "scheduled",
       sourceUrl: pageUrl,
       rawText
     });
@@ -274,16 +450,23 @@ function extractMatchesFromWikitext(wikitext: string): NormalizedMatch[] {
     const rawTeamB = firstClean(params.team2, params.opponent2, params.p2);
     if (!rawTeamA && !rawTeamB) continue;
 
-    const formatText = firstClean(params.bestof, params.bo, params.format);
+    const teamAName = rawTeamA ? (normalizeTeamName(rawTeamA) ?? rawTeamA) : null;
+    const teamBName = rawTeamB ? (normalizeTeamName(rawTeamB) ?? rawTeamB) : null;
+    const dateText = buildTemplateDateText(params);
+    const formatText = firstClean(params.bestof, params.bo, params.format, params.matchtype, params.type);
 
     matches.push({
-      matchDate: parseWikiDate(params.date ?? params.time ?? params.datetime),
-      teamAName: rawTeamA,
-      teamBName: rawTeamB,
+      stage: firstClean(params.stage, params.section),
+      round: firstClean(params.round, params.match, params.title),
+      matchDate: parseWikiDate(dateText),
+      matchDateTime: dateText,
+      teamAName,
+      teamBName,
       scoreA: parseInteger(params.score1 ?? params.games1),
       scoreB: parseInteger(params.score2 ?? params.games2),
       format: getBestOfLabel(formatText) || getBestOfLabel(template),
-      rawText: template.slice(0, 1000)
+      status: firstClean(params.status, params.finished, params.walkover),
+      rawText: template.slice(0, 2500)
     });
   }
   return matches;
@@ -312,8 +495,11 @@ function normalizeMatchCandidate(candidate: NormalizedMatch, sourceTitle: string
   const matchId = candidate.matchId ?? createStableMatchId({ 
     sourceTitle, 
     matchDate: candidate.matchDate, 
+    matchDateTime: candidate.matchDateTime,
     teamAId, 
     teamBId, 
+    stage: candidate.stage,
+    round: candidate.round,
     extraHint: indexHint 
   });
 
@@ -358,10 +544,26 @@ function createStableMatchId(input: {
   return `match_${createHash("md5").update(data).digest("hex").slice(0, 12)}`;
 }
 
+/* ───── Deduplication ───── */
+
 function dedupeMatches(matches: NormalizedMatch[]): NormalizedMatch[] {
   const seen = new Map<string, NormalizedMatch>();
   for (const m of matches) {
-    if (m.matchId) seen.set(m.matchId, m);
+    if (!m.matchId) continue;
+    const existingById = seen.get(m.matchId);
+    if (existingById) {
+      if (scoreMatchCompleteness(m) > scoreMatchCompleteness(existingById)) seen.set(m.matchId, { ...existingById, ...m });
+      continue;
+    }
+
+    const pairKey = matchDedupeKey(m);
+    const existingByPair = [...seen.entries()].find(([, existing]) => matchDedupeKey(existing) === pairKey);
+    if (existingByPair) {
+      if (scoreMatchCompleteness(m) > scoreMatchCompleteness(existingByPair[1])) seen.set(existingByPair[0], m);
+      continue;
+    }
+
+    seen.set(m.matchId, m);
   }
   return Array.from(seen.values());
 }
@@ -384,6 +586,81 @@ function firstClean(...values: Array<string | null | undefined>) {
     if (c) return c;
   }
   return null;
+}
+
+function buildTemplateDateText(params: Record<string, string | undefined>) {
+  const direct = firstClean(
+    params.datetime,
+    params.timestamp,
+    params.starttime,
+    params.start_time,
+    params.date,
+    params.time,
+  );
+  if (direct && hasExplicitTimeText(direct)) return direct;
+
+  const date = firstClean(params.date, params.day, params.startdate, params.start_date);
+  const time = firstClean(params.time, params.hour);
+  const minute = firstClean(params.minute, params.min);
+  const timezone = firstClean(params.timezone, params.tz, params.zone);
+  if (date && time) {
+    const clock = minute && /^\d{1,2}$/.test(time) ? `${time}:${minute.padStart(2, "0")}` : time;
+    return [date, clock, timezone].filter(Boolean).join(" ");
+  }
+
+  return direct || null;
+}
+
+function normalizeTeamName(raw: string) {
+  const cleaned = cleanWikiValue(raw);
+  if (!cleaned) return null;
+  return cleaned
+    .replace(/^team:/i, "")
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getTimestampAttr($el: any) {
+  return $el.attr("data-timestamp") || $el.attr("data-unix") || null;
+}
+
+function parseTimestampDate(value: string | null | undefined) {
+  if (!value) return null;
+  const raw = Number(value);
+  if (!Number.isFinite(raw) || raw <= 0) return null;
+  const ms = raw > 9_999_999_999 ? raw : raw * 1000;
+  const date = new Date(ms);
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function scoreMatchCompleteness(match: NormalizedMatch) {
+  let score = 0;
+  if (match.matchDate) score += 20;
+  if (hasExplicitTimeText(match.matchDateTime, match.rawText)) score += 10;
+  if (match.teamAName && !isPlaceholderTeam(match.teamAName)) score += 8;
+  if (match.teamBName && !isPlaceholderTeam(match.teamBName)) score += 8;
+  if (getBestOfLabel(match.format) || getBestOfLabel(match.rawText)) score += 5;
+  if (match.stage) score += 2;
+  if (match.round) score += 2;
+  if (match.sourceUrl) score += 1;
+  return score;
+}
+
+function matchDedupeKey(match: NormalizedMatch) {
+  const teams = [
+    (match.teamAName || "").toLowerCase().trim(),
+    (match.teamBName || "").toLowerCase().trim()
+  ].sort();
+  return [
+    teams[0],
+    teams[1],
+    match.matchDate?.getTime() ?? "",
+    (match.matchDateTime || "").toLowerCase().trim(),
+    (match.stage || "").toLowerCase().trim(),
+    (match.round || "").toLowerCase().trim(),
+    (match.format || "").toLowerCase().trim()
+  ].join("|");
 }
 
 function extractSubPages(wikitext: string, html: string, pageUrl: string): string[] {

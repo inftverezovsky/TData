@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db/db';
 import { dedupeTournamentMatches } from '@/lib/matches/dedupe';
 import { applyDisciplineScheduleLead } from '@/lib/matches/scheduleOffset';
 import {
+  getStageSlotAnnouncementLabel,
   getUploadableTbdAnnouncementSides,
   parseScheduleSelectionId,
   type TbdAnnouncementSide,
@@ -10,6 +11,7 @@ import {
 import { resolveExactMatchDate } from '@/lib/matches/time';
 import { isPlaceholderTeam, isTbdPlaceholderTeam } from '@/lib/teams/teams';
 import { buildTeamMappingLookup, findTeamMapping } from '@/lib/teams/mappingLookup';
+import { detectTournamentSource, supportsStageAnnouncements } from '@/lib/utils/tournamentSource';
 import { resolveAdminSettings } from './resolveAdminSettings';
 
 export interface FixtMatch {
@@ -76,7 +78,7 @@ export async function buildFixtPayload(
     }),
     prisma.tournament.findUnique({
       where: { id: tournamentId },
-      select: { disciplineSlug: true },
+      select: { disciplineSlug: true, sourceUrl: true },
     }),
   ]);
 
@@ -93,6 +95,7 @@ export async function buildFixtPayload(
   const shapkaId = mapping?.adminShapkaId || settings.defaultShapkaId;
   const sportId = settings.adminSportId;
   const max = settings.adminMax;
+  const source = detectTournamentSource(tournament.sourceUrl);
 
   if (!shapkaId) warnings.push('Shapka ID is not set.');
   if (!sportId) warnings.push('Sport ID is not set.');
@@ -115,7 +118,7 @@ export async function buildFixtPayload(
   const mappingMap = buildTeamMappingLookup(teamMappings);
 
   const readyMatches: FixtMatch[] = [];
-  const readyMatchIds: string[] = [];
+  const readyMatchIds = new Set<string>();
 
   const dedupedMatches = dedupeTournamentMatches(matches);
 
@@ -158,7 +161,50 @@ export async function buildFixtPayload(
 
     const matchDate = applyDisciplineScheduleLead(exactMatchDate, disciplineSlug);
     const uploadDate = formatUploadDate(matchDate, settings.timezone, settings.dateFormat);
-    const uploadableTbdSides = getUploadableTbdAnnouncementSides(match);
+    const isStageAnnouncementSlot =
+      supportsStageAnnouncements(source) &&
+      isPlaceholderTeam(teamAName) &&
+      isPlaceholderTeam(teamBName);
+    if (isStageAnnouncementSlot) {
+      const requestedStageAnnouncement =
+        !hasExplicitSelection ||
+        selectedFullMatch ||
+        Boolean(selectedSides?.has('stage'));
+
+      if (requestedStageAnnouncement) {
+        const stageName = getStageSlotAnnouncementLabel(match);
+        const mapping = findTeamMapping(mappingMap, stageName);
+        const platformId = mapping?.platformId || null;
+        const team1 = parsePositiveInteger(platformId);
+        const virtualMatchId = `${match.matchId}::stage`;
+
+        if (!team1) {
+          warnings.push(`Анонс без ID: ${stageName}`);
+          skippedMatches.push({
+            matchId: virtualMatchId,
+            reason: 'Missing or unmapped stage announcement platform ID',
+            teams: `${stageName} (${platformId || 'N/A'})`,
+          });
+          continue;
+        }
+
+        readyMatches.push({
+          date: uploadDate,
+          team1,
+          team2: "",
+        });
+        readyMatchIds.add(match.id);
+      } else if (selectedSides && selectedSides.size > 0) {
+        skippedMatches.push({
+          matchId: match.matchId,
+          reason: 'Selected stage announcement side is not upload-ready',
+          teams: `${getStageSlotAnnouncementLabel(match)} (${Array.from(selectedSides).join(', ')})`,
+        });
+      }
+      continue;
+    }
+
+    const uploadableTbdSides = getUploadableTbdAnnouncementSides(match, { disciplineSlug, source });
     const requestedTbdSides = selectedSides
       ? uploadableTbdSides.filter((side) => selectedSides.has(side))
       : selectedFullMatch
@@ -188,6 +234,7 @@ export async function buildFixtPayload(
           team1,
           team2: "",
         });
+        readyMatchIds.add(match.id);
       }
       continue;
     }
@@ -260,7 +307,7 @@ export async function buildFixtPayload(
       team1,
       team2,
     });
-    readyMatchIds.push(match.id);
+    readyMatchIds.add(match.id);
   }
 
   const parsedShapkaId = parsePositiveInteger(shapkaId);
@@ -281,7 +328,7 @@ export async function buildFixtPayload(
   return {
     payload,
     readyMatchesCount: readyMatches.length,
-    readyMatchIds,
+    readyMatchIds: Array.from(readyMatchIds),
     skippedMatches,
     warnings,
   };

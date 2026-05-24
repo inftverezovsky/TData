@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { filterDltvEvents, parseDltvEventPage, parseDltvEvents, parseDltvMatchPage } from "../src/lib/dltv/parse";
+import { resolveDltvImportStatus } from "../src/lib/importSources/dltv";
 
 test("parseDltvEvents extracts and filters live/upcoming events", () => {
   const html = `
@@ -124,4 +125,62 @@ test("parseDltvMatchPage understands Russian detail dates", () => {
   assert.equal(match.scoreA, null);
   assert.equal(match.scoreB, null);
   assert.equal(match.status, "upcoming");
+});
+
+test("parseDltvMatchPage reads fallback team selectors and timestamp attributes", () => {
+  const html = `
+    <title>Panda vs Yakult Brothers (01 июня 2026) счет без задержки - DLTV</title>
+    <section class="match__page">
+      <section class="event__title">DLTV Test <div class="event__title-dates">Group Stage</div></section>
+      <div class="score" data-timestamp="1780309800">
+        <div class="score__format">Best of 3</div>
+        <div class="score__finished">Предстоящие</div>
+      </div>
+      <div class="match__team"><span class="team__name">Panda Gaming</span></div>
+      <div class="match__team"><span class="team__name">Yakult Brothers</span></div>
+    </section>
+  `;
+
+  const match = parseDltvMatchPage(html, "https://ru.dltv.org/matches/426700/panda-vs-yakult-brothers-test");
+  assert.equal(match.team1, "Panda Gaming");
+  assert.equal(match.team2, "Yakult Brothers");
+  assert.equal(match.matchDate?.toISOString(), "2026-06-01T10:30:00.000Z");
+  assert.equal(match.format, "Best of 3");
+});
+
+test("parseDltvMatchPage reads JSON-LD startDate", () => {
+  const html = `
+    <title>Panda vs Yakult Brothers (01 июня 2026) счет без задержки - DLTV</title>
+    <script type="application/ld+json">{"@type":"SportsEvent","startDate":"2026-06-01T11:30:00Z"}</script>
+    <section class="match__page">
+      <div class="match__page-title">
+        <span class="team__stats-name">Panda Gaming</span>
+        <span class="team__stats-name">Yakult Brothers</span>
+      </div>
+    </section>
+  `;
+
+  const match = parseDltvMatchPage(html, "https://ru.dltv.org/matches/426701/panda-vs-yakult-brothers-test");
+  assert.equal(match.matchDate?.toISOString(), "2026-06-01T11:30:00.000Z");
+});
+
+test("resolveDltvImportStatus marks partial imports when match pages fail or save nothing", () => {
+  assert.equal(resolveDltvImportStatus({
+    ok: true,
+    matchUrlsFound: 12,
+    matchPagesFailed: 1,
+    savedMatchesCount: 11,
+  }), "PARTIAL");
+  assert.equal(resolveDltvImportStatus({
+    ok: true,
+    matchUrlsFound: 12,
+    matchPagesFailed: 0,
+    savedMatchesCount: 0,
+  }), "PARTIAL");
+  assert.equal(resolveDltvImportStatus({
+    ok: true,
+    matchUrlsFound: 12,
+    matchPagesFailed: 0,
+    savedMatchesCount: 12,
+  }), "SUCCESS");
 });

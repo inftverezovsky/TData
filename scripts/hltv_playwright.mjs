@@ -474,6 +474,11 @@ async function scrapeHltv() {
         
         els.forEach(el => {
           let team1 = "", team2 = "", tournament = "Upcoming", unixTime = "0", id = "", isLive = false, format = "";
+          const rawText = String(el.textContent || '')
+            .replace(/\u00a0/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, 1500);
 
           isLive = el.classList.contains('liveMatch') ||
             el.classList.contains('live-match') ||
@@ -499,6 +504,8 @@ async function scrapeHltv() {
           tournament = eventEl?.getAttribute('data-event-headline') ||
             eventEl?.textContent?.trim() ||
             "Upcoming";
+
+          const stageText = el.querySelector('.match-stage, .matchStage, .stage, [class*="stage-name"], [class*="round-name"]')?.textContent?.trim() || "";
 
           const formatCandidates = [
             el.querySelector('.matchMeta, .match-meta, .match-meta-type, [class*="matchMeta"], [class*="match-meta"]')?.textContent,
@@ -532,6 +539,9 @@ async function scrapeHltv() {
               team2,
               unix_time: normalizedUnixTime,
               format,
+              stage: stageText,
+              round: stageText,
+              rawText,
               isLive
             });
           }

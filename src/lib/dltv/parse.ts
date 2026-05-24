@@ -124,13 +124,11 @@ export function parseDltvMatchPage(html: string, pageUrl: string): DltvMatch {
     || cleanText($(".match__page > .event__title").first().text())
     || cleanText($("section.event__title").first().text())
     || null;
-  const dateText = cleanText($(".score__date").first().text());
-  const matchDate = parseDltvDate(dateText);
+  const dateInfo = extractDltvMatchDate($);
+  const dateText = dateInfo.text;
+  const matchDate = dateInfo.date;
   const statusText = cleanText($(".score__finished").first().text());
-  const teamNames = $(".match__page-title .team__stats-name")
-    .map((_, element) => cleanTeamName($(element).text()))
-    .get()
-    .filter(Boolean);
+  const teamNames = collectDltvTeamNames($);
   const fallbackTeams = parseTeamsFromTitle(title);
   const team1 = teamNames[0] || fallbackTeams.team1;
   const team2 = teamNames[1] || fallbackTeams.team2;
@@ -155,6 +153,99 @@ export function parseDltvMatchPage(html: string, pageUrl: string): DltvMatch {
     status,
     rawText: cleanText($(".match__page").first().text()).slice(0, 2000) || title,
   };
+}
+
+function collectDltvTeamNames($: cheerio.CheerioAPI) {
+  const selectors = [
+    ".match__page-title .team__stats-name",
+    ".match__page-title [class*='team'][class*='name']",
+    ".match__team .team__name",
+    ".team__stats .team__stats-name",
+    "a[href*='/teams/'] .title",
+    "a[href*='/teams/']",
+  ];
+  const names: string[] = [];
+  for (const selector of selectors) {
+    $(selector).each((_, element) => {
+      const name = cleanTeamName($(element).text() || $(element).attr("title") || $(element).attr("aria-label") || "");
+      if (!name || looksLikeTableRowNoise(name)) return;
+      if (/^(vs|versus|против|score|date)$/i.test(name)) return;
+      if (/^tbd$/i.test(name) || !names.some((existing) => existing.toLowerCase() === name.toLowerCase())) names.push(name);
+    });
+    if (names.length >= 2) break;
+  }
+  return names.slice(0, 2);
+}
+
+function extractDltvMatchDate($: cheerio.CheerioAPI) {
+  const textCandidates = [
+    cleanText($(".score__date").first().text()),
+    cleanText($("[data-date]").first().attr("data-date") || ""),
+    cleanText($("[datetime]").first().attr("datetime") || ""),
+    cleanText($("time").first().attr("datetime") || $("time").first().text()),
+  ].filter(Boolean);
+
+  for (const text of textCandidates) {
+    const parsed = parseDltvDate(text);
+    if (parsed) return { text, date: parsed };
+  }
+
+  const timestampDate = extractTimestampDate($);
+  if (timestampDate) return timestampDate;
+
+  const jsonLdDate = extractJsonLdStartDate($);
+  if (jsonLdDate) return jsonLdDate;
+
+  return { text: textCandidates[0] || "", date: null };
+}
+
+function extractTimestampDate($: cheerio.CheerioAPI) {
+  const attrs = ["data-timestamp", "data-unix", "data-time"];
+  for (const attr of attrs) {
+    const raw = $(`[${attr}]`).first().attr(attr);
+    if (!raw || !/^\d{9,13}$/.test(raw)) continue;
+    const num = Number(raw);
+    const date = new Date(num > 9_999_999_999 ? num : num * 1000);
+    if (Number.isFinite(date.getTime())) return { text: raw, date };
+  }
+  return null;
+}
+
+function extractJsonLdStartDate($: cheerio.CheerioAPI) {
+  for (const script of $("script[type='application/ld+json']").toArray()) {
+    try {
+      const parsed = JSON.parse($(script).html() || "{}");
+      const candidates = Array.isArray(parsed) ? parsed : [parsed];
+      for (const item of candidates) {
+        const startDate = findJsonDate(item);
+        if (!startDate) continue;
+        const parsedDate = parseDltvDate(startDate) || new Date(startDate);
+        if (parsedDate instanceof Date && Number.isFinite(parsedDate.getTime())) {
+          return { text: startDate, date: parsedDate };
+        }
+      }
+    } catch {}
+  }
+  return null;
+}
+
+function findJsonDate(value: unknown): string | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  if (typeof record.startDate === "string") return record.startDate;
+  if (typeof record.startTime === "string") return record.startTime;
+  for (const nested of Object.values(record)) {
+    if (Array.isArray(nested)) {
+      for (const item of nested) {
+        const found = findJsonDate(item);
+        if (found) return found;
+      }
+    } else if (nested && typeof nested === "object") {
+      const found = findJsonDate(nested);
+      if (found) return found;
+    }
+  }
+  return null;
 }
 
 export function extractDltvEventId(pageUrl: string) {
@@ -217,6 +308,12 @@ function parseCentralScore($: cheerio.CheerioAPI) {
 }
 
 function parseDltvDate(value: string) {
+  const isoWithTimezone = value.match(/((?:19|20)\d{2}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2}))/);
+  if (isoWithTimezone) {
+    const date = new Date(isoWithTimezone[1]);
+    if (Number.isFinite(date.getTime())) return date;
+  }
+
   const match = value.match(/((?:19|20)\d{2})-(\d{2})-(\d{2})\s+(\d{2}):(\d{2})(?::(\d{2}))?/);
   if (match) {
     const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4]), Number(match[5]), Number(match[6] || "0")));

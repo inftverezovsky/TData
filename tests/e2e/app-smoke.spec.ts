@@ -119,6 +119,7 @@ test("manual import hides discipline selector and uses AI-first image recognitio
 
   await page.goto("/manual-import");
   await page.waitForLoadState("networkidle");
+  await page.getByPlaceholder("12345").fill("777");
 
   await expect(page.getByText("Дисциплина", { exact: true })).toHaveCount(0);
   await expect(page.getByRole("combobox", { name: "Дисциплина" })).toHaveCount(0);

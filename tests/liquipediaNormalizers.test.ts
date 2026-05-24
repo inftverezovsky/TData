@@ -184,6 +184,52 @@ test("LoL normalizer extracts match-info vertical schedule cards and season tabs
 
   assert.ok(normalized.subPages.includes("https://liquipedia.net/leagueoflegends/LCK/2026/Rounds_1-2"));
   assert.ok(normalized.matches.some((match) => match.teamAName === "SOOPers" && match.teamBName === "DRX"));
+  assert.equal(normalized.leagueOfLegendsDiagnostics?.coverage.withExactTime, 1);
+  assert.equal(normalized.leagueOfLegendsDiagnostics?.savedMatches, 1);
+});
+
+test("LoL normalizer reports diagnostics and keeps Team vs TBD with exact time", () => {
+  const normalized = normalizeLeagueOfLegendsTournament({
+    title: "LoL Parser Cup",
+    pageUrl: "https://liquipedia.net/leagueoflegends/LoL_Parser_Cup",
+    wikitext: "{{Infobox league|name=LoL Parser Cup|sdate=2026-06-01|edate=2026-06-02}}",
+    parsedHtml: `
+      <div class="brkts-matchlist">
+        <div class="brkts-matchlist-title"><b>Swiss Stage</b></div>
+        <div class="brkts-matchlist-match">
+          <div class="brkts-matchlist-opponent"><span class="name"><a title="Monte">Monte</a></span></div>
+          <div class="brkts-matchlist-score"></div>
+          <div class="brkts-matchlist-score"></div>
+          <div class="brkts-matchlist-opponent"><span class="name">TBD</span></div>
+          <span class="match-info-countdown" data-timestamp="1780309800">13:30</span>
+          <span class="brkts-matchlist-format">Best of 1</span>
+        </div>
+      </div>
+    `,
+  });
+
+  assert.equal(normalized.matches.length, 1);
+  assert.equal(normalized.matches[0].teamAName, "Monte");
+  assert.equal(normalized.matches[0].teamBName, "TBD");
+  assert.equal(normalized.matches[0].matchDate?.toISOString(), "2026-06-01T10:30:00.000Z");
+  assert.equal(normalized.matches[0].format, "BO1");
+  assert.equal(normalized.leagueOfLegendsDiagnostics?.coverage.teamVsTbd, 1);
+});
+
+test("LoL normalizer tracks no-time rows in diagnostics and infers BO from map slots", () => {
+  const normalized = normalizeLeagueOfLegendsTournament({
+    title: "LoL No Time Cup",
+    pageUrl: "https://liquipedia.net/leagueoflegends/LoL_No_Time_Cup",
+    wikitext: `
+      {{Infobox league|name=LoL No Time Cup|sdate=2026-06-01|edate=2026-06-02}}
+      {{Match|team1=Alpha|team2=Bravo|map1={{Map}}|map2={{Map}}|map3={{Map}}}}
+    `,
+  });
+
+  assert.equal(normalized.matches.length, 1);
+  assert.equal(normalized.matches[0].format, "BO3");
+  assert.equal(normalized.leagueOfLegendsDiagnostics?.coverage.withoutExactTime, 1);
+  assert.equal(normalized.leagueOfLegendsDiagnostics?.skipReasons.no_exact_time, 1);
 });
 
 test("Valorant wikitext extraction does not duplicate MatchSchedule templates", () => {
@@ -197,4 +243,49 @@ test("Valorant wikitext extraction does not duplicate MatchSchedule templates", 
   });
 
   assert.equal(normalized.matches.length, 1);
+});
+
+test("Valorant normalizer reports diagnostics and keeps Team vs TBD with exact time", () => {
+  const normalized = normalizeValorantTournament({
+    title: "Valorant Parser Cup",
+    pageUrl: "https://liquipedia.net/valorant/Valorant_Parser_Cup",
+    wikitext: "{{Infobox league|name=Valorant Parser Cup|sdate=2026-06-01|edate=2026-06-02}}",
+    parsedHtml: `
+      <div class="brkts-matchlist">
+        <div class="brkts-matchlist-title"><b>Swiss Stage</b></div>
+        <div class="brkts-matchlist-match">
+          <div class="brkts-matchlist-opponent"><span class="name"><a title="9z Team">9z Team</a></span></div>
+          <div class="brkts-matchlist-score"></div>
+          <div class="brkts-matchlist-score"></div>
+          <div class="brkts-matchlist-opponent"><span class="name">TBD</span></div>
+          <span class="match-info-countdown" data-timestamp="1780309800">13:30</span>
+          <span class="brkts-matchlist-format">Best of 3</span>
+        </div>
+      </div>
+    `,
+  });
+
+  assert.equal(normalized.matches.length, 1);
+  assert.equal(normalized.matches[0].teamAName, "9z Team");
+  assert.equal(normalized.matches[0].teamBName, "TBD");
+  assert.equal(normalized.matches[0].matchDate?.toISOString(), "2026-06-01T10:30:00.000Z");
+  assert.equal(normalized.matches[0].format, "BO3");
+  assert.equal(normalized.valorantDiagnostics?.coverage.teamVsTbd, 1);
+  assert.equal(normalized.valorantDiagnostics?.coverage.withExactTime, 1);
+});
+
+test("Valorant normalizer tracks no-time rows and infers BO from map slots", () => {
+  const normalized = normalizeValorantTournament({
+    title: "Valorant No Time Cup",
+    pageUrl: "https://liquipedia.net/valorant/Valorant_No_Time_Cup",
+    wikitext: `
+      {{Infobox league|name=Valorant No Time Cup|sdate=2026-06-01|edate=2026-06-02}}
+      {{Match|team1=Alpha|team2=Bravo|map1={{Map}}|map2={{Map}}|map3={{Map}}}}
+    `,
+  });
+
+  assert.equal(normalized.matches.length, 1);
+  assert.equal(normalized.matches[0].format, "BO3");
+  assert.equal(normalized.valorantDiagnostics?.coverage.withoutExactTime, 1);
+  assert.equal(normalized.valorantDiagnostics?.skipReasons.no_exact_time, 1);
 });

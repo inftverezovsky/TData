@@ -110,6 +110,9 @@ async function saveHltvTournamentMatches(params: {
       hasPlaceholderTeams,
       matchDate,
       format,
+      stage: cleanOptionalText(m.stage),
+      round: cleanOptionalText(m.round),
+      rawText: cleanOptionalText(m.rawText),
       sourceUrl,
     };
   }).filter((m: any) => m.matchDate));
@@ -138,6 +141,9 @@ async function saveHltvTournamentMatches(params: {
         hasPlaceholderTeams: m.hasPlaceholderTeams,
         matchDate,
         format: m.format,
+        stage: m.stage,
+        round: m.round,
+        rawText: m.rawText,
         sourceUrl: m.sourceUrl,
         status: "upcoming",
       },
@@ -148,6 +154,9 @@ async function saveHltvTournamentMatches(params: {
         teamBId: m.teamBId,
         hasPlaceholderTeams: m.hasPlaceholderTeams,
         matchDate,
+        stage: m.stage,
+        round: m.round,
+        rawText: m.rawText,
         sourceUrl: m.sourceUrl,
         ...(m.format ? { format: m.format } : {}),
       },
@@ -218,4 +227,12 @@ async function saveHltvTournamentMatches(params: {
       ...participantRefresh,
     ]);
   }
+}
+
+function cleanOptionalText(value: unknown) {
+  const text = String(value || "")
+    .replace(/\u00a0/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text || null;
 }

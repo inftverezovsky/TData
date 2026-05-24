@@ -1,12 +1,13 @@
 import { executeDltv, type DltvMode } from "./client";
+import type { DltvRunResult } from "./types";
 
-let dltvQueue: Promise<any> = Promise.resolve();
-const activeRequests = new Map<string, Promise<any>>();
+let dltvQueue: Promise<unknown> = Promise.resolve();
+const activeRequests = new Map<string, Promise<DltvRunResult>>();
 let lastStartedAt = 0;
 
 const DLTV_MODES = new Set<DltvMode>(["events", "search", "event", "health"]);
 
-export async function runDltv(mode: DltvMode, queryOrUrl?: string, options: { noCache?: boolean } = {}) {
+export async function runDltv(mode: DltvMode, queryOrUrl?: string, options: { noCache?: boolean } = {}): Promise<DltvRunResult> {
   if (!DLTV_MODES.has(mode)) {
     throw new Error(`Unsupported DLTV mode: ${mode}`);
   }

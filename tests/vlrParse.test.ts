@@ -30,6 +30,27 @@ test("parseVlrMatchesHtml parses grouped VLR match cards", () => {
   assert.equal(matches[0].stage, "Stage 2-Upper Semifinals");
 });
 
+test("parseVlrMatchesHtml extracts card timestamp and BO format", () => {
+  const matches = parseVlrMatchesHtml(`
+    <div class="wf-label mod-large">Sun, May 24, 2026</div>
+    <a href="/674860/paper-rex-vs-gen-g" class="wf-module-item match-item" data-utc-ts="1779620400">
+      <div class="match-item-time">11:00 AM</div>
+      <div class="match-item-vs">
+        <div class="match-item-vs-team"><div class="match-item-vs-team-name"><div class="text-of">Paper Rex</div></div></div>
+        <div class="match-item-vs-team"><div class="match-item-vs-team-name"><div class="text-of">Gen.G</div></div></div>
+      </div>
+      <div class="match-item-note">Best of 5</div>
+      <div class="match-item-eta"><div class="ml"><div class="ml-status">Upcoming</div></div></div>
+      <div class="match-item-event text-of"><div class="match-item-event-series text-of">Grand Final</div>Masters Toronto</div>
+    </a>
+  `);
+
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0].utcTimestamp, "1779620400");
+  assert.equal(matches[0].unix_time, 1779620400);
+  assert.equal(matches[0].format, "BO5");
+});
+
 test("parseVlrMatchDetailHtml extracts utc timestamp and BO format", () => {
   const detail = parseVlrMatchDetailHtml(`
     <div class="wf-card match-header">
@@ -55,6 +76,26 @@ test("parseVlrMatchDetailHtml extracts utc timestamp and BO format", () => {
   assert.equal(detail.format, "BO3");
 });
 
+test("parseVlrMatchDetailHtml supports alternate team and time selectors", () => {
+  const detail = parseVlrMatchDetailHtml(`
+    <div class="wf-card match-header">
+      <a class="match-header-event"><div><div>Masters Toronto</div><div class="match-header-event-series">Upper Final</div></div></a>
+      <time datetime="2026-05-25T12:30:00Z">May 25 12:30 UTC</time>
+      <div class="match-header-vs">
+        <a class="match-header-link" title="Rex Regum Qeon"><span class="wf-title-med">Rex Regum Qeon</span></a>
+        <div class="match-header-vs-note">Best of 3</div>
+        <a class="match-header-link" title="Team Heretics"><span class="wf-title-med">Team Heretics</span></a>
+      </div>
+    </div>
+  `, "https://www.vlr.gg/674861/rex-regum-qeon-vs-team-heretics");
+
+  assert.equal(detail.team1, "Rex Regum Qeon");
+  assert.equal(detail.team2, "Team Heretics");
+  assert.equal(detail.utcTimestamp, "2026-05-25T12:30:00Z");
+  assert.equal(detail.unix_time, 1779712200);
+  assert.equal(detail.format, "BO3");
+});
+
 test("parseVlrEventMatchesHtml parses upcoming sidebar matches with TBD", () => {
   const parsed = parseVlrEventMatchesHtml(`
     <h1 class="wf-title">Esports World Cup 2026: EMEA Qualifier</h1>
@@ -72,6 +113,25 @@ test("parseVlrEventMatchesHtml parses upcoming sidebar matches with TBD", () => 
   assert.equal(parsed.matches.length, 1);
   assert.equal(parsed.matches[0].team1, "TBD");
   assert.equal(parsed.matches[0].team2, "Natus Vincere");
+});
+
+test("parseVlrEventMatchesHtml keeps positional TBD vs TBD sidebar slots", () => {
+  const parsed = parseVlrEventMatchesHtml(`
+    <h1 class="wf-title">Esports World Cup 2026: EMEA Qualifier</h1>
+    <div class="event-sidebar-matches">
+      <a class="wf-module-item" href="/674863/tbd-vs-tbd">
+        <div class="event-sidebar-matches-series">Stage 2-Lower Round 3</div>
+        <div class="event-sidebar-matches-team"><div class="name"><span>TBD</span></div><div class="score mod-upcoming">-</div></div>
+        <div class="event-sidebar-matches-team"><div class="name"><span>TBD</span></div><div class="score mod-upcoming">-</div></div>
+        <div class="moment-tz-convert" data-utc-ts="1780138800">6:00 pm</div>
+      </a>
+    </div>
+  `, "https://www.vlr.gg/event/2954/test");
+
+  assert.equal(parsed.matches.length, 1);
+  assert.equal(parsed.matches[0].team1, "TBD");
+  assert.equal(parsed.matches[0].team2, "TBD");
+  assert.equal(parsed.matches[0].unix_time, 1780138800);
 });
 
 test("parseVlrEventMatchesHtml merges bracket timestamps into sidebar matches", () => {

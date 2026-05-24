@@ -48,10 +48,13 @@ export default async function TournamentPage({
 
   const dedupedMatches = dedupeTournamentMatches(tournament.matches);
   const tournamentForView = { ...tournament, matches: dedupedMatches };
+  const source = detectTournamentSource(tournament.sourceUrl);
 
   const teamNames = collectTournamentTeamNames({
     matches: dedupedMatches,
     participants: tournament.participants,
+    disciplineSlug: slug,
+    source,
   });
   const mappings = await prisma.teamMapping.findMany({
     where: {
@@ -110,7 +113,6 @@ export default async function TournamentPage({
     }
   }
 
-  const source = detectTournamentSource(tournament.sourceUrl);
   const disciplineName = discipline?.name || slug.charAt(0).toUpperCase() + slug.slice(1);
   const adminSettings = await resolveAdminSettings(slug);
 
@@ -154,6 +156,7 @@ export default async function TournamentPage({
         tournament={tournamentForView} 
         mappingMap={mappingMap} 
         disciplineSlug={slug} 
+        source={source}
         adminSettings={{
           apiUrl: adminSettings.apiUrl || "",
           adminSportId: adminSettings.adminSportId || "",

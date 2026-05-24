@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { detectTournamentSource, getTournamentSourceLabel } from "../src/lib/utils/tournamentSource";
+import { detectTournamentSource, getTournamentSourceLabel, supportsStageAnnouncements } from "../src/lib/utils/tournamentSource";
 
 test("detectTournamentSource detects HLTV URLs", () => {
   assert.equal(detectTournamentSource("https://www.hltv.org/events/8049/pgl-astana-2026"), "hltv");
@@ -32,4 +32,11 @@ test("getTournamentSourceLabel returns user-facing labels", () => {
   assert.equal(getTournamentSourceLabel("dltv"), "Источник: DLTV");
   assert.equal(getTournamentSourceLabel("fandom"), "Источник: Fandom");
   assert.equal(getTournamentSourceLabel("liquipedia"), "Источник: Liquipedia");
+});
+
+test("supportsStageAnnouncements includes all tournament sources", () => {
+  for (const source of ["liquipedia", "hltv", "vlr", "dltv", "fandom"] as const) {
+    assert.equal(supportsStageAnnouncements(source), true, source);
+  }
+  assert.equal(supportsStageAnnouncements(null), false);
 });

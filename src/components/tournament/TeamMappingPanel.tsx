@@ -82,10 +82,15 @@ export default function TeamMappingPanel({
   }, [teamNames, initialMappings]);
 
   async function handleSave(name: string) {
-    setSaving(name);
     setNotice(null);
+    const entry = mappings[name];
+    if (!isValidPlatformId(entry?.platformId)) {
+      setNotice({ type: "error", text: "Введите корректный ID платформы перед сохранением." });
+      return;
+    }
+
+    setSaving(name);
     try {
-      const entry = mappings[name];
       const res = await fetch("/api/team-mapping", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -436,6 +441,7 @@ export default function TeamMappingPanel({
                 const isSaving = saving === name;
                 const adminNameValue = entry.displayAdminName ?? entry.canonicalName ?? "";
                 const isPersistedMapping = Boolean(entry.saved && entry.platformId);
+                const canSave = !isPersistedMapping && isValidPlatformId(entry.platformId);
                 
                 return (
                   <tr key={name} className="group hover:bg-slate-50/50 transition-colors">
@@ -490,10 +496,12 @@ export default function TeamMappingPanel({
                       <div className="flex items-center justify-end gap-1">
                         <button
                           onClick={() => handleSave(name)}
-                          disabled={isSaving || isPersistedMapping}
+                          disabled={isSaving || !canSave}
                           className={`min-w-[100px] px-3 py-1.5 rounded-full text-[10px] font-medium uppercase tracking-widest transition-all ${
                             isPersistedMapping
                               ? "text-emerald-600 bg-emerald-50 border border-emerald-100 cursor-default"
+                              : !canSave
+                                ? "bg-slate-50 text-slate-300 border border-slate-100 cursor-not-allowed rounded-lg"
                               : "bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100 rounded-lg"
                           }`}
                         >
@@ -792,6 +800,10 @@ function NameSourceIcon({ entry }: { entry: Partial<TeamMappingRecord> & { saved
 
 function getPreviewSelectionKey(item: AutoMappingPreviewItem) {
   return `${item.liquipediaName.trim().toLowerCase()}\u0000${String(item.platformId || "").trim()}`;
+}
+
+function isValidPlatformId(value: string | null | undefined) {
+  return /^[1-9]\d*$/.test(String(value || "").trim());
 }
 
 function formatScore(value: number | null | undefined) {

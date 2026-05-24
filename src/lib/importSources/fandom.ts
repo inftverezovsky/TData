@@ -1,5 +1,5 @@
 import { createHash } from "crypto";
-import { Prisma } from "@prisma/client";
+import { Prisma, type ImportStatus } from "@prisma/client";
 import { prisma } from "@/lib/db/db";
 import { getFandomLolApiUrl } from "@/lib/config/env";
 import {
@@ -19,8 +19,10 @@ import {
   hasPlaceholderTeams,
 } from "@/lib/matches/quality";
 import { resolveExactMatchDate } from "@/lib/matches/time";
+import { finalizeEsportsParsingDiagnostics } from "@/lib/matches/parsingDiagnostics";
 import { IMPORT_MATCH_FUTURE_WINDOW_DAYS, IMPORT_MATCH_PAST_GRACE_DAYS, titleKey } from "@/lib/liquipedia/importer/helpers";
 import { canonicalizeMatchesWithTournamentTeams } from "@/lib/liquipedia/importer/helpers";
+import { cleanWikiValue, extractFirstTemplateByPrefix, parseTemplate } from "@/lib/normalizers/wikiText";
 import {
   clearSourceFetchCache,
   findSourceFetchCache,
@@ -72,9 +74,14 @@ export async function importFandomTournament(input: ImportFandomTournamentInput)
       pageUrl,
       force: input.force,
     });
-    const cargoMatches = await fetchFandomMatchScheduleCargo({
-      overviewPage: page.title,
-    }).catch(() => []);
+    let cargoFailed = false;
+    let cargoError: string | null = null;
+    const cargoLookup = await fetchFandomMatchScheduleCargoCandidates(page, title).catch((error) => {
+      cargoFailed = true;
+      cargoError = error instanceof Error ? error.message : "Fandom Cargo недоступен";
+      return { rows: [], overviewPage: null, attempted: [] };
+    });
+    const cargoMatches = cargoLookup.rows;
 
     const normalized = normalizeFandomLeagueOfLegendsTournament({
       pageId: page.pageId,
@@ -83,6 +90,10 @@ export async function importFandomTournament(input: ImportFandomTournamentInput)
       wikitext: page.wikitext,
       parsedHtml: page.html,
       cargoMatches,
+      cargoFailed,
+      cargoError,
+      cacheHit: page.cacheHit,
+      stale: page.stale,
     });
 
     normalized.cacheHit = page.cacheHit;
@@ -142,21 +153,33 @@ export async function importFandomTournament(input: ImportFandomTournamentInput)
       matches: normalized.matches,
       force: !!input.force,
     });
+    normalized.status = resolveFandomSavedStatus(normalized.status, normalized.matches.length, matches.length);
 
     const qualityScore = computeMatchSetQuality(matches);
+    normalized.leagueOfLegendsDiagnostics = finalizeEsportsParsingDiagnostics(normalized.leagueOfLegendsDiagnostics, {
+      savedMatches: matches.length,
+      fandom: {
+        cargoFailed,
+        cacheHit: page.cacheHit,
+        stale: page.stale,
+      },
+    }) || undefined;
     await updateFandomSnapshotQuality(page.rawSnapshotId, qualityScore, matches.length).catch(() => {});
     await prisma.tournament.update({
       where: { id: tournament.id },
       data: {
+        extractionStatus: normalized.status,
         normalization: {
           ...(buildNormalizationJson(normalized) as Record<string, unknown>),
           qualityScore,
-        sourceBreakdown: {
+          sourceBreakdown: {
             fandom: {
               pageTitle: page.title,
               pageId: page.pageId ?? null,
               matches: matches.length,
               cargoMatches: cargoMatches.length,
+              cargoOverviewPage: cargoLookup.overviewPage,
+              cargoOverviewPagesTried: cargoLookup.attempted,
               cacheHit: page.cacheHit,
               cacheLayer: page.cacheLayer,
               stale: page.stale,
@@ -190,6 +213,8 @@ export async function importFandomTournament(input: ImportFandomTournamentInput)
           pageId: page.pageId ?? null,
           matches: matches.length,
           cargoMatches: cargoMatches.length,
+          cargoOverviewPage: cargoLookup.overviewPage,
+          cargoOverviewPagesTried: cargoLookup.attempted,
           cacheHit: page.cacheHit,
           cacheLayer: page.cacheLayer,
           stale: page.stale,
@@ -204,6 +229,59 @@ export async function importFandomTournament(input: ImportFandomTournamentInput)
     });
     throw error;
   }
+}
+
+function resolveFandomSavedStatus(currentStatus: ImportStatus, normalizedMatchesCount: number, savedMatchesCount: number): ImportStatus {
+  if (currentStatus !== "SUCCESS") return currentStatus;
+  if (normalizedMatchesCount > 0 && savedMatchesCount === 0) return "PARTIAL";
+  return currentStatus;
+}
+
+async function fetchFandomMatchScheduleCargoCandidates(page: FandomParsedPage, requestedTitle: string) {
+  const attempted: string[] = [];
+  let lastError: unknown = null;
+
+  for (const overviewPage of getFandomCargoOverviewCandidates(page, requestedTitle)) {
+    attempted.push(overviewPage);
+    try {
+      const rows = await fetchFandomMatchScheduleCargo({ overviewPage });
+      if (rows.length > 0) return { rows, overviewPage, attempted };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  if (lastError && attempted.length > 0) throw lastError;
+  return { rows: [], overviewPage: null, attempted };
+}
+
+function getFandomCargoOverviewCandidates(page: FandomParsedPage, requestedTitle: string) {
+  const candidates = new Set<string>();
+  const add = (value: string | null | undefined) => {
+    const cleaned = cleanWikiValue(value);
+    if (cleaned && cleaned.length >= 2) candidates.add(cleaned);
+  };
+
+  add(page.title);
+  add(requestedTitle);
+  add(titleFromFandomUrl(page.pageUrl));
+
+  const infobox = extractFirstTemplateByPrefix(page.wikitext, "Infobox");
+  if (infobox) {
+    const params = parseTemplate(infobox).params;
+    add(params.name);
+    add(params.tournament);
+    add(params.event);
+    add(params.league);
+  }
+
+  for (const value of Array.from(candidates)) {
+    add(value.replace(/_/g, " "));
+    add(value.replace(/^(\d{4}) Season (.+)$/i, "$1 $2"));
+    add(value.replace(/^(\d{4}) (.+)$/, "$2 $1"));
+  }
+
+  return Array.from(candidates);
 }
 
 async function fetchFandomPageWithCache(params: {
@@ -533,6 +611,7 @@ function buildNormalizationJson(normalized: any) {
     cacheLayer: normalized.cacheLayer || null,
     stale: !!normalized.stale,
     requestStats: normalized.requestStats || null,
+    ...(normalized.leagueOfLegendsDiagnostics ? { leagueOfLegendsDiagnostics: normalized.leagueOfLegendsDiagnostics } : {}),
   } as Prisma.InputJsonValue;
 }
 

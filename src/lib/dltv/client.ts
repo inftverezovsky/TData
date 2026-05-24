@@ -9,7 +9,7 @@ import { getLiquipediaUserAgent } from "@/lib/config/env";
 import { classifyParserError, isBlockedParserError } from "@/lib/proxy/parserErrors";
 import { markProxyFailure, markProxySuccess, maskProxyUrl, selectProxyCandidate } from "@/lib/proxy/proxySelector";
 import { extractDltvEventId, filterDltvEvents, parseDltvEventPage, parseDltvEvents, parseDltvMatchPage } from "./parse";
-import type { DltvRunResult } from "./types";
+import type { DltvMatchPageFailure, DltvRunResult } from "./types";
 
 export type DltvMode = "events" | "search" | "event" | "health";
 
@@ -64,15 +64,44 @@ async function runDltvMode(mode: DltvMode, queryOrUrl?: string): Promise<DltvRun
     const pageUrl = resolveDltvEventUrl(queryOrUrl || "");
     const html = await fetchDltvHtml(pageUrl, "event");
     const event = parseDltvEventPage(html, pageUrl);
-    const matchHtmlItems = await mapWithConcurrency(event.matchUrls, DLTV_EVENT_MATCH_CONCURRENCY, async (matchUrl) => ({
-      url: matchUrl,
-      html: await fetchDltvHtml(matchUrl, "match"),
-    }));
+    const matchHtmlItems = await mapWithConcurrency(event.matchUrls, DLTV_EVENT_MATCH_CONCURRENCY, async (matchUrl) => {
+      try {
+        return {
+          ok: true as const,
+          url: matchUrl,
+          html: await fetchDltvHtml(matchUrl, "match"),
+        };
+      } catch (error) {
+        return {
+          ok: false as const,
+          url: matchUrl,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
+    });
+    const matchPageFailures: DltvMatchPageFailure[] = [];
     const matches = matchHtmlItems
-      .map((item) => parseDltvMatchPage(item.html, item.url))
-      .filter((match) => match.id && match.team1 && match.team2);
+      .map((item) => {
+        if (!item.ok) {
+          matchPageFailures.push({ url: item.url, error: item.error });
+          return null;
+        }
 
-    return { ok: true, event, matches };
+        try {
+          const match = parseDltvMatchPage(item.html, item.url);
+          if (!match?.id || !match.team1 || !match.team2) {
+            matchPageFailures.push({ url: item.url, error: "DLTV match page is missing id or teams." });
+            return null;
+          }
+          return match;
+        } catch (error) {
+          matchPageFailures.push({ url: item.url, error: error instanceof Error ? error.message : String(error) });
+          return null;
+        }
+      })
+      .filter((match): match is NonNullable<typeof match> => Boolean(match));
+
+    return { ok: true, event, matches, matchPageFailures };
   }
 
   throw new Error(`Unsupported DLTV mode: ${mode}`);
@@ -107,14 +136,7 @@ async function fetchDltvHtml(url: string, mode: string, attempt = 1): Promise<st
 
     if (!response.ok) {
       const errorClass = classifyParserError({ statusCode: response.status, message: text.slice(0, 500) });
-      await markProxyFailure(proxy?.proxyId || null, {
-        errorClass,
-        errorMessage: `DLTV request failed with ${response.status}`,
-        durationMs,
-        blocked: isBlockedParserError(errorClass),
-      });
-      await logDltvRequest({ mode, proxyId: proxy?.proxyId, statusCode: response.status, errorClass, durationMs, bytesIn: text.length });
-      throw dltvError(`DLTV request failed with ${response.status}`, errorClass);
+      throw dltvError(`DLTV request failed with ${response.status}`, errorClass, response.status, text.length);
     }
 
     await markProxySuccess(proxy?.proxyId || null, durationMs);
@@ -123,15 +145,19 @@ async function fetchDltvHtml(url: string, mode: string, attempt = 1): Promise<st
   } catch (error) {
     clearTimeout(timeoutId);
     const message = error instanceof Error ? error.message : String(error);
-    const errorClass = classifyParserError({ message, timedOut: error instanceof Error && error.name === "AbortError" });
+    const statusCode = isDltvError(error) ? error.statusCode : undefined;
+    const bytesIn = isDltvError(error) ? error.bytesIn : undefined;
+    const errorClass = isDltvError(error)
+      ? error.errorClass || classifyParserError({ message, statusCode })
+      : classifyParserError({ message, timedOut: error instanceof Error && error.name === "AbortError" });
     await markProxyFailure(proxy?.proxyId || null, {
       errorClass,
       errorMessage: message,
       durationMs: Date.now() - startedAt,
       blocked: isBlockedParserError(errorClass),
     });
-    await logDltvRequest({ mode, proxyId: proxy?.proxyId, errorClass, durationMs: Date.now() - startedAt });
-    throw dltvError(message, errorClass);
+    await logDltvRequest({ mode, proxyId: proxy?.proxyId, statusCode, errorClass, durationMs: Date.now() - startedAt, bytesIn });
+    throw dltvError(message, errorClass, statusCode, bytesIn);
   }
 }
 
@@ -164,22 +190,28 @@ function getDltvCachePath(key: string) {
 }
 
 async function mapWithConcurrency<T, R>(items: T[], concurrency: number, mapper: (item: T) => Promise<R>) {
-  const results: R[] = [];
+  const results = new Array<R>(items.length);
   let index = 0;
   const workerCount = Math.max(1, Math.min(concurrency, items.length || 1));
   await Promise.all(Array.from({ length: workerCount }, async () => {
     while (index < items.length) {
-      const item = items[index++];
-      results.push(await mapper(item));
+      const currentIndex = index++;
+      results[currentIndex] = await mapper(items[currentIndex]);
     }
   }));
   return results;
 }
 
-function dltvError(message: string, errorClass: string) {
-  const error = new Error(message) as Error & { errorClass?: string };
+function dltvError(message: string, errorClass: string, statusCode?: number, bytesIn?: number) {
+  const error = new Error(message) as Error & { errorClass?: string; statusCode?: number; bytesIn?: number };
   error.errorClass = errorClass;
+  error.statusCode = statusCode;
+  error.bytesIn = bytesIn;
   return error;
+}
+
+function isDltvError(error: unknown): error is Error & { errorClass?: string; statusCode?: number; bytesIn?: number } {
+  return error instanceof Error && ("errorClass" in error || "statusCode" in error || "bytesIn" in error);
 }
 
 async function logDltvRequest(data: {

@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
-import { Check, Loader2, RotateCw, Trophy } from "lucide-react";
+import { Loader2, RotateCw } from "lucide-react";
 import LoadTournamentButton from "@/components/ui/LoadTournamentButton";
 import { TournamentSkeleton } from "@/components/ui/Skeleton";
 
@@ -49,28 +48,22 @@ export default function FandomTournamentsWidget({ disciplineSlug }: { discipline
     <aside className="premium-card flex h-fit flex-col overflow-hidden border-slate-200 shadow-sm">
       <div className="flex items-center justify-between border-b border-slate-100 p-6">
         <div>
-          <h2 className="flex items-center gap-2 text-base font-black uppercase tracking-tight text-slate-950">
-            <Trophy className="h-4 w-4 text-sky-700" />
-            Турниры Fandom
-          </h2>
-          <div className="mt-1 flex items-center gap-1.5">
-            <div className={`h-1.5 w-1.5 rounded-full ${error ? "bg-rose-500" : "bg-sky-500 shadow-[0_0_8px_rgba(14,165,233,0.5)]"}`} />
-            <span className={`text-[9px] font-black uppercase tracking-widest ${error ? "text-rose-600" : "text-sky-700"}`}>
-              {error ? "Fandom ошибка" : "Leaguepedia"}
-            </span>
-          </div>
+          <h2 className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-950">Актуальные турниры</h2>
+          <p className={`mt-1 text-[10px] font-bold uppercase tracking-widest ${error ? "text-rose-600" : "text-slate-400"}`}>
+            {error ? "Fandom ошибка" : "Leaguepedia"}
+          </p>
         </div>
         <button
           onClick={fetchFandomTournaments}
           disabled={loading}
-          className="rounded-xl bg-slate-50 p-2 text-slate-400 transition-all hover:bg-sky-50 hover:text-sky-700 disabled:opacity-50"
+          className="rounded-full border border-indigo-100 bg-indigo-50 px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-indigo-600 transition-colors hover:bg-indigo-100 disabled:opacity-50"
           title="Обновить список Fandom"
         >
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
         </button>
       </div>
 
-      <div className="custom-scrollbar flex max-h-[500px] min-h-[120px] flex-col overflow-y-auto p-0">
+      <div className="custom-scrollbar flex max-h-[700px] min-h-[120px] flex-col overflow-y-auto p-0">
         {loading && tournaments.length === 0 ? (
           <div className="space-y-3 p-4">
             {[...Array(5)].map((_, index) => <TournamentSkeleton key={index} />)}
@@ -92,11 +85,6 @@ export default function FandomTournamentsWidget({ disciplineSlug }: { discipline
                     <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">
                       {tournament.status || "upcoming"}
                     </span>
-                    {tournament.isLinked && (
-                      <span className="flex items-center gap-1 rounded border border-sky-100 bg-sky-50 px-1.5 py-0.5 text-[8px] font-black uppercase text-sky-700">
-                        <Check className="h-2.5 w-2.5" /> В базе данных
-                      </span>
-                    )}
                   </div>
                   <h3 className="break-words text-sm font-black leading-tight text-slate-950 transition-colors group-hover:text-sky-700" title={tournament.title}>
                     {tournament.title}
@@ -111,11 +99,6 @@ export default function FandomTournamentsWidget({ disciplineSlug }: { discipline
                     <a href={tournament.url} target="_blank" rel="noopener noreferrer" className="text-[10px] font-black uppercase tracking-widest text-slate-400 underline decoration-slate-200 underline-offset-4 transition-colors hover:text-slate-950">
                       Fandom
                     </a>
-                    {tournament.dbId && (
-                      <Link href={`/${disciplineSlug}/tournament/${tournament.dbId}`} className="text-[10px] font-black uppercase tracking-widest text-slate-400 underline decoration-slate-200 underline-offset-4 transition-colors hover:text-slate-950">
-                        Открыть в админке
-                      </Link>
-                    )}
                   </div>
                   <LoadTournamentButton
                     title={tournament.title}
@@ -123,7 +106,6 @@ export default function FandomTournamentsWidget({ disciplineSlug }: { discipline
                     disciplineSlug={disciplineSlug}
                     initialTournamentId={tournament.dbId || undefined}
                     source="fandom"
-                    targetTab="upload"
                     size="sm"
                   />
                 </div>

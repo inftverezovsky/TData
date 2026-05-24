@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/db";
+import { finalizeDota2Diagnostics, finalizeEsportsParsingDiagnostics } from "@/lib/matches/parsingDiagnostics";
 import {
   fetchPageWikitext,
   fetchPageParsed,
@@ -317,6 +318,13 @@ export async function processSinglePage(params: {
       sourceCacheExternalRequests: sourceCache?.externalRequests ?? 0,
     };
 
+    const initialNormalization = buildLiquipediaNormalizationJson(normalized, {
+      warning,
+      cacheHit,
+      cacheLayer,
+      stale,
+    });
+
     const tournament = await prisma.tournament.upsert({
       where: {
         disciplineSlug_sourceTitle: {
@@ -326,13 +334,7 @@ export async function processSinglePage(params: {
       },
       update: {
         extractionStatus: normalized.status,
-        normalization: {
-          warnings: warning ? Array.from(new Set([...normalized.warnings, warning])) : normalized.warnings,
-          cacheHit,
-          cacheLayer,
-          stale,
-          requestStats: normalized.requestStats,
-        } as Prisma.InputJsonValue,
+        normalization: initialNormalization,
         lastImportId: importRecordId
       },
       create: {
@@ -350,13 +352,7 @@ export async function processSinglePage(params: {
         formatText: normalized.formatText,
         status: normalized.tournamentStatus,
         extractionStatus: normalized.status,
-        normalization: {
-          warnings: warning ? Array.from(new Set([...normalized.warnings, warning])) : normalized.warnings,
-          cacheHit,
-          cacheLayer,
-          stale,
-          requestStats: normalized.requestStats,
-        } as Prisma.InputJsonValue,
+        normalization: initialNormalization,
         lastImportId: importRecordId
       }
     });
@@ -546,6 +542,21 @@ export async function processSinglePage(params: {
 
     const pageQualityScore = computeMatchSetQuality(matchesToInsert);
     normalized.qualityScore = pageQualityScore;
+    if (normalized.dota2Diagnostics) {
+      normalized.dota2Diagnostics = finalizeDota2Diagnostics(normalized.dota2Diagnostics, {
+        savedMatches: matchesToInsert.length,
+      });
+    }
+    if (normalized.leagueOfLegendsDiagnostics) {
+      normalized.leagueOfLegendsDiagnostics = finalizeEsportsParsingDiagnostics(normalized.leagueOfLegendsDiagnostics, {
+        savedMatches: matchesToInsert.length,
+      }) || undefined;
+    }
+    if (normalized.valorantDiagnostics) {
+      normalized.valorantDiagnostics = finalizeEsportsParsingDiagnostics(normalized.valorantDiagnostics, {
+        savedMatches: matchesToInsert.length,
+      }) || undefined;
+    }
     normalized.sourceBreakdown = {
       liquipedia: {
         pageTitle,
@@ -597,6 +608,20 @@ export async function processSinglePage(params: {
       });
     }
 
+    if (normalized.dota2Diagnostics || normalized.leagueOfLegendsDiagnostics || normalized.valorantDiagnostics) {
+      await prisma.tournament.update({
+        where: { id: tournament.id },
+        data: {
+          normalization: buildLiquipediaNormalizationJson(normalized, {
+            warning,
+            cacheHit,
+            cacheLayer,
+            stale,
+          }),
+        },
+      }).catch(() => {});
+    }
+
     return { 
       tournament, 
       normalized, 
@@ -623,4 +648,31 @@ function getSnapshotPageUrl(snapshot: { metadata?: unknown }) {
   if (typeof record.pageUrl === "string") return record.pageUrl;
   if (typeof record.fullUrl === "string") return record.fullUrl;
   return null;
+}
+
+function buildLiquipediaNormalizationJson(
+  normalized: {
+    warnings: string[];
+    requestStats?: unknown;
+    dota2Diagnostics?: unknown;
+    leagueOfLegendsDiagnostics?: unknown;
+    valorantDiagnostics?: unknown;
+  },
+  params: {
+    warning: string | null;
+    cacheHit: boolean;
+    cacheLayer: string | null;
+    stale: boolean;
+  },
+) {
+  return {
+    warnings: params.warning ? Array.from(new Set([...normalized.warnings, params.warning])) : normalized.warnings,
+    cacheHit: params.cacheHit,
+    cacheLayer: params.cacheLayer,
+    stale: params.stale,
+    requestStats: normalized.requestStats,
+    ...(normalized.dota2Diagnostics ? { dota2Diagnostics: normalized.dota2Diagnostics } : {}),
+    ...(normalized.leagueOfLegendsDiagnostics ? { leagueOfLegendsDiagnostics: normalized.leagueOfLegendsDiagnostics } : {}),
+    ...(normalized.valorantDiagnostics ? { valorantDiagnostics: normalized.valorantDiagnostics } : {}),
+  } as Prisma.InputJsonValue;
 }

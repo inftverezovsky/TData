@@ -2,7 +2,7 @@
 
 import { useCallback, useState, useEffect } from "react";
 import Link from "next/link";
-import { Trophy, RotateCw, Loader2, Check, Star } from "lucide-react";
+import { Trophy, RotateCw, Loader2, Star } from "lucide-react";
 import { TournamentSkeleton } from "@/components/ui/Skeleton";
 import LoadTournamentButton from "@/components/ui/LoadTournamentButton";
 
@@ -218,11 +218,6 @@ function TournamentRow({
              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
                {t.status === 'ongoing' ? 'Ongoing' : 'Upcoming'}
              </span>
-             {t.isLinked && (
-                <span className="flex items-center gap-1 text-[8px] font-black text-indigo-500 uppercase bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
-                  <Check className="w-2.5 h-2.5" /> В базе данных
-                </span>
-             )}
              {t.stars !== undefined && t.stars > 0 && (
                <div className="flex items-center gap-0.5 ml-1">
                  {[...Array(5)].map((_, i) => (
@@ -255,14 +250,6 @@ function TournamentRow({
           >
             HLTV
           </a>
-          {t.dbId && (
-            <Link 
-              href={`/counterstrike/tournament/${t.dbId}`}
-              className="text-[10px] font-black text-slate-400 hover:text-slate-950 uppercase tracking-widest underline decoration-slate-200 underline-offset-4 transition-colors"
-            >
-              Открыть в админке
-            </Link>
-          )}
         </div>
 
         <LoadTournamentButton

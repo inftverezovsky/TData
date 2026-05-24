@@ -147,6 +147,35 @@ test("collectTournamentTeamNames exposes mappable TBD names but hides bracket pl
   assert.deepEqual(names, ["TBD", "TBD1", "TBD2", "Vitality"]);
 });
 
+test("collectTournamentTeamNames exposes sourced stage announcements instead of pure TBD pairs", () => {
+  for (const source of ["liquipedia", "hltv", "dltv", "fandom", "vlr"] as const) {
+    const names = collectTournamentTeamNames({
+      disciplineSlug: "counterstrike",
+      source,
+      matches: [
+        { teamAName: "TBD1", teamBName: "TBD2", stage: "Blast Slam 7 Group Stage", matchDate: new Date("2026-06-04T09:00:00.000Z") },
+        { teamAName: "TBD3", teamBName: "TBD4", round: "Blast Slam 7 Losers' Round 1", matchDate: new Date("2026-06-05T09:00:00.000Z") },
+        { teamAName: "Monte", teamBName: "TBD" },
+      ],
+      participants: [],
+    });
+
+    assert.deepEqual(names, ["Group Stage", "Losers' Round 1", "Monte", "TBD"], source);
+  }
+});
+
+test("collectTournamentTeamNames keeps numbered TBD mapping names when source is unknown", () => {
+  const names = collectTournamentTeamNames({
+    disciplineSlug: "dota2",
+    matches: [
+      { teamAName: "TBD1", teamBName: "TBD2", stage: "Blast Slam 7 Group Stage" },
+    ],
+    participants: [],
+  });
+
+  assert.deepEqual(names, ["TBD1", "TBD2"]);
+});
+
 test("team mapping lookup prefers saved platform IDs over stale unmapped duplicates", () => {
   const lookup = buildTeamMappingLookup([
     {

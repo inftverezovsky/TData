@@ -1,5 +1,13 @@
 export type TournamentSource = "liquipedia" | "hltv" | "vlr" | "dltv" | "fandom";
 
+const STAGE_ANNOUNCEMENT_SOURCES = new Set<TournamentSource>([
+  "liquipedia",
+  "hltv",
+  "vlr",
+  "dltv",
+  "fandom",
+]);
+
 export function detectTournamentSource(pageUrl?: string | null): TournamentSource {
   if (!pageUrl) return "liquipedia";
 
@@ -24,4 +32,8 @@ export function getTournamentSourceLabel(source: TournamentSource) {
   if (source === "dltv") return "Источник: DLTV";
   if (source === "fandom") return "Источник: Fandom";
   return source === "hltv" ? "Источник: HLTV" : "Источник: Liquipedia";
+}
+
+export function supportsStageAnnouncements(source?: TournamentSource | null) {
+  return Boolean(source && STAGE_ANNOUNCEMENT_SOURCES.has(source));
 }

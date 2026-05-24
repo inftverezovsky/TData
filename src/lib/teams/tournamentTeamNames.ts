@@ -1,12 +1,23 @@
 import { isPlaceholderTeam, isTbdPlaceholderTeam, normalizeTeamName } from "@/lib/teams/teams";
+import { getStageSlotAnnouncementLabel } from "@/lib/matches/scheduleView";
+import { hasExactMatchTime } from "@/lib/matches/time";
 import {
   buildTeamNameCanonicalizer,
   type TeamNameSource,
 } from "@/lib/teams/canonicalize";
+import { supportsStageAnnouncements, type TournamentSource } from "@/lib/utils/tournamentSource";
 
 type TournamentTeamMatch = {
   teamAName?: string | null;
   teamBName?: string | null;
+  stage?: string | null;
+  round?: string | null;
+  rawText?: string | null;
+  matchDate?: Date | string | number | null;
+  matchDateTime?: string | null;
+  scoreA?: number | null;
+  scoreB?: number | null;
+  status?: string | null;
 };
 
 type TournamentTeamParticipant = TeamNameSource & {
@@ -17,14 +28,31 @@ export function collectTournamentTeamNames({
   matches,
   participants,
   mappings = [],
+  source,
 }: {
   matches: TournamentTeamMatch[];
   participants: TournamentTeamParticipant[];
   mappings?: TeamNameSource[];
+  disciplineSlug?: string | null;
+  source?: TournamentSource | null;
 }) {
   const rawNames = new Set<string>();
+  const forcedNames = new Set<string>();
+  const shouldExposeStageAnnouncements = supportsStageAnnouncements(source);
 
   for (const match of matches) {
+    if (
+      shouldExposeStageAnnouncements &&
+      hasExactMatchTime(match) &&
+      !hasFinishedResult(match) &&
+      isPlaceholderTeam(match.teamAName) &&
+      isPlaceholderTeam(match.teamBName)
+    ) {
+      const stageName = getStageSlotAnnouncementLabel(match);
+      addTeamName(rawNames, stageName, true);
+      forcedNames.add(normalizeTeamName(stageName));
+      continue;
+    }
     addTeamName(rawNames, match.teamAName);
     addTeamName(rawNames, match.teamBName);
   }
@@ -43,9 +71,9 @@ export function collectTournamentTeamNames({
   const byNormalizedName = new Map<string, string>();
   for (const name of namesWithoutShortAliases) {
     const canonicalName = canonicalizer.canonicalizeName(name) || name;
-    if (!shouldExposeTeamName(canonicalName)) continue;
-
     const normalized = normalizeTeamName(canonicalName);
+    if (!forcedNames.has(normalized) && !shouldExposeTeamName(canonicalName)) continue;
+
     const existing = byNormalizedName.get(normalized);
     byNormalizedName.set(normalized, preferDisplayName(existing, canonicalName));
   }
@@ -53,9 +81,15 @@ export function collectTournamentTeamNames({
   return Array.from(byNormalizedName.values()).sort((a, b) => a.localeCompare(b));
 }
 
-function addTeamName(names: Set<string>, name: string | null | undefined) {
+function hasFinishedResult(match: TournamentTeamMatch) {
+  if (match.scoreA != null || match.scoreB != null) return true;
+  const status = String(match.status || "").toLowerCase();
+  return status.includes("finished") || status.includes("completed");
+}
+
+function addTeamName(names: Set<string>, name: string | null | undefined, force = false) {
   const trimmed = String(name ?? "").replace(/\s+/g, " ").trim();
-  if (!shouldExposeTeamName(trimmed)) return;
+  if (!force && !shouldExposeTeamName(trimmed)) return;
   names.add(trimmed);
 }
 

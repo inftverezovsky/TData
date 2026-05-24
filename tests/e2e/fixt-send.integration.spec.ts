@@ -40,8 +40,8 @@ test.describe("FIxt upload integration", () => {
       expect(previewAllJson.skippedMatches).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            matchId: `${placeholderMatchId}::teamA`,
-            reason: "Missing or unmapped TBD announcement platform ID",
+            matchId: `${placeholderMatchId}::stage`,
+            reason: "Missing or unmapped stage announcement platform ID",
           }),
         ])
       );
@@ -50,15 +50,8 @@ test.describe("FIxt upload integration", () => {
         data: [
           {
             disciplineSlug,
-            liquipediaName: "TBD1",
+            liquipediaName: "Semifinals",
             platformId: "333",
-            status: "manual_mapped",
-            isManual: true,
-          },
-          {
-            disciplineSlug,
-            liquipediaName: "TBD2",
-            platformId: "444",
             status: "manual_mapped",
             isManual: true,
           },
@@ -73,18 +66,17 @@ test.describe("FIxt upload integration", () => {
 
       await expect(await previewTbd.json()).toMatchObject({
         ok: true,
-        readyMatchesCount: 2,
+        readyMatchesCount: 1,
         phpArray: {
           match: [
             { team1: 333, team2: "" },
-            { team1: 444, team2: "" },
           ],
         },
       });
 
       const previewTbdSide = await request.post(`/api/${disciplineSlug}/tournament/${tournamentId}/admin-fixt-preview`, {
         headers: { cookie },
-        data: { selectedMatchIds: [`${placeholderMatchId}::teamA`] },
+        data: { selectedMatchIds: [`${placeholderMatchId}::stage`] },
       });
       await expect(previewTbdSide).toBeOK();
 
@@ -100,13 +92,13 @@ test.describe("FIxt upload integration", () => {
 
       const sendTbdSide = await request.post(`/api/${disciplineSlug}/tournament/${tournamentId}/admin-fixt-send`, {
         headers: { cookie },
-        data: { selectedMatchIds: [`${placeholderMatchId}::teamA`] },
+        data: { selectedMatchIds: [`${placeholderMatchId}::stage`] },
       });
       await expect(sendTbdSide).toBeOK();
       await expect(await sendTbdSide.json()).toMatchObject({
         ok: true,
         status: "success_like",
-        markedMatchesCount: 0,
+        markedMatchesCount: 1,
         rawResponse: "1",
       });
 
@@ -183,7 +175,7 @@ test.describe("FIxt upload integration", () => {
         where: { matchId: placeholderMatchId },
         select: { syncedAt: true },
       });
-      expect(placeholderMatch?.syncedAt).toBeNull();
+      expect(placeholderMatch?.syncedAt).toBeTruthy();
 
       const uploadLog = await prisma.adminUploadLog.findFirst({
         where: { disciplineSlug, tournamentId },
@@ -242,7 +234,7 @@ async function seedFixtFixture(
     data: {
       id: fixture.tournamentId,
       sourceTitle: `E2E FIxt ${fixture.matchId}`,
-      sourceUrl: `https://example.test/${fixture.matchId}`,
+      sourceUrl: `https://dltv.org/matches/${fixture.matchId}`,
       name: "E2E FIxt Tournament",
       disciplineSlug: fixture.disciplineSlug,
       extractionStatus: "SUCCESS",
@@ -266,6 +258,7 @@ async function seedFixtFixture(
       matchDate: new Date("2026-05-10T13:30:00.000Z"),
       teamAName: "TBD1",
       teamBName: "TBD2",
+      round: "Semifinals",
       status: "upcoming",
       hasPlaceholderTeams: true,
     },

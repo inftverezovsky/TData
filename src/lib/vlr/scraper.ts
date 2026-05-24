@@ -31,6 +31,17 @@ type VlrResult = {
   cacheLayer?: string | null;
   stale?: boolean;
   warning?: string | null;
+  diagnostics?: {
+    vlr?: VlrDiagnosticsStats;
+  };
+};
+
+export type VlrDiagnosticsStats = {
+  matchUrlsFound: number;
+  matchPagesFetched: number;
+  matchPagesFailed: number;
+  cacheHit?: boolean;
+  stale?: boolean;
 };
 
 const VLR_ORIGIN = "https://www.vlr.gg";
@@ -79,6 +90,12 @@ async function executeVlr(mode: VlrMode, queryOrId?: string, options: { noCache?
   const startedAt = Date.now();
   const cached = options.noCache ? null : readCache(mode, queryOrId);
   if (cached) {
+    if (cached.diagnostics?.vlr) {
+      cached.diagnostics = {
+        ...cached.diagnostics,
+        vlr: { ...cached.diagnostics.vlr, cacheHit: true, stale: false },
+      };
+    }
     await logParserRequest({
       source: "vlr",
       mode,
@@ -174,26 +191,34 @@ async function scrapeVlrMode(mode: VlrMode, queryOrId?: string, proxyUrl?: strin
     const html = await fetchVlrHtml(eventUrl, proxyUrl);
     const parsed = parseVlrEventMatchesHtml(html, eventUrl);
     const enriched = await enrichMatches(parsed.matches, proxyUrl);
-    return { ok: true, title: parsed.title, matches: enriched };
+    return { ok: true, title: parsed.title, matches: enriched.matches, diagnostics: { vlr: enriched.diagnostics } };
   }
 
   const html = await fetchVlrHtml(`${VLR_ORIGIN}/matches`, proxyUrl);
   const matches = parseVlrMatchesHtml(html);
-  return { ok: true, matches: await enrichMatches(matches, proxyUrl, Number(process.env.VLR_MATCHES_ENRICH_LIMIT || 80)) };
+  const enriched = await enrichMatches(matches, proxyUrl, Number(process.env.VLR_MATCHES_ENRICH_LIMIT || 80));
+  return { ok: true, matches: enriched.matches, diagnostics: { vlr: enriched.diagnostics } };
 }
 
-async function enrichMatches(matches: VlrMatch[], proxyUrl?: string, limit = 50) {
+async function enrichMatches(matches: VlrMatch[], proxyUrl?: string, limit = 50): Promise<{ matches: VlrMatch[]; diagnostics: VlrDiagnosticsStats }> {
   const enriched: VlrMatch[] = [];
+  const diagnostics: VlrDiagnosticsStats = {
+    matchUrlsFound: matches.length,
+    matchPagesFetched: 0,
+    matchPagesFailed: 0,
+  };
   for (const match of matches.slice(0, limit)) {
     try {
       const html = await fetchVlrHtml(match.url, proxyUrl);
       const detail = parseVlrMatchDetailHtml(html, match.url);
+      diagnostics.matchPagesFetched += 1;
       enriched.push({ ...match, ...detail, id: match.id, url: match.url });
     } catch {
+      diagnostics.matchPagesFailed += 1;
       enriched.push(match);
     }
   }
-  return enriched.concat(matches.slice(limit));
+  return { matches: enriched.concat(matches.slice(limit)), diagnostics };
 }
 
 async function fetchVlrHtml(url: string, proxyUrl?: string) {

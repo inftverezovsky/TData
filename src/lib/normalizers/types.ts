@@ -1,4 +1,5 @@
 import type { ImportStatus } from "@prisma/client";
+import type { Dota2ParsingDiagnostics, LeagueOfLegendsParsingDiagnostics, ValorantParsingDiagnostics } from "@/lib/matches/parsingDiagnostics";
 
 export type NormalizedParticipant = {
   name: string;
@@ -57,4 +58,7 @@ export type NormalizedTournament = {
   qualityScore?: number | null;
   requestStats?: unknown;
   sourceBreakdown?: unknown;
+  dota2Diagnostics?: Dota2ParsingDiagnostics;
+  leagueOfLegendsDiagnostics?: LeagueOfLegendsParsingDiagnostics;
+  valorantDiagnostics?: ValorantParsingDiagnostics;
 };

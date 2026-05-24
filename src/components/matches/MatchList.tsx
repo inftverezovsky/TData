@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo, useEffect, useState } from "react";
+import { useCallback, useMemo, useEffect, useState } from "react";
 import { applyDisciplineScheduleLead } from "@/lib/matches/scheduleOffset";
 import {
   buildScheduleFormatGroups,
-  expandScheduleAnnouncements,
+  expandScheduleAnnouncementsForDiscipline,
   getScheduleMatchBestOfLabel,
   isSchedulePlaceholderMatch,
   isUploadableScheduleEntry,
@@ -14,6 +14,7 @@ import {
 import { resolveExactMatchDate } from "@/lib/matches/time";
 import { normalizeTeamName } from "@/lib/teams/teams";
 import { getTeamAliasKey } from "@/lib/teams/canonicalize";
+import type { TournamentSource } from "@/lib/utils/tournamentSource";
 import { Clock, LayoutGrid, CheckCircle2, TimerReset } from "lucide-react";
 
 type Match = {
@@ -76,6 +77,7 @@ export default function MatchList({
   matches,
   mappings,
   disciplineSlug,
+  source,
   selectedIds,
   setSelectedIds,
   mutate
@@ -83,6 +85,7 @@ export default function MatchList({
   matches: Match[];
   mappings: Record<string, MappingInfo>;
   disciplineSlug: string;
+  source: TournamentSource;
   selectedIds: Set<string>;
   setSelectedIds: (ids: Set<string>) => void;
   mutate?: () => void;
@@ -112,14 +115,14 @@ export default function MatchList({
   }, [matches]);
 
   const baseAnnouncements = useMemo<DisplayMatch[]>(() => {
-    return expandScheduleAnnouncements(matches)
+    return expandScheduleAnnouncementsForDiscipline(matches, disciplineSlug, source)
       .sort((a, b) => {
         const tsA = getMatchTimestamp(a) || Infinity;
         const tsB = getMatchTimestamp(b) || Infinity;
         if (tsA !== tsB) return tsA - tsB;
         return a.id.localeCompare(b.id);
       });
-  }, [matches]);
+  }, [disciplineSlug, matches, source]);
 
   const displayMatches = useMemo(() => {
     if (scheduleMode === "announcements") return baseAnnouncements;
@@ -129,19 +132,30 @@ export default function MatchList({
       : baseMatches;
   }, [baseAnnouncements, baseMatches, hideUploaded, scheduleMode]);
 
-  const selectableMatches = displayMatches.filter((match) => !match.syncedAt && isDisplayEntrySelectable(match));
+  const getSelectionId = useCallback((match: DisplayMatch) => {
+    return match.selectionId || match.matchId || "unknown";
+  }, []);
+
+  const isDisplayEntrySelectable = useCallback((match: DisplayMatch) => {
+    if (match.isSingleTeamAnnouncement) return true;
+    return isUploadableScheduleEntry(match, { disciplineSlug, source });
+  }, [disciplineSlug, source]);
+
+  const selectableMatches = useMemo(
+    () => displayMatches.filter((match) => !match.syncedAt && isDisplayEntrySelectable(match)),
+    [displayMatches, isDisplayEntrySelectable]
+  );
   const allSelected = selectableMatches.length > 0 && selectableMatches.every(m => selectedIds.has(getSelectionId(m)));
   const groupedMatches = useMemo(() => buildScheduleFormatGroups(displayMatches), [displayMatches]);
   const activeBaseCount = scheduleMode === "announcements" ? baseAnnouncements.length : baseMatches.length;
 
-  function getSelectionId(match: DisplayMatch) {
-    return match.selectionId || match.matchId || "unknown";
-  }
-
-  function isDisplayEntrySelectable(match: DisplayMatch) {
-    if (match.isSingleTeamAnnouncement) return true;
-    return isUploadableScheduleEntry(match);
-  }
+  useEffect(() => {
+    const visibleSelectableIds = new Set(selectableMatches.map((match) => getSelectionId(match)));
+    const nextSelectedIds = new Set(Array.from(selectedIds).filter((id) => visibleSelectableIds.has(id)));
+    if (nextSelectedIds.size !== selectedIds.size) {
+      setSelectedIds(nextSelectedIds);
+    }
+  }, [getSelectionId, selectableMatches, selectedIds, setSelectedIds]);
 
   function toggleAll() {
     const newIds = new Set(selectedIds);
@@ -293,7 +307,11 @@ export default function MatchList({
 
         {isSingleAnnouncement ? (
           <div className="flex min-h-9 items-center justify-center py-1">
-            <TeamDisplay name={match.singleAnnouncementTeamName || match.teamAName} side="center" />
+            {match.isStageAnnouncement ? (
+              <StageSlotDisplay label={match.singleAnnouncementTeamName || match.round || match.stage || "Group Stage"} />
+            ) : (
+              <TeamDisplay name={match.singleAnnouncementTeamName || match.teamAName} side="center" />
+            )}
           </div>
         ) : (
           <div className="grid gap-1 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-center sm:gap-4">
@@ -334,6 +352,29 @@ export default function MatchList({
           {effectiveName}
         </span>
         <div className={`flex items-center gap-1 mt-0.5 ${side === "center" ? "justify-center" : side === "left" ? "justify-start sm:justify-end" : "justify-start"}`}>
+          <span className={`text-[7px] font-black px-1 py-0 rounded-full border ${pid ? "bg-emerald-50 border-emerald-100 text-emerald-700" : "bg-rose-50 border-rose-100 text-rose-600"}`}>
+            {pid || "НЕТ ID"}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  function StageSlotDisplay({ label }: { label: string }) {
+    const m = mappings[label]
+      || mappings[label.toLowerCase()]
+      || mappings[normalizeTeamName(label)]
+      || mappings[getTeamAliasKey(label)];
+    const pid = m?.platformId || "";
+    return (
+      <div className="flex min-w-0 flex-col items-center text-center">
+        <span className="truncate text-[13px] font-bold leading-tight text-slate-900 transition-colors group-hover:text-indigo-600 sm:text-[15px]">
+          {label}
+        </span>
+        <div className="mt-0.5 flex items-center justify-center gap-1">
+          <span className="text-[7px] font-black uppercase tracking-widest text-sky-500">
+            стадия турнира
+          </span>
           <span className={`text-[7px] font-black px-1 py-0 rounded-full border ${pid ? "bg-emerald-50 border-emerald-100 text-emerald-700" : "bg-rose-50 border-rose-100 text-rose-600"}`}>
             {pid || "НЕТ ID"}
           </span>
