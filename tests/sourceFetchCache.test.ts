@@ -44,3 +44,15 @@ test("quality gate keeps previous matches when new scrape is empty", () => {
     true
   );
 });
+
+test("quality gate allows one-match snapshots to refresh without count regression", () => {
+  assert.equal(
+    shouldKeepPreviousMatches({
+      newMatches: [{ teamAName: "Alpha", teamBName: "TBD", matchDate: new Date("2026-05-31T00:00:00.000Z") }],
+      previousMatches: [{ teamAName: "TBD1", teamBName: "TBD2", matchDateTime: "May 31, 2026" }],
+      newQualityScore: 0.47,
+      sourceHadError: false,
+    }),
+    false,
+  );
+});

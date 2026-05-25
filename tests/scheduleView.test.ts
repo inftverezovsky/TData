@@ -8,6 +8,7 @@ import {
   getStageSlotAnnouncementLabel,
   getUploadableTbdAnnouncementSides,
   isAnnouncementScheduleMatch,
+  isDisplayableScheduleMatch,
   isGeneratedScheduleMatrixRow,
   isUploadableScheduleEntry,
   isUploadReadyScheduleMatch,
@@ -31,7 +32,7 @@ test("exact-time matches are upload-ready and not announcements", () => {
   assert.equal(isUploadableScheduleEntry(match), true);
 });
 
-test("date-only schedule rows are hidden from schedule modes", () => {
+test("date-only schedule rows are visible but not uploadable", () => {
   const match = {
     id: "announcement-1",
     matchDate: new Date("2026-05-23T00:00:00.000Z"),
@@ -43,9 +44,30 @@ test("date-only schedule rows are hidden from schedule modes", () => {
     teamBName: "Beta",
   };
 
+  assert.equal(isDisplayableScheduleMatch(match), true);
   assert.equal(isUploadReadyScheduleMatch(match), false);
   assert.equal(isAnnouncementScheduleMatch(match), false);
   assert.equal(isUploadableScheduleEntry(match), false);
+});
+
+test("date-only placeholder announcements stay hidden until exact time appears", () => {
+  const match = {
+    id: "date-only-placeholder",
+    matchDate: new Date("2026-05-31T00:00:00.000Z"),
+    matchDateTime: "May 31, 2026",
+    rawText: "TBD vs TBD Grand Final",
+    scoreA: null,
+    scoreB: null,
+    teamAName: "TBD1",
+    teamBName: "TBD2",
+    round: "Grand Final",
+    hasPlaceholderTeams: true,
+  };
+
+  assert.equal(isDisplayableScheduleMatch(match), false);
+  assert.equal(isUploadReadyScheduleMatch(match), false);
+  assert.equal(isAnnouncementScheduleMatch(match), false);
+  assert.equal(isUploadableScheduleEntry(match, { disciplineSlug: "dota2", source: "liquipedia" }), false);
 });
 
 test("exact-time matches with one real team and one TBD are upload-ready pairs", () => {
@@ -305,6 +327,30 @@ test("sourced bracket placeholder pairs without a recovered round render as a sa
   assert.equal(entries[0].isStageAnnouncementFallback, true);
   assert.equal(entries[0].singleAnnouncementTeamName, "Playoffs");
   assert.deepEqual(getUploadableTbdAnnouncementSides(entries[0], { disciplineSlug: "counterstrike", source: "liquipedia" }), []);
+  assert.equal(isUploadableScheduleEntry(entries[0], { disciplineSlug: "counterstrike", source: "liquipedia" }), false);
+});
+
+test("Liquipedia stage placeholders without exact time render as non-uploadable announcements", () => {
+  const entries = expandScheduleAnnouncementsForDiscipline([
+    {
+      id: "liquipedia-no-time-stage-row",
+      matchId: "liquipedia-no-time-stage-1",
+      matchDate: null,
+      matchDateTime: null,
+      rawText: "slot=R1M1 TBD vs TBD Best of 3",
+      scoreA: null,
+      scoreB: null,
+      format: "BO3",
+      teamAName: "TBD1",
+      teamBName: "TBD2",
+      round: "Round 1 Matches",
+      hasPlaceholderTeams: true,
+    },
+  ], "counterstrike", "liquipedia");
+
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].isStageAnnouncement, true);
+  assert.equal(entries[0].singleAnnouncementTeamName, "Round 1");
   assert.equal(isUploadableScheduleEntry(entries[0], { disciplineSlug: "counterstrike", source: "liquipedia" }), false);
 });
 

@@ -20,6 +20,7 @@ export type DisciplinePortalData = {
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 const PORTAL_LOOKBACK_DAYS = Number(process.env.LIQUIPEDIA_PORTAL_LOOKBACK_DAYS || 5);
 const PORTAL_UPCOMING_WINDOW_DAYS = Number(process.env.LIQUIPEDIA_PORTAL_UPCOMING_WINDOW_DAYS || 7);
+const PORTAL_MAX_TOURNAMENTS = Number(process.env.LIQUIPEDIA_PORTAL_MAX_TOURNAMENTS || 15);
 const PORTAL_TIMEOUT_MS = Number(process.env.LIQUIPEDIA_PORTAL_TIMEOUT_MS || 60000);
 
 export async function fetchDisciplinePortal(slug: string, force = false): Promise<DisciplinePortalData> {
@@ -319,7 +320,7 @@ function finalizePortalTournaments(slug: string, tournaments: PortalTournament[]
   return {
     slug,
     name: nameMapping[slug] || (slug.charAt(0).toUpperCase() + slug.slice(1)),
-    tournaments: sortedTournaments.slice(0, 15)
+    tournaments: sortedTournaments.slice(0, PORTAL_MAX_TOURNAMENTS)
   };
 }
 

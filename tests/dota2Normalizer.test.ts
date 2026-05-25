@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { normalizeDota2Tournament } from "../src/lib/normalizers/dota2Tournament";
+import { resolveExactMatchDate } from "../src/lib/matches/time";
 
 test("Dota2 normalizer preserves empty TBD playoff slots", () => {
   const html = `
@@ -113,6 +114,89 @@ test("Dota2 normalizer keeps Liquipedia bracket slot labels from wikitext", () =
   assert.ok(normalized.matches.some((match) => match.round === "Lower Bracket Semifinal"));
   assert.ok(normalized.matches.some((match) => match.round === "Lower Bracket Final"));
   assert.equal(normalized.matches.every((match) => /^TBD\d+$/i.test(match.teamAName || "")), true);
+});
+
+test("Dota2 normalizer resolves Liquipedia China CST playoff announcements contextually", () => {
+  const normalized = normalizeDota2Tournament({
+    title: "Immortal_Cup/Season_2",
+    pageUrl: "https://liquipedia.net/dota2/Immortal_Cup/Season_2",
+    wikitext: `
+      {{Infobox league|name=Immortal Cup Season 2|sdate=2026-05-05|edate=2026-06-07}}
+      {{Bracket|Bracket/4L2D-2Q|matchsection=Playoffs
+      |R1M1header=Upper Bracket Semifinals
+      |R1M1={{Match
+      |opponent1={{TeamOpponent|}}
+      |opponent2={{TeamOpponent|}}
+      |date=May 29, 2026 - 18:00 {{Abbr/CST}}
+      |map1={{Map}}|map2={{Map}}|map3={{Map}}
+      }}
+      }}
+    `,
+    parsedHtml: "",
+  });
+
+  assert.equal(normalized.matches.length, 1);
+  assert.equal(normalized.matches[0].round, "Upper Bracket Semifinals");
+  assert.equal(normalized.matches[0].matchDate?.toISOString(), "2026-05-29T10:00:00.000Z");
+  assert.equal(normalized.matches[0].matchDateTime, "May 29, 2026 - 18:00 +0800");
+  assert.equal(resolveExactMatchDate(normalized.matches[0])?.toISOString(), "2026-05-29T10:00:00.000Z");
+});
+
+test("Dota2 normalizer keeps date-only real playoff matches as non-exact rows", () => {
+  const normalized = normalizeDota2Tournament({
+    title: "Perfect_World/Alumni_Association/2026/Alumni_League",
+    pageUrl: "https://liquipedia.net/dota2/Perfect_World/Alumni_Association/2026/Alumni_League",
+    wikitext: `
+      {{Infobox league|name=DOTA2 Alumni Association 2026 Alumni League|sdate=2026-05-16|edate=2026-05-31}}
+      {{Bracket|Bracket/2
+      |R1M1header=Grand Final
+      |R1M1={{Match
+      |opponent1={{TeamOpponent|WHU.Crychic}}
+      |opponent2={{TeamOpponent|焦阳人类科学院}}
+      |date=May 31, 2026
+      |map1={{Map}}|map2={{Map}}|map3={{Map}}
+      }}
+      }}
+    `,
+    parsedHtml: "",
+  });
+
+  assert.equal(normalized.matches.length, 1);
+  assert.equal(normalized.matches[0].matchDate?.toISOString(), "2026-05-31T00:00:00.000Z");
+  assert.equal(resolveExactMatchDate(normalized.matches[0]), null);
+});
+
+test("Dota2 normalizer prefers wikitext labels for duplicate date-only parsed slots", () => {
+  const normalized = normalizeDota2Tournament({
+    title: "Perfect_World/Alumni_Association/2026/Alumni_League",
+    pageUrl: "https://liquipedia.net/dota2/Perfect_World/Alumni_Association/2026/Alumni_League",
+    wikitext: `
+      {{Infobox league|name=DOTA2 Alumni Association 2026 Alumni League|sdate=2026-05-16|edate=2026-05-31}}
+      {{Bracket|Bracket/2
+      |R1M1header=Grand Final
+      |R1M1={{Match
+      |opponent1={{TeamOpponent|WHU.Crychic}}
+      |opponent2={{TeamOpponent|TBD}}
+      |date=May 31, 2026
+      |map1={{Map}}|map2={{Map}}|map3={{Map}}
+      }}
+      }}
+    `,
+    parsedHtml: `
+      <div class="brkts-column">
+        <div class="brkts-column-header">Upper Bracket QuarterfinalsUpper Bracket QuarterfinalsUB QuarterfinalsUBQF</div>
+        <div class="brkts-match">
+          <div class="brkts-opponent-entry"><span class="name">WHU.Crychic</span></div>
+          <div class="brkts-opponent-entry"><span class="name">TBD</span></div>
+          <div class="brkts-match-info-popup"><span class="brkts-popup-date">May 31, 2026</span></div>
+        </div>
+      </div>
+    `,
+  });
+
+  assert.equal(normalized.matches.length, 1);
+  assert.equal(normalized.matches[0].round, "Grand Final");
+  assert.equal(resolveExactMatchDate(normalized.matches[0]), null);
 });
 
 test("Dota2 normalizer ignores crosstable matrix rows as match sources", () => {

@@ -7,7 +7,8 @@ import {
   extractTemplatesByNamePrefix,
   parseInteger,
   parseTemplate,
-  parseWikiDate
+  parseWikiDate,
+  type WikiDateParseOptions
 } from "@/lib/normalizers/wikiText";
 import { createHash } from "crypto";
 import { generateInternalTeamId, isPlaceholderTeam } from "@/lib/teams/teams";
@@ -19,6 +20,13 @@ import {
   buildEsportsParsingDiagnostics,
   type ValorantParsingDiagnostics,
 } from "@/lib/matches/parsingDiagnostics";
+
+const VALORANT_LIQUIPEDIA_DATE_OPTIONS: WikiDateParseOptions = {
+  timezoneOffsets: {
+    // On Chinese Valorant Liquipedia pages CST is China Standard Time.
+    CST: 480,
+  },
+};
 
 /* ───── Types ───── */
 
@@ -87,8 +95,8 @@ export function normalizeValorantTournament(input: {
 
   const params = parsedInfobox?.params ?? {};
   let name = firstClean(params.name, params.tournament, params.event, params.league) ?? cleanWikiValue(input.title) ?? input.title;
-  let startDate = parseWikiDate(params.sdate ?? params.startdate ?? params.start_date ?? params.date ?? params.dates);
-  let endDate = parseWikiDate(params.edate ?? params.enddate ?? params.end_date ?? params.date2);
+  let startDate = parseValorantWikiDate(params.sdate ?? params.startdate ?? params.start_date ?? params.date ?? params.dates);
+  let endDate = parseValorantWikiDate(params.edate ?? params.enddate ?? params.end_date ?? params.date2);
   let location = firstClean(params.location, params.venue, params.city, params.country);
   let region = firstClean(params.region, params.server, params.realm);
   let organizer = firstClean(params.organizer, params.organizer2, params.organizers, params.host);
@@ -113,8 +121,8 @@ export function normalizeValorantTournament(input: {
         return cell.length ? cell.text().trim() : null;
       };
       
-      if (!startDate) startDate = parseWikiDate(getInfoboxValue("Start Date:"));
-      if (!endDate) endDate = parseWikiDate(getInfoboxValue("End Date:"));
+      if (!startDate) startDate = parseValorantWikiDate(getInfoboxValue("Start Date:"));
+      if (!endDate) endDate = parseValorantWikiDate(getInfoboxValue("End Date:"));
       if (!location) location = getInfoboxValue("Location:");
       if (!region) region = getInfoboxValue("Region:");
       if (!prizePool) prizePool = getInfoboxValue("Prize Pool:");
@@ -244,12 +252,12 @@ function extractMatchesFromParsedHtml(html: string, pageUrl: string): Normalized
     }
 
     const timestamp = getTimestampAttr($time);
-    const dateText = firstClean(
+    const dateText = normalizeValorantDateText(firstClean(
       $time.attr("datetime"),
       $time.attr("data-date"),
       $time.attr("data-time"),
       $time.text(),
-    );
+    ));
     const rawContext = [
       $time.attr("datetime"),
       $time.attr("data-date"),
@@ -257,10 +265,11 @@ function extractMatchesFromParsedHtml(html: string, pageUrl: string): Normalized
       $time.text(),
       $scope.find(".brkts-match-info-popup, .match-info-header, .match-info-top-row").first().text(),
     ].filter(Boolean).join(" ");
+    const normalizedRawContext = normalizeValorantDateText(rawContext) || rawContext;
     const matchDate =
       parseTimestampDate(timestamp) ||
-      (hasExplicitTimeText(rawContext) ? parseWikiDate(rawContext) : null) ||
-      (dateText && hasExplicitTimeText(dateText) ? parseWikiDate(dateText) : null);
+      (hasExplicitTimeText(normalizedRawContext) ? parseValorantWikiDate(normalizedRawContext) : null) ||
+      (dateText && hasExplicitTimeText(dateText) ? parseValorantWikiDate(dateText) : null);
 
     return {
       dateText: dateText || null,
@@ -452,13 +461,13 @@ function extractMatchesFromWikitext(wikitext: string): NormalizedMatch[] {
 
     const teamAName = rawTeamA ? (normalizeTeamName(rawTeamA) ?? rawTeamA) : null;
     const teamBName = rawTeamB ? (normalizeTeamName(rawTeamB) ?? rawTeamB) : null;
-    const dateText = buildTemplateDateText(params);
+    const dateText = normalizeValorantDateText(buildTemplateDateText(params));
     const formatText = firstClean(params.bestof, params.bo, params.format, params.matchtype, params.type);
 
     matches.push({
       stage: firstClean(params.stage, params.section),
       round: firstClean(params.round, params.match, params.title),
-      matchDate: parseWikiDate(dateText),
+      matchDate: parseValorantWikiDate(dateText),
       matchDateTime: dateText,
       teamAName,
       teamBName,
@@ -578,6 +587,25 @@ function extractParticipants(wikitext: string, html?: string): NormalizedPartici
     });
   }
   return participants;
+}
+
+function parseValorantWikiDate(value?: string | null) {
+  return parseWikiDate(value, VALORANT_LIQUIPEDIA_DATE_OPTIONS);
+}
+
+function normalizeValorantDateText(value?: string | null) {
+  const cleaned = cleanWikiValue(value);
+  if (!cleaned) return null;
+
+  return cleaned.replace(/\bCST\b/gi, formatTimezoneOffset(480));
+}
+
+function formatTimezoneOffset(offsetMinutes: number) {
+  const sign = offsetMinutes < 0 ? "-" : "+";
+  const absolute = Math.abs(offsetMinutes);
+  const hours = String(Math.floor(absolute / 60)).padStart(2, "0");
+  const minutes = String(absolute % 60).padStart(2, "0");
+  return `${sign}${hours}${minutes}`;
 }
 
 function firstClean(...values: Array<string | null | undefined>) {

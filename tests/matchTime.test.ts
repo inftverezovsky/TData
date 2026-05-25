@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { hasExactMatchTime, resolveExactMatchDate } from "../src/lib/matches/time";
+import { hasExactMatchTime, resolveDisplayMatchDate, resolveExactMatchDate } from "../src/lib/matches/time";
 
 test("hasExactMatchTime rejects date-only announcements", () => {
   assert.equal(hasExactMatchTime({
@@ -39,6 +39,14 @@ test("resolveExactMatchDate does not let stored dates bypass unknown timezones",
   }), null);
 });
 
+test("resolveExactMatchDate trusts normalized date text before raw source text", () => {
+  assert.equal(resolveExactMatchDate({
+    matchDate: new Date("2026-05-29T10:00:00.000Z"),
+    matchDateTime: "May 29, 2026 - 18:00 +0800",
+    rawText: "{{Match|date=May 29, 2026 - 18:00 {{Abbr/CST}}}}",
+  })?.toISOString(), "2026-05-29T10:00:00.000Z");
+});
+
 test("resolveExactMatchDate prefers source timestamps over text timezone parsing", () => {
   assert.equal(resolveExactMatchDate({
     matchDate: null,
@@ -59,4 +67,15 @@ test("hasExactMatchTime trusts HLTV timestamps when stored as exact dates", () =
     matchDate: new Date("2026-05-23T00:00:00.000Z"),
     sourceUrl: "https://www.hltv.org/matches/123/test",
   }), true);
+});
+
+test("date-only matches can have a display date without becoming exact", () => {
+  const match = {
+    matchDate: null,
+    matchDateTime: "May 31, 2026",
+    rawText: "WHU.Crychic vs 焦阳人类科学院",
+  };
+
+  assert.equal(resolveExactMatchDate(match), null);
+  assert.equal(resolveDisplayMatchDate(match)?.toISOString(), "2026-05-31T00:00:00.000Z");
 });

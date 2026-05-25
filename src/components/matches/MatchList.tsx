@@ -6,12 +6,12 @@ import {
   buildScheduleFormatGroups,
   expandScheduleAnnouncementsForDiscipline,
   getScheduleMatchBestOfLabel,
+  isDisplayableScheduleMatch,
   isSchedulePlaceholderMatch,
   isUploadableScheduleEntry,
-  isUploadReadyScheduleMatch,
   type ScheduleAnnouncementEntry,
 } from "@/lib/matches/scheduleView";
-import { resolveExactMatchDate } from "@/lib/matches/time";
+import { resolveDisplayMatchDate, resolveExactMatchDate } from "@/lib/matches/time";
 import { normalizeTeamName } from "@/lib/teams/teams";
 import { getTeamAliasKey } from "@/lib/teams/canonicalize";
 import type { TournamentSource } from "@/lib/utils/tournamentSource";
@@ -51,6 +51,13 @@ const moscowDateFormatter = new Intl.DateTimeFormat("ru-RU", {
   hour: "2-digit",
   minute: "2-digit",
   hour12: false,
+});
+
+const moscowDateOnlyFormatter = new Intl.DateTimeFormat("ru-RU", {
+  timeZone: "Europe/Moscow",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
 });
 
 function getMatchDateObj(match: DisplayMatch): Date | null {
@@ -105,7 +112,7 @@ export default function MatchList({
 
   const baseMatches = useMemo<DisplayMatch[]>(() => {
     return [...matches]
-      .filter(isUploadReadyScheduleMatch)
+      .filter(isDisplayableScheduleMatch)
       .sort((a, b) => {
         const tsA = getMatchTimestamp(a) || Infinity;
         const tsB = getMatchTimestamp(b) || Infinity;
@@ -218,8 +225,13 @@ export default function MatchList({
 
   function formatNeutralDate(match: DisplayMatch): string {
     const d = getMatchDateObj(match);
-    if (!d) return "—";
-    return moscowDateFormatter.format(applyDisciplineScheduleLead(d, disciplineSlug)).replace(",", "");
+    if (d) return moscowDateFormatter.format(applyDisciplineScheduleLead(d, disciplineSlug)).replace(",", "");
+
+    const rawDate = match.matchDateTime?.trim();
+    if (rawDate) return rawDate;
+
+    const displayDate = resolveDisplayMatchDate(match);
+    return displayDate ? moscowDateOnlyFormatter.format(displayDate) : "—";
   }
 
   function formatAnnouncementDate(match: DisplayMatch) {

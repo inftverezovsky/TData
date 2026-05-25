@@ -50,3 +50,20 @@ test("parseWikiDate rejects ambiguous CST timezone", () => {
   assert.equal(parseWikiDate("May 31, 2026 - 14:00 {{Abbr/CST}}"), null);
   assert.equal(hasUnknownExplicitTimezone("May 31, 2026 - 14:00 {{Abbr/CST}}"), true);
 });
+
+test("parseWikiDate can resolve CST only with a source-specific override", () => {
+  const options = { timezoneOffsets: { CST: 480 } };
+
+  assert.equal(
+    parseWikiDate("May 29, 2026 - 18:00 {{Abbr/CST}}", options)?.toISOString(),
+    "2026-05-29T10:00:00.000Z",
+  );
+  assert.equal(hasUnknownExplicitTimezone("May 29, 2026 - 18:00 {{Abbr/CST}}", options), false);
+});
+
+test("parseWikiDate handles English date-only text deterministically", () => {
+  assert.equal(
+    parseWikiDate("May 31, 2026")?.toISOString(),
+    "2026-05-31T00:00:00.000Z",
+  );
+});

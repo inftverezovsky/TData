@@ -1,5 +1,5 @@
 import { getBestOfLabel } from "@/lib/matches/format";
-import { hasExactMatchTime } from "@/lib/matches/time";
+import { hasExactMatchTime, resolveDisplayMatchDate } from "@/lib/matches/time";
 import { isPlaceholderTeam, isTbdPlaceholderTeam } from "@/lib/teams/teams";
 import { supportsStageAnnouncements, type TournamentSource } from "@/lib/utils/tournamentSource";
 import { cleanLiquipediaBracketLabel, isLikelyLiquipediaLayoutNoise } from "@/lib/liquipedia/bracketLabels";
@@ -67,6 +67,21 @@ export function isUploadReadyScheduleMatch(match: ScheduleViewMatch) {
   return true;
 }
 
+export function isDisplayableScheduleMatch(match: ScheduleViewMatch) {
+  if (isUploadReadyScheduleMatch(match)) return true;
+  if (isGeneratedScheduleMatrixRow(match)) return false;
+  if (hasScore(match)) return false;
+  if (!resolveDisplayMatchDate(match)) return false;
+
+  const teamA = getScheduleTeamState(match.teamAName);
+  const teamB = getScheduleTeamState(match.teamBName);
+
+  if (teamA.unsupportedPlaceholder || teamB.unsupportedPlaceholder) return false;
+  if (teamA.placeholder && teamB.placeholder) return false;
+
+  return teamA.real || teamB.real;
+}
+
 export function isUploadableScheduleEntry(match: ScheduleViewMatch, options: ScheduleViewOptions = {}) {
   if (isGeneratedScheduleMatrixRow(match)) return false;
   if (hasScore(match)) return false;
@@ -82,10 +97,11 @@ export function isUploadableScheduleEntry(match: ScheduleViewMatch, options: Sch
   );
 }
 
-export function isAnnouncementScheduleMatch(match: ScheduleViewMatch) {
+export function isAnnouncementScheduleMatch(match: ScheduleViewMatch, options: ScheduleViewOptions = {}) {
   if (isGeneratedScheduleMatrixRow(match)) return false;
   if (hasScore(match)) return false;
-  if (!hasExactMatchTime(match)) return false;
+  const hasExactTime = hasExactMatchTime(match);
+  if (!hasExactTime && !isStageSlotAnnouncementWithoutExactTime(match, options)) return false;
 
   const teamA = getScheduleTeamState(match.teamAName);
   const teamB = getScheduleTeamState(match.teamBName);
@@ -130,7 +146,7 @@ export function expandScheduleAnnouncementMatch<T extends ScheduleViewMatch>(
   match: T,
   options: ScheduleViewOptions = {}
 ): ScheduleAnnouncementEntry<T>[] {
-  if (!isAnnouncementScheduleMatch(match)) return [];
+  if (!isAnnouncementScheduleMatch(match, options)) return [];
   const isExplicitStageSlot = isStageSlotAnnouncement(match, options);
   const isFallbackStageSlot = !isExplicitStageSlot && isFallbackStageSlotAnnouncement(match, options);
 
@@ -225,6 +241,10 @@ function isStageSlotAnnouncement(match: ScheduleViewMatch, options: ScheduleView
   return teamA.placeholder && teamB.placeholder && Boolean(getExplicitStageSlotAnnouncementLabel(match));
 }
 
+function isStageSlotAnnouncementWithoutExactTime(match: ScheduleViewMatch, options: ScheduleViewOptions) {
+  return options.source === "liquipedia" && isStageSlotAnnouncement(match, options);
+}
+
 export function getStageSlotAnnouncementLabel(match: ScheduleViewMatch) {
   return getExplicitStageSlotAnnouncementLabel(match) || "Group Stage";
 }
@@ -278,6 +298,7 @@ function normalizeStageSlotLabel(value: string | null | undefined) {
     /\bWinners?'?\s+Round\s+\d+\b/i,
     /\bLosers?'?\s+Round\s+\d+\b/i,
     /\bLCQ\s+Round\s+\d+\b/i,
+    /\bRound\s+\d+\b/i,
     /\bUpper\s+Bracket\s+(?:Round\s+\d+|Quarter[-\s]?finals?|Semi[-\s]?finals?|Finals?)\b/i,
     /\bLower\s+Bracket\s+(?:Round\s+\d+|Quarter[-\s]?finals?|Semi[-\s]?finals?|Finals?)\b/i,
     /\bTo\s+Playoffs?\b/i,
@@ -311,7 +332,7 @@ function normalizeStageSlotLabel(value: string | null | undefined) {
 }
 
 function hasStageSlotLabelHint(value: string) {
-  return /\b(?:Group Stage|Round Robin|Regular\s+Season|Stage\s+\d+|Week\s+\d+|Round\s+of\s+\d+|LCQ\s+Round\s+\d+|Upper\s+Bracket|Lower\s+Bracket|Winners?'?\s+Round\s+\d+|Losers?'?\s+Round\s+\d+|To\s+Playoffs?|Advance\s+to\s+Playoffs?|Playoffs?|Quarter[-\s]?finals?|Semi[-\s]?finals?|(?:Third|3rd)\s+Place(?:\s+Match)?|Consolation\s+Finals?|Winners?'?\s+Finals?|Losers?'?\s+Finals?|Grand\s+Finals?|Finals?)\b/i.test(value);
+  return /\b(?:Group Stage|Round Robin|Regular\s+Season|Stage\s+\d+|Week\s+\d+|Round\s+of\s+\d+|Round\s+\d+|LCQ\s+Round\s+\d+|Upper\s+Bracket|Lower\s+Bracket|Winners?'?\s+Round\s+\d+|Losers?'?\s+Round\s+\d+|To\s+Playoffs?|Advance\s+to\s+Playoffs?|Playoffs?|Quarter[-\s]?finals?|Semi[-\s]?finals?|(?:Third|3rd)\s+Place(?:\s+Match)?|Consolation\s+Finals?|Winners?'?\s+Finals?|Losers?'?\s+Finals?|Grand\s+Finals?|Finals?)\b/i.test(value);
 }
 
 function normalizeKnownStageName(value: string) {
@@ -331,6 +352,8 @@ function normalizeKnownStageName(value: string) {
   if (week) return titleCaseStage(week[0]);
   const roundOf = text.match(/round\s+of\s+\d+/i);
   if (roundOf) return titleCaseStage(roundOf[0]);
+  const plainRound = text.match(/^round\s+\d+/i);
+  if (plainRound) return titleCaseStage(plainRound[0]);
   const winnersRound = text.match(/winners?'?\s+round\s+\d+/i);
   if (winnersRound) return titleCaseStage(winnersRound[0]).replace(/^Winners'?/, "Winners'");
   const losersRound = text.match(/losers?'?\s+round\s+\d+/i);

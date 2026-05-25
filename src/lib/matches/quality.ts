@@ -112,7 +112,10 @@ export function shouldKeepPreviousMatches(params: {
   if (params.newMatches.length === 0) return true;
   if (params.sourceHadError && params.newMatches.length < previousCount) return true;
   if (params.newQualityScore < 0.25 && params.newMatches.length < previousCount * 0.8) return true;
-  if (params.newMatches.length < Math.max(2, previousCount * 0.25)) return true;
+  if (
+    params.newMatches.length < previousCount &&
+    params.newMatches.length < Math.max(2, previousCount * 0.25)
+  ) return true;
 
   return false;
 }

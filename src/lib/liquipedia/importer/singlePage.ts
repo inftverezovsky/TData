@@ -15,7 +15,7 @@ import {
   buildMatchCandidateMetadata,
   computeMatchSetQuality,
 } from "@/lib/matches/quality";
-import { resolveExactMatchDate } from "@/lib/matches/time";
+import { resolveDisplayMatchDate, resolveExactMatchDate } from "@/lib/matches/time";
 import {
   findSourceFetchCache,
   isSourceCacheFresh,
@@ -465,7 +465,14 @@ export async function processSinglePage(params: {
       matchesToInsert = normalized.matches
         .map((m: any) => {
           const exactMatchDate = resolveExactMatchDate(m);
-          return exactMatchDate ? { ...m, matchDate: exactMatchDate } : null;
+          if (exactMatchDate) return { ...m, matchDate: exactMatchDate };
+
+          const displayMatchDate = resolveDisplayMatchDate(m);
+          if (shouldKeepDisplayOnlyScheduleMatch(m, displayMatchDate)) {
+            return { ...m, matchDate: displayMatchDate };
+          }
+
+          return null;
         })
         .filter((m: any): m is any => Boolean(m))
         .filter((m: any) => {
@@ -648,6 +655,31 @@ function getSnapshotPageUrl(snapshot: { metadata?: unknown }) {
   if (typeof record.pageUrl === "string") return record.pageUrl;
   if (typeof record.fullUrl === "string") return record.fullUrl;
   return null;
+}
+
+function shouldKeepDisplayOnlyScheduleMatch(match: any, displayMatchDate: Date | null) {
+  if (!match?.teamAName || !match?.teamBName) return false;
+  if (match.scoreA !== null && match.scoreA !== undefined) return false;
+  if (match.scoreB !== null && match.scoreB !== undefined) return false;
+  if (isFinishedMatchStatus(match.status)) return false;
+
+  const teamAPlaceholder = isPlaceholderTeam(match.teamAName);
+  const teamBPlaceholder = isPlaceholderTeam(match.teamBName);
+  if (teamAPlaceholder && teamBPlaceholder) return hasStageAnnouncementContext(match);
+
+  return Boolean(displayMatchDate);
+}
+
+function hasStageAnnouncementContext(match: any) {
+  const text = [
+    match.stage,
+    match.round,
+    match.format,
+    match.rawText,
+    match.matchId,
+  ].filter(Boolean).join(" ");
+
+  return /\b(?:slot|round\s*\d+|group\s+stage|swiss|playoffs?|bracket|quarter[-\s]?finals?|semi[-\s]?finals?|finals?|grand\s+final|winner|loser|bo\s*\d+)\b/i.test(text);
 }
 
 function buildLiquipediaNormalizationJson(

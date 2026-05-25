@@ -157,6 +157,30 @@ test("Counter-Strike normalizer extracts empty Bracket wikitext slots as dated a
   assert.ok(normalized.matches[5].rawText?.startsWith("slot=RXMTP"));
 });
 
+test("Counter-Strike normalizer resolves Chinese CST dates contextually", () => {
+  const normalized = normalizeCounterStrikeTournament({
+    title: "Perfect_World/National_League/2026/Spring/College_Division",
+    pageUrl: "https://liquipedia.net/counterstrike/Perfect_World/National_League/2026/Spring/College_Division",
+    wikitext: `
+      {{Infobox league|name=Perfect World National League|country=China|city=Shanghai|sdate=2026-05-10|edate=2026-06-08}}
+      {{Bracket|Bracket/2U2L1D
+      <!-- Lower Bracket Final -->
+      |R1M1={{Match
+        |opponent1={{TeamOpponent|Alpha}}|opponent2={{TeamOpponent|Bravo}}
+        |date=May 27, 2026 - 13:00 {{Abbr/CST}}
+        |map1={{Map|map=Dust II|finished=}}
+        |map2={{Map|map=Overpass|finished=}}
+        |map3={{Map|map=Ancient|finished=}}
+      }}
+      }}
+    `,
+  });
+
+  assert.equal(normalized.matches.length, 1);
+  assert.equal(normalized.matches[0].matchDate?.toISOString(), "2026-05-27T05:00:00.000Z");
+  assert.match(normalized.matches[0].matchDateTime || "", /\+0800/);
+});
+
 test("Valorant normalizer only keeps stage subpages from the selected event", () => {
   const normalized = normalizeValorantTournament({
     title: "Source League/2026/Spring/Promotion",
@@ -313,6 +337,22 @@ test("Valorant wikitext extraction does not duplicate MatchSchedule templates", 
   });
 
   assert.equal(normalized.matches.length, 1);
+});
+
+test("Valorant normalizer resolves Chinese CST dates contextually", () => {
+  const normalized = normalizeValorantTournament({
+    title: "China Evolution Series/2026/Act 2",
+    pageUrl: "https://liquipedia.net/valorant/China_Evolution_Series/2026/Act_2",
+    wikitext: `
+      {{Infobox league|name=China Evolution Series Act 2|sdate=2026-05-21|edate=2026-06-07}}
+      {{Match|team1=All Gamers|team2=Dragon Ranger Gaming|date=May 21, 2026 - 17:00 {{Abbr/CST}}|bestof=3}}
+    `,
+  });
+
+  assert.equal(normalized.matches.length, 1);
+  assert.equal(normalized.matches[0].matchDate?.toISOString(), "2026-05-21T09:00:00.000Z");
+  assert.match(normalized.matches[0].matchDateTime || "", /\+0800/);
+  assert.equal(normalized.valorantDiagnostics?.coverage.withExactTime, 1);
 });
 
 test("Valorant normalizer reports diagnostics and keeps Team vs TBD with exact time", () => {

@@ -8,13 +8,22 @@ import {
   extractTemplatesByNamePrefix,
   parseInteger,
   parseTemplate,
-  parseWikiDate
+  parseWikiDate,
+  type WikiDateParseOptions
 } from "@/lib/normalizers/wikiText";
 import { createHash } from "crypto";
 import { generateInternalTeamId, isPlaceholderTeam } from "@/lib/teams/teams";
 import { applyTbdPairCycling } from "@/lib/matches/tbdCycling";
 import { getBestOfLabel } from "@/lib/matches/format";
+import { hasExplicitTimeText } from "@/lib/matches/time";
 import { findLiquipediaBracketRoundLabel, isLikelyLiquipediaLayoutNoise } from "@/lib/liquipedia/bracketLabels";
+
+const CHINA_CST_DATE_OPTIONS: WikiDateParseOptions = {
+  timezoneOffsets: {
+    // On Chinese Counter-Strike Liquipedia pages CST is China Standard Time.
+    CST: 480,
+  },
+};
 
 /* ───── Types ───── */
 
@@ -89,6 +98,7 @@ export function normalizeCounterStrikeTournament(input: {
   let organizer = firstClean(params.organizer, params.organizer2, params.organizers, params.host);
   let prizePool = firstClean(params.prizepoolusd, params.prizepool, params.prize_pool, params.prize, params.prizemoney);
   let formatText = firstClean(params.format, params.format1, params.format2, params.type);
+  const dateOptions = getCounterStrikeDateOptions(input, params);
 
   let teamCount = parseInt(firstClean(params.team_number, params.participant_number, params.teams) ?? "0", 10);
   if (isNaN(teamCount)) teamCount = 0;
@@ -154,9 +164,9 @@ export function normalizeCounterStrikeTournament(input: {
 
   /* ── Extract matches: staged pipeline ── */
   const htmlMatches = input.parsedHtml
-    ? extractMatchesFromParsedHtml(input.parsedHtml, input.pageUrl)
+    ? extractMatchesFromParsedHtml(input.parsedHtml, input.pageUrl, dateOptions)
     : [];
-  const wikiMatches = extractMatchesFromWikitext(input.wikitext);
+  const wikiMatches = extractMatchesFromWikitext(input.wikitext, dateOptions);
 
   const allCandidates = [...htmlMatches, ...wikiMatches];
   const normalizedMatches = allCandidates
@@ -238,7 +248,7 @@ export function normalizeCounterStrikeTournament(input: {
 
 /* ───── Extract matches from parsed HTML ───── */
 
-function extractMatchesFromParsedHtml(html: string, pageUrl: string): NormalizedMatch[] {
+function extractMatchesFromParsedHtml(html: string, pageUrl: string, dateOptions: WikiDateParseOptions = {}): NormalizedMatch[] {
   const $ = cheerio.load(html);
   const matches: NormalizedMatch[] = [];
 
@@ -327,13 +337,16 @@ function extractMatchesFromParsedHtml(html: string, pageUrl: string): Normalized
     // Timer / date
     const timer = $match.find(".timer-object").first();
     const timestamp = timer.attr("data-timestamp");
-    const dateText = timer.text().trim() || null;
+    const dateText = normalizeCounterStrikeDateText(timer.text().trim(), dateOptions);
     const finished = timer.attr("data-finished");
 
     let matchDate: Date | null = null;
     if (timestamp) {
       const ts = parseInt(timestamp, 10);
       if (!isNaN(ts)) matchDate = new Date(ts * 1000);
+    }
+    if (!matchDate && dateText && hasExplicitTimeText(dateText)) {
+      matchDate = parseCounterStrikeWikiDate(dateText, dateOptions);
     }
 
     // Stage from the matchlist title
@@ -442,13 +455,16 @@ function extractMatchesFromParsedHtml(html: string, pageUrl: string): Normalized
     const $popup = $match.find(".brkts-match-info-popup");
     const timer = $popup.find(".timer-object").first();
     const timestamp = timer.attr("data-timestamp");
-    const dateText = timer.text().trim() || null;
+    const dateText = normalizeCounterStrikeDateText(timer.text().trim(), dateOptions);
     const finished = timer.attr("data-finished");
 
     let matchDate: Date | null = null;
     if (timestamp) {
       const ts = parseInt(timestamp, 10);
       if (!isNaN(ts)) matchDate = new Date(ts * 1000);
+    }
+    if (!matchDate && dateText && hasExplicitTimeText(dateText)) {
+      matchDate = parseCounterStrikeWikiDate(dateText, dateOptions);
     }
 
     const $bracket = $match.closest(".brkts-bracket");
@@ -497,8 +513,8 @@ type BracketWikitextMatchEntry = {
   template: string;
 };
 
-function extractMatchesFromWikitext(wikitext: string): NormalizedMatch[] {
-  const bracketEntries = extractBracketMatchEntriesFromWikitext(wikitext);
+function extractMatchesFromWikitext(wikitext: string, dateOptions: WikiDateParseOptions = {}): NormalizedMatch[] {
+  const bracketEntries = extractBracketMatchEntriesFromWikitext(wikitext, dateOptions);
   const bracketTemplateSet = new Set(bracketEntries.map((entry) => entry.template));
   const templates = [
     ...extractTemplatesByNamePrefix(wikitext, "Match", 400),
@@ -508,7 +524,7 @@ function extractMatchesFromWikitext(wikitext: string): NormalizedMatch[] {
   const matches: NormalizedMatch[] = bracketEntries.map((entry) => entry.match);
 
   for (const template of templates) {
-    const match = buildMatchFromWikitextTemplate(template);
+    const match = buildMatchFromWikitextTemplate(template, {}, dateOptions);
     if (!match) continue;
     matches.push(match);
 
@@ -518,7 +534,7 @@ function extractMatchesFromWikitext(wikitext: string): NormalizedMatch[] {
   return matches;
 }
 
-function extractBracketMatchEntriesFromWikitext(wikitext: string): BracketWikitextMatchEntry[] {
+function extractBracketMatchEntriesFromWikitext(wikitext: string, dateOptions: WikiDateParseOptions = {}): BracketWikitextMatchEntry[] {
   const bracketTemplates = extractBracketTemplates(wikitext);
   const entries: BracketWikitextMatchEntry[] = [];
 
@@ -541,7 +557,7 @@ function extractBracketMatchEntriesFromWikitext(wikitext: string): BracketWikite
         round: slotLabels.get(slot),
         keepEmptyPlaceholders: true,
         sourceSlot: slot,
-      });
+      }, dateOptions);
       if (!match) continue;
 
       entries.push({ match, template: matchTemplate });
@@ -600,7 +616,8 @@ function buildMatchFromWikitextTemplate(
     round?: string | null;
     keepEmptyPlaceholders?: boolean;
     sourceSlot?: string | null;
-  } = {}
+  } = {},
+  dateOptions: WikiDateParseOptions = {}
 ): NormalizedMatch | null {
   const parsed = parseTemplate(template);
   const params = parsed.params;
@@ -618,8 +635,8 @@ function buildMatchFromWikitextTemplate(
 
   const teamAName = rawTeamA ? (normalizeTeamName(rawTeamA) ?? rawTeamA) : "TBD";
   const teamBName = rawTeamB ? (normalizeTeamName(rawTeamB) ?? rawTeamB) : "TBD";
-  const dateText = buildTemplateDateText(params);
-  const dateVal = parseWikiDate(dateText);
+  const dateText = normalizeCounterStrikeDateText(buildTemplateDateText(params), dateOptions);
+  const dateVal = parseCounterStrikeWikiDate(dateText, dateOptions);
   const formatText = firstClean(params.bestof, params.bo, params.format, params.matchtype, params.type);
   const rawText = [context.sourceSlot ? `slot=${context.sourceSlot}` : null, template.slice(0, 2500)]
     .filter(Boolean)
@@ -843,6 +860,50 @@ function extractParticipants(wikitext: string, html?: string): NormalizedPartici
 }
 
 /* ───── Helpers ───── */
+
+function getCounterStrikeDateOptions(
+  input: { title: string; pageUrl: string },
+  params: Record<string, string>,
+): WikiDateParseOptions {
+  const context = [
+    input.title,
+    input.pageUrl,
+    params.country,
+    params.city,
+    params.location,
+    params.region,
+    params.organizer,
+  ].filter(Boolean).join(" ");
+
+  if (/\b(?:china|cn|shanghai|perfect[_\s-]?world)\b|完美世界/i.test(context)) {
+    return CHINA_CST_DATE_OPTIONS;
+  }
+
+  return {};
+}
+
+function parseCounterStrikeWikiDate(value?: string | null, options: WikiDateParseOptions = {}) {
+  return parseWikiDate(value, options);
+}
+
+function normalizeCounterStrikeDateText(value?: string | null, options: WikiDateParseOptions = {}) {
+  const cleaned = cleanWikiValue(value);
+  if (!cleaned) return null;
+
+  if (options.timezoneOffsets?.CST === 480) {
+    return cleaned.replace(/\bCST\b/gi, formatTimezoneOffset(480));
+  }
+
+  return cleaned;
+}
+
+function formatTimezoneOffset(offsetMinutes: number) {
+  const sign = offsetMinutes < 0 ? "-" : "+";
+  const absolute = Math.abs(offsetMinutes);
+  const hours = String(Math.floor(absolute / 60)).padStart(2, "0");
+  const minutes = String(absolute % 60).padStart(2, "0");
+  return `${sign}${hours}${minutes}`;
+}
 
 function firstClean(...values: Array<string | null | undefined>) {
   for (const value of values) {

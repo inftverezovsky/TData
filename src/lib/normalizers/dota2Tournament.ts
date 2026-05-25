@@ -8,7 +8,8 @@ import {
   extractTemplatesByNamePrefix,
   parseInteger,
   parseTemplate,
-  parseWikiDate
+  parseWikiDate,
+  type WikiDateParseOptions
 } from "@/lib/normalizers/wikiText";
 import { createHash } from "crypto";
 import { buildDota2Diagnostics, type Dota2ParsingDiagnostics } from "@/lib/matches/parsingDiagnostics";
@@ -17,6 +18,14 @@ import { applyTbdPairCycling } from "@/lib/matches/tbdCycling";
 import { getBestOfLabel } from "@/lib/matches/format";
 import { hasExplicitTimeText } from "@/lib/matches/time";
 import { findLiquipediaBracketRoundLabel } from "@/lib/liquipedia/bracketLabels";
+
+const DOTA2_LIQUIPEDIA_DATE_OPTIONS: WikiDateParseOptions = {
+  timezoneOffsets: {
+    // On Dota 2 Liquipedia Chinese-region pages CST is China Standard Time.
+    // Keep this contextual so Counter-Strike/LoL pages can still reject ambiguous CST.
+    CST: 480,
+  },
+};
 
 /* ───── Types ───── */
 
@@ -85,8 +94,8 @@ export function normalizeDota2Tournament(input: {
 
   const params = parsedInfobox?.params ?? {};
   let name = firstClean(params.name, params.tournament, params.event, params.league) ?? cleanWikiValue(input.title) ?? input.title;
-  let startDate = parseWikiDate(params.sdate ?? params.startdate ?? params.start_date ?? params.date ?? params.dates);
-  let endDate = parseWikiDate(params.edate ?? params.enddate ?? params.end_date ?? params.date2);
+  let startDate = parseDota2WikiDate(params.sdate ?? params.startdate ?? params.start_date ?? params.date ?? params.dates);
+  let endDate = parseDota2WikiDate(params.edate ?? params.enddate ?? params.end_date ?? params.date2);
   let location = firstClean(params.location, params.venue, params.city, params.country);
   let region = firstClean(params.region, params.server, params.realm);
   let organizer = firstClean(params.organizer, params.organizer2, params.organizers, params.host);
@@ -111,8 +120,8 @@ export function normalizeDota2Tournament(input: {
         return cell.length ? cell.text().trim() : null;
       };
       
-      if (!startDate) startDate = parseWikiDate(getInfoboxValue("Start Date:"));
-      if (!endDate) endDate = parseWikiDate(getInfoboxValue("End Date:"));
+      if (!startDate) startDate = parseDota2WikiDate(getInfoboxValue("Start Date:"));
+      if (!endDate) endDate = parseDota2WikiDate(getInfoboxValue("End Date:"));
       if (!location) location = getInfoboxValue("Location:");
       if (!region) region = getInfoboxValue("Region:");
       if (!prizePool) prizePool = getInfoboxValue("Prize Pool:");
@@ -156,10 +165,18 @@ export function normalizeDota2Tournament(input: {
   const subPages = extractSubPages(input.wikitext, input.parsedHtml || "", input.pageUrl);
 
   /* ── Extract matches: staged pipeline ── */
-  const htmlMatches = input.parsedHtml
+  const parsedHtmlMatches = input.parsedHtml
     ? extractMatchesFromParsedHtml(input.parsedHtml, input.pageUrl)
     : [];
-  const wikiMatches = extractMatchesFromWikitext(input.wikitext);
+  const rawWikiMatches = extractMatchesFromWikitext(input.wikitext);
+  const htmlMatches = filterParsedHtmlDateOnlyMatchesCoveredByWikitext(
+    parsedHtmlMatches,
+    rawWikiMatches,
+  );
+  const wikiMatches = filterWikitextMatchesCoveredByParsedHtml(
+    rawWikiMatches,
+    htmlMatches,
+  );
 
   const allCandidates = [...htmlMatches, ...wikiMatches];
   const normalizedMatches = allCandidates
@@ -417,7 +434,7 @@ function extractMatchesFromParsedHtml(html: string, pageUrl: string): Normalized
       for (const rawValue of rawValues) {
         const value = firstClean(rawValue);
         if (!value) continue;
-        matchDateTime = matchDateTime || value;
+        matchDateTime = matchDateTime || normalizeDota2DateText(value);
 
         const timestampDate = /^\d{9,13}$/.test(value) ? parseTimestamp(value) : null;
         if (timestampDate) {
@@ -426,7 +443,7 @@ function extractMatchesFromParsedHtml(html: string, pageUrl: string): Normalized
         }
 
         if (!hasExplicitTimeText(value)) continue;
-        const parsed = parseWikiDate(value);
+        const parsed = parseDota2WikiDate(value);
         if (parsed) {
           matchDate = parsed;
           return;
@@ -437,10 +454,10 @@ function extractMatchesFromParsedHtml(html: string, pageUrl: string): Normalized
     if (!matchDate) {
       const scopedText = firstClean($scope.text());
       if (scopedText && hasExplicitTimeText(scopedText)) {
-        const parsed = parseWikiDate(scopedText);
+        const parsed = parseDota2WikiDate(scopedText);
         if (parsed) {
           matchDate = parsed;
-          matchDateTime = matchDateTime || scopedText.slice(0, 160);
+          matchDateTime = matchDateTime || normalizeDota2DateText(scopedText)?.slice(0, 160) || scopedText.slice(0, 160);
         }
       }
     }
@@ -741,8 +758,8 @@ function buildMatchFromWikitextTemplate(
 
   const teamAName = rawTeamA ? (normalizeTeamName(rawTeamA) ?? rawTeamA) : "TBD";
   const teamBName = rawTeamB ? (normalizeTeamName(rawTeamB) ?? rawTeamB) : "TBD";
-  const dateText = buildTemplateDateText(params);
-  const dateVal = parseWikiDate(dateText);
+  const dateText = normalizeDota2DateText(buildTemplateDateText(params));
+  const dateVal = parseDota2WikiDate(dateText);
   const formatText = firstClean(params.bestof, params.bo, params.format, params.matchtype, params.type);
 
   return {
@@ -759,6 +776,119 @@ function buildMatchFromWikitextTemplate(
     court: firstClean(params.court, params.stream, params.twitch),
     rawText: template.slice(0, 2500)
   };
+}
+
+function filterParsedHtmlDateOnlyMatchesCoveredByWikitext(
+  htmlMatches: NormalizedMatch[],
+  wikiMatches: NormalizedMatch[]
+) {
+  if (htmlMatches.length === 0 || wikiMatches.length === 0) return htmlMatches;
+
+  const wikiCoverage = new Map<string, number>();
+  for (const match of wikiMatches) {
+    const key = getDateOnlyRealPlaceholderCoverageKey(match);
+    if (!key) continue;
+    wikiCoverage.set(key, (wikiCoverage.get(key) || 0) + 1);
+  }
+
+  return htmlMatches.filter((match) => {
+    const key = getDateOnlyRealPlaceholderCoverageKey(match);
+    if (!key) return true;
+
+    const remaining = wikiCoverage.get(key) || 0;
+    if (remaining <= 0) return true;
+
+    wikiCoverage.set(key, remaining - 1);
+    return false;
+  });
+}
+
+function filterWikitextMatchesCoveredByParsedHtml(
+  wikiMatches: NormalizedMatch[],
+  htmlMatches: NormalizedMatch[]
+) {
+  if (wikiMatches.length === 0 || htmlMatches.length === 0) return wikiMatches;
+
+  const coverage = new Map<string, number>();
+  for (const match of htmlMatches) {
+    const key = getParsedCoverageKey(match);
+    if (!key) continue;
+    coverage.set(key, (coverage.get(key) || 0) + 1);
+  }
+
+  return wikiMatches.filter((match) => {
+    const key = getParsedCoverageKey(match);
+    if (!key) return true;
+
+    const remaining = coverage.get(key) || 0;
+    if (remaining <= 0) return true;
+
+    coverage.set(key, remaining - 1);
+    return false;
+  });
+}
+
+function getDateOnlyRealPlaceholderCoverageKey(match: NormalizedMatch) {
+  if (hasExplicitTimeText(match.matchDateTime, match.rawText)) return null;
+
+  const dateKey = getDateOnlyCoverageDateKey(match);
+  if (!dateKey) return null;
+
+  const teamShape = getCoverageTeamShape(match);
+  if (!teamShape.includes("placeholder")) return null;
+  if (teamShape === "placeholder|placeholder") return null;
+
+  return [dateKey, teamShape].join("|");
+}
+
+function getDateOnlyCoverageDateKey(match: NormalizedMatch) {
+  const date = match.matchDate ? new Date(match.matchDate) : parseDota2WikiDate(match.matchDateTime);
+  if (!date || !Number.isFinite(date.getTime())) return "";
+
+  return date.toISOString().slice(0, 10);
+}
+
+function getParsedCoverageKey(match: NormalizedMatch) {
+  const dateKey = getMatchCoverageDateKey(match);
+  if (!dateKey) return null;
+
+  return [
+    dateKey,
+    normalizeCoverageText(match.stage),
+    normalizeCoverageText(match.round),
+    getBestOfLabel(match.format) || getBestOfLabel(match.rawText) || "",
+    getCoverageTeamShape(match),
+  ].join("|");
+}
+
+function getMatchCoverageDateKey(match: NormalizedMatch) {
+  if (match.matchDate) {
+    const date = new Date(match.matchDate);
+    if (Number.isFinite(date.getTime())) {
+      return `minute:${Math.floor(date.getTime() / 60000)}`;
+    }
+  }
+
+  const dateText = normalizeDota2DateText(match.matchDateTime);
+  if (!dateText) return "";
+
+  return `text:${dateText.toLowerCase().replace(/\s+/g, " ").trim()}`;
+}
+
+function getCoverageTeamShape(match: NormalizedMatch) {
+  const a = normalizeCoverageTeam(match.teamAName);
+  const b = normalizeCoverageTeam(match.teamBName);
+  if (a === "placeholder" && b === "placeholder") return "placeholder|placeholder";
+  return [a, b].sort().join("|");
+}
+
+function normalizeCoverageTeam(name: string | null | undefined) {
+  if (!name || isPlaceholderTeam(name)) return "placeholder";
+  return normalizeCoverageText(name);
+}
+
+function normalizeCoverageText(value: string | null | undefined) {
+  return cleanWikiValue(value)?.toLowerCase().replace(/\s+/g, " ").trim() || "";
 }
 
 /* ───── Normalize & validate a match candidate ───── */
@@ -1001,6 +1131,25 @@ function extractParticipants(wikitext: string, html?: string): NormalizedPartici
 }
 
 /* ───── Helpers ───── */
+
+function parseDota2WikiDate(value?: string | null) {
+  return parseWikiDate(value, DOTA2_LIQUIPEDIA_DATE_OPTIONS);
+}
+
+function normalizeDota2DateText(value?: string | null) {
+  const cleaned = cleanWikiValue(value);
+  if (!cleaned) return null;
+
+  return cleaned.replace(/\bCST\b/gi, formatTimezoneOffset(480));
+}
+
+function formatTimezoneOffset(offsetMinutes: number) {
+  const sign = offsetMinutes < 0 ? "-" : "+";
+  const absolute = Math.abs(offsetMinutes);
+  const hours = String(Math.floor(absolute / 60)).padStart(2, "0");
+  const minutes = String(absolute % 60).padStart(2, "0");
+  return `${sign}${hours}${minutes}`;
+}
 
 function firstClean(...values: Array<string | null | undefined>) {
   for (const value of values) {

@@ -23,18 +23,39 @@ export function resolveExactMatchDate(match: MatchTimeInput): Date | null {
   const timestampDate = getTimestampDate(match.matchDateTime, match.rawText);
   if (timestampDate) return timestampDate;
 
-  if (hasUnknownExplicitTimezone(match.matchDateTime) || hasUnknownExplicitTimezone(match.rawText)) {
+  if (hasUnknownExplicitTimezone(match.matchDateTime)) {
+    return null;
+  }
+
+  const explicitMatchDateTime = parseExplicitDateText(match.matchDateTime);
+  if (explicitMatchDateTime) return explicitMatchDateTime;
+
+  if (hasUnknownExplicitTimezone(match.rawText)) {
     return null;
   }
 
   const date = parseDateLike(match.matchDate);
   if (date && isTrustedExactDate(match, date)) return date;
 
-  return parseExplicitDateText(match.matchDateTime, match.rawText);
+  return parseExplicitDateText(match.rawText);
 }
 
 export function hasExactMatchTime(match: MatchTimeInput) {
   return Boolean(resolveExactMatchDate(match));
+}
+
+export function resolveDisplayMatchDate(match: MatchTimeInput): Date | null {
+  const exactDate = resolveExactMatchDate(match);
+  if (exactDate) return exactDate;
+  if (hasUnknownExplicitTimezone(match.matchDateTime)) return null;
+
+  const storedDate = parseDateLike(match.matchDate);
+  if (storedDate) return storedDate;
+
+  const textDate = parseLooseDateText(match.matchDateTime);
+  if (textDate) return textDate;
+
+  return null;
 }
 
 function isTrustedExactDate(match: MatchTimeInput, date: Date) {
@@ -47,6 +68,18 @@ function parseExplicitDateText(...values: Array<unknown>) {
   for (const value of values) {
     const text = getText(value);
     if (!text || !hasExplicitTimeText(text)) continue;
+
+    const parsed = parseWikiDate(text);
+    if (parsed && Number.isFinite(parsed.getTime())) return parsed;
+  }
+
+  return null;
+}
+
+function parseLooseDateText(...values: Array<unknown>) {
+  for (const value of values) {
+    const text = getText(value);
+    if (!text) continue;
 
     const parsed = parseWikiDate(text);
     if (parsed && Number.isFinite(parsed.getTime())) return parsed;

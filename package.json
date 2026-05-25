@@ -19,6 +19,7 @@
     "db:migrate:dev": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
+    "audit:tournaments": "tsx scripts/tournament-audit-agent.ts",
     "import:dota2-admin-teams": "tsx scripts/import-admin-teams.ts",
     "setup": "npm install && npm run prisma:generate && npm run db:migrate:deploy && npm run db:seed"
   },

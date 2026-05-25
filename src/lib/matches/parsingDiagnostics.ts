@@ -355,6 +355,7 @@ function getPrimarySkipReason(params: {
 
 function isFinishedCandidate(candidate: EsportsDiagnosticMatchLike) {
   const status = String(candidate.status ?? "").toLowerCase();
+  if (/^(?:true|yes|1)$/.test(status)) return true;
   if (/finished|complete|result|итог|заверш|done/.test(status)) return true;
   return candidate.scoreA != null || candidate.scoreB != null;
 }

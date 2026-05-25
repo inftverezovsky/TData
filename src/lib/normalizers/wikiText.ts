@@ -93,8 +93,12 @@ export function cleanWikiValue(value?: string | null) {
   return output.length > 0 ? output : null;
 }
 
-export function parseWikiDate(value?: string | null): Date | null {
-  const templatedDate = parseKnownDateTemplate(value);
+export type WikiDateParseOptions = {
+  timezoneOffsets?: Record<string, number>;
+};
+
+export function parseWikiDate(value?: string | null, options: WikiDateParseOptions = {}): Date | null {
+  const templatedDate = parseKnownDateTemplate(value, options);
   if (templatedDate === INVALID_EXPLICIT_TIMEZONE) return null;
   if (templatedDate) return templatedDate;
 
@@ -112,7 +116,8 @@ export function parseWikiDate(value?: string | null): Date | null {
       Number(hour),
       Number(min),
       Number(sec || 0),
-      timezone
+      timezone,
+      options
     );
     if (timezoneDate) return timezoneDate;
     if (hasExplicitTimezone(timezone)) return null;
@@ -134,7 +139,8 @@ export function parseWikiDate(value?: string | null): Date | null {
         Number(hour),
         Number(min),
         0,
-        timezone
+        timezone,
+        options
       );
       if (timezoneDate) return timezoneDate;
       if (hasExplicitTimezone(timezone)) return null;
@@ -154,6 +160,15 @@ export function parseWikiDate(value?: string | null): Date | null {
     return date;
   }
 
+  const englishDate = cleaned.match(/([a-zA-Z]+)\s+([0-3]?\d),?\s+(20\d{2}|19\d{2})(?!\s*[-–]\s*[0-2]?\d:[0-5]\d)/i);
+  if (englishDate) {
+    const [, monthStr, day, year] = englishDate;
+    const month = parseEnglishMonth(monthStr);
+    if (month) {
+      return new Date(Date.UTC(Number(year), month - 1, Number(day), 0, 0, 0));
+    }
+  }
+
   if (/^(?:19|20)\d{2}$/.test(cleaned)) {
     return null;
   }
@@ -167,9 +182,9 @@ export function parseWikiDate(value?: string | null): Date | null {
   return null;
 }
 
-export function hasUnknownExplicitTimezone(value?: string | null) {
+export function hasUnknownExplicitTimezone(value?: string | null, options: WikiDateParseOptions = {}) {
   if (!value) return false;
-  if (parseKnownDateTemplate(value) === INVALID_EXPLICIT_TIMEZONE) return true;
+  if (parseKnownDateTemplate(value, options) === INVALID_EXPLICIT_TIMEZONE) return true;
 
   const cleaned = cleanWikiValue(value);
   if (!cleaned) return false;
@@ -177,13 +192,16 @@ export function hasUnknownExplicitTimezone(value?: string | null) {
   return findExplicitDateTimezoneTokens(cleaned).some((timezone) => {
     const normalized = timezone.trim().toUpperCase();
     if (normalized === "AM" || normalized === "PM") return false;
-    return parseTimezoneOffsetMinutes(normalized) === null;
+    return parseTimezoneOffsetMinutes(normalized, options) === null;
   });
 }
 
 const INVALID_EXPLICIT_TIMEZONE = Symbol("invalid explicit timezone");
 
-function parseKnownDateTemplate(value?: string | null): Date | null | typeof INVALID_EXPLICIT_TIMEZONE {
+function parseKnownDateTemplate(
+  value?: string | null,
+  options: WikiDateParseOptions = {}
+): Date | null | typeof INVALID_EXPLICIT_TIMEZONE {
   if (!value) return null;
 
   const templateMatches = String(value).match(/\{\{[^{}]+\}\}/g) ?? [];
@@ -195,7 +213,7 @@ function parseKnownDateTemplate(value?: string | null): Date | null | typeof INV
       continue;
     }
 
-    const positionalDate = parseDateTemplatePositionals(positional, params);
+    const positionalDate = parseDateTemplatePositionals(positional, params, options);
     if (positionalDate) return positionalDate;
   }
 
@@ -204,7 +222,8 @@ function parseKnownDateTemplate(value?: string | null): Date | null | typeof INV
 
 function parseDateTemplatePositionals(
   positional: string[],
-  params: Record<string, string>
+  params: Record<string, string>,
+  options: WikiDateParseOptions
 ): Date | null | typeof INVALID_EXPLICIT_TIMEZONE {
   const clean = (value?: string | null) => cleanWikiValue(value) || "";
   const first = clean(positional[0]);
@@ -234,7 +253,7 @@ function parseDateTemplatePositionals(
     const secondValue = Number(secondText || 0);
 
     if (isValidDatePart(year, month, day, hour, minute, secondValue)) {
-      const timezoneDate = buildTimezoneAwareDate(year, month, day, hour, minute, secondValue, timezone);
+      const timezoneDate = buildTimezoneAwareDate(year, month, day, hour, minute, secondValue, timezone, options);
       if (timezoneDate) return timezoneDate;
       if (hasExplicitTimezone(timezone)) return INVALID_EXPLICIT_TIMEZONE;
       return new Date(Date.UTC(year, month - 1, day, hour, minute, secondValue));
@@ -244,10 +263,10 @@ function parseDateTemplatePositionals(
   if (first) {
     const time = /^\d{1,2}:\d{2}(?::\d{2})?$/.test(second) ? second : "";
     const timezone = time ? third : second;
-    if (time && hasExplicitTimezone(timezone) && parseTimezoneOffsetMinutes(timezone) === null) {
+    if (time && hasExplicitTimezone(timezone) && parseTimezoneOffsetMinutes(timezone, options) === null) {
       return INVALID_EXPLICIT_TIMEZONE;
     }
-    return parseWikiDate([first, time, timezone].filter(Boolean).join(" "));
+    return parseWikiDate([first, time, timezone].filter(Boolean).join(" "), options);
   }
 
   return null;
@@ -271,9 +290,10 @@ function buildTimezoneAwareDate(
   hour: number,
   minute: number,
   second: number,
-  timezone?: string | null
+  timezone?: string | null,
+  options: WikiDateParseOptions = {}
 ) {
-  const offsetMinutes = parseTimezoneOffsetMinutes(timezone);
+  const offsetMinutes = parseTimezoneOffsetMinutes(timezone, options);
   if (offsetMinutes === null) return null;
 
   const utcMs = Date.UTC(year, month - 1, day, hour, minute, second) - offsetMinutes * 60_000;
@@ -302,11 +322,14 @@ function findExplicitDateTimezoneTokens(value: string) {
   return tokens;
 }
 
-function parseTimezoneOffsetMinutes(timezone?: string | null) {
+function parseTimezoneOffsetMinutes(timezone?: string | null, options: WikiDateParseOptions = {}) {
   if (!timezone) return null;
   const normalized = timezone.trim().toUpperCase();
   if (!normalized) return null;
   if (normalized === "Z" || normalized === "UTC" || normalized === "GMT") return 0;
+
+  const override = getTimezoneOffsetOverride(normalized, options);
+  if (override !== null) return override;
 
   const numeric = normalized.match(/^([+-])([0-2]\d):?([0-5]\d)$/);
   if (numeric) {
@@ -348,6 +371,18 @@ function parseTimezoneOffsetMinutes(timezone?: string | null) {
   };
 
   return offsets[normalized] ?? null;
+}
+
+function getTimezoneOffsetOverride(normalizedTimezone: string, options: WikiDateParseOptions) {
+  const overrides = options.timezoneOffsets;
+  if (!overrides) return null;
+
+  for (const [key, value] of Object.entries(overrides)) {
+    if (key.trim().toUpperCase() !== normalizedTimezone) continue;
+    if (Number.isFinite(value)) return value;
+  }
+
+  return null;
 }
 
 function parseEnglishMonth(month: string) {
