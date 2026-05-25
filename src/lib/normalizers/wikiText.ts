@@ -304,7 +304,7 @@ export function parseInteger(value?: string | null) {
   return match ? Number(match[0]) : null;
 }
 
-function extractBalancedTemplate(wikitext: string, startIndex: number) {
+export function extractBalancedTemplate(wikitext: string, startIndex: number) {
   let depth = 0;
 
   for (let index = startIndex; index < wikitext.length - 1; index++) {

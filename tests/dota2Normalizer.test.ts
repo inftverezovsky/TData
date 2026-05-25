@@ -64,6 +64,55 @@ test("Dota2 normalizer discovers schedule subpages from template tournament refs
   assert.deepEqual(normalized.subPages, ["https://liquipedia.net/dota2/BLAST/Slam/7/Group_Stage"]);
 });
 
+test("Dota2 normalizer keeps Liquipedia bracket slot labels from wikitext", () => {
+  const normalized = normalizeDota2Tournament({
+    title: "BLAST/Slam/7",
+    pageUrl: "https://liquipedia.net/dota2/BLAST/Slam/7",
+    wikitext: `
+      {{Infobox league|name=BLAST Slam VII|sdate=2026-05-26|edate=2026-06-07}}
+      {{Bracket|Bracket/4L2D-2Q|matchsection=Play-In
+      <!-- Round 1 -->
+      |R1M1header=LCQ Round 1
+      |R1M1={{Match
+      |opponent1={{LiteralOpponent|#8}}
+      |opponent2={{LiteralOpponent|#9}}
+      |date=May 30, 2026 - 14:00 {{Abbr/CEST}}
+      |map1={{Map}}|map2={{Map}}|map3={{Map}}
+      }}
+      |R1M2={{Match
+      |opponent1={{LiteralOpponent|#7}}
+      |opponent2={{LiteralOpponent|#10}}
+      |date=May 30, 2026 - 14:00 {{Abbr/CEST}}
+      |map1={{Map}}|map2={{Map}}|map3={{Map}}
+      }}
+
+      <!-- Lower Bracket Semifinal -->
+      |R3M1={{Match
+      |opponent1={{TeamOpponent|}}
+      |opponent2={{TeamOpponent|}}
+      |date=June 06, 2026 - 16:00 {{Abbr/CEST}}
+      |map1={{Map}}|map2={{Map}}|map3={{Map}}
+      }}
+
+      <!-- Lower Bracket Final -->
+      |R4M2={{Match
+      |opponent1={{TeamOpponent|}}
+      |opponent2={{TeamOpponent|}}
+      |date=June 07, 2026 - 13:00 {{Abbr/CEST}}
+      |map1={{Map}}|map2={{Map}}|map3={{Map}}
+      }}
+      }}
+    `,
+    parsedHtml: "",
+  });
+
+  assert.equal(normalized.matches.length, 4);
+  assert.equal(normalized.matches.filter((match) => match.round === "LCQ Round 1").length, 2);
+  assert.ok(normalized.matches.some((match) => match.round === "Lower Bracket Semifinal"));
+  assert.ok(normalized.matches.some((match) => match.round === "Lower Bracket Final"));
+  assert.equal(normalized.matches.every((match) => /^TBD\d+$/i.test(match.teamAName || "")), true);
+});
+
 test("Dota2 normalizer ignores crosstable matrix rows as match sources", () => {
   const html = `
     <div class="mw-heading mw-heading2"><h2>Group Stage</h2></div>

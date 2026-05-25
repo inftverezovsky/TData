@@ -394,6 +394,22 @@ test("stage slot labels prefer round and normalize group stage", () => {
     getStageSlotAnnouncementLabel({
       teamAName: "TBD1",
       teamBName: "TBD2",
+      round: "Lower Bracket Semifinal",
+    }),
+    "Lower Bracket Semifinal",
+  );
+  assert.equal(
+    getStageSlotAnnouncementLabel({
+      teamAName: "TBD1",
+      teamBName: "TBD2",
+      round: "Grand Final",
+    }),
+    "Grand Final",
+  );
+  assert.equal(
+    getStageSlotAnnouncementLabel({
+      teamAName: "TBD1",
+      teamBName: "TBD2",
       rawText: '<div class="brkts-header">Upper Bracket Semifinals</div><div class="brkts-match">TBD vs TBD</div>',
     }),
     "Upper Bracket Semifinals",

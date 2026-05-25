@@ -316,7 +316,7 @@ function normalizeKnownStageName(value: string) {
   if (/semi/i.test(text)) return "Semifinals";
   if (/winners?/i.test(text)) return "Winners' Finals";
   if (/losers?/i.test(text)) return "Losers' Finals";
-  if (/grand/i.test(text)) return "Grand Finals";
+  if (/grand/i.test(text)) return /grand\s+finals/i.test(text) ? "Grand Finals" : "Grand Final";
   if (/group stage/i.test(text)) return "Group Stage";
   if (/playoffs?/i.test(text)) return "Playoffs";
   if (/^final/i.test(text)) return "Finals";
@@ -324,8 +324,8 @@ function normalizeKnownStageName(value: string) {
 }
 
 function normalizeBracketStageName(value: string, bracket: "Upper" | "Lower") {
-  if (/quarter/i.test(value)) return `${bracket} Bracket Quarterfinals`;
-  if (/semi/i.test(value)) return `${bracket} Bracket Semifinals`;
+  if (/quarter/i.test(value)) return `${bracket} Bracket ${/quarter[-\s]?finals/i.test(value) ? "Quarterfinals" : "Quarterfinal"}`;
+  if (/semi/i.test(value)) return `${bracket} Bracket ${/semi[-\s]?finals/i.test(value) ? "Semifinals" : "Semifinal"}`;
   if (/final/i.test(value)) return `${bracket} Bracket Final`;
   const round = value.match(/round\s+\d+/i);
   if (round) return `${bracket} Bracket ${titleCaseStage(round[0])}`;
