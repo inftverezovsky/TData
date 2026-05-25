@@ -236,6 +236,52 @@ test("all sourced TBD-vs-TBD slots render as one stage announcement", () => {
   }
 });
 
+test("seed and arrow bracket placeholders render as stage announcements, not matches", () => {
+  const cases = [
+    {
+      teamAName: "Group B 2nd Place",
+      teamBName: "Group A 3rd Place",
+      round: "Quarterfinals",
+      expected: "Quarterfinals",
+    },
+    {
+      teamAName: "TBD",
+      teamBName: "-->",
+      round: "Semifinals",
+      expected: "Semifinals",
+    },
+    {
+      teamAName: "Loser of Semifinal 1",
+      teamBName: "Loser of Semifinal 2",
+      round: "Third Place Match",
+      expected: "Third Place Match",
+    },
+  ];
+
+  for (const item of cases) {
+    const match = {
+      id: `seed-row-${item.expected}`,
+      matchId: `seed-match-${item.expected}`,
+      matchDate: new Date("2026-05-29T13:55:00.000Z"),
+      matchDateTime: "May 29, 2026 - 15:55 CEST",
+      rawText: `${item.round} ${item.teamAName} vs ${item.teamBName} BO3`,
+      scoreA: null,
+      scoreB: null,
+      format: "BO3",
+      hasPlaceholderTeams: true,
+      ...item,
+    };
+
+    assert.equal(isUploadReadyScheduleMatch(match), false, item.expected);
+    const entries = expandScheduleAnnouncementsForDiscipline([match], "counterstrike", "liquipedia");
+    assert.equal(entries.length, 1, item.expected);
+    assert.equal(entries[0].isStageAnnouncement, true, item.expected);
+    assert.equal(entries[0].singleAnnouncementTeamName, item.expected);
+    assert.deepEqual(getUploadableTbdAnnouncementSides(entries[0], { disciplineSlug: "counterstrike", source: "liquipedia" }), ["stage"]);
+    assert.equal(isUploadableScheduleEntry(entries[0], { disciplineSlug: "counterstrike", source: "liquipedia" }), true);
+  }
+});
+
 test("source-less TBD-vs-TBD slots keep numbered TBD announcements", () => {
   const entries = expandScheduleAnnouncementsForDiscipline([
     {
@@ -405,6 +451,14 @@ test("stage slot labels prefer round and normalize group stage", () => {
       round: "Grand Final",
     }),
     "Grand Final",
+  );
+  assert.equal(
+    getStageSlotAnnouncementLabel({
+      teamAName: "TBD1",
+      teamBName: "TBD2",
+      round: "3rd Place Match",
+    }),
+    "Third Place Match",
   );
   assert.equal(
     getStageSlotAnnouncementLabel({

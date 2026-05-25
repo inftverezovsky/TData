@@ -36,6 +36,9 @@ export function isPlaceholderTeam(name: string | null | undefined): boolean {
   
   if (isTbdPlaceholderTeam(n)) return true;
   if (n.includes("{{") || n.includes("}}")) return true;
+  if (/(?:-->|<--|->|<-|→|←|⇒|⇐)/.test(n)) return true;
+  if (!/[a-zа-я0-9#]/i.test(n)) return true;
+  if (/^(?:-+|—|–|->|-->|<-|<--|→|←|⇒|⇐|n\/a|na|bye)$/i.test(n)) return true;
 
   // Basic placeholders
   if (["tba", "slot", "seed", "qualified team", "unknown", "placeholder", "teamopponent", "literalopponent"].includes(n)) return true;
@@ -56,6 +59,8 @@ export function isPlaceholderTeam(name: string | null | undefined): boolean {
   if (n.includes("seed")) return true;
   if (n.includes("group")) return true;
   if (n.includes("bracket")) return true;
+  if (/\b(?:winner|loser|runner[-\s]?up)\b/.test(n)) return true;
+  if (/\b(?:\d+(?:st|nd|rd|th)|first|second|third|fourth|fifth|sixth|seventh|eighth)\s+place\b/.test(n)) return true;
   
   return false;
 }

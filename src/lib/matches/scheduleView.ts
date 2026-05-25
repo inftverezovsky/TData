@@ -263,6 +263,8 @@ function normalizeStageSlotLabel(value: string | null | undefined) {
     /\bAdvance\s+to\s+Playoffs?\b/i,
     /\bQuarter[-\s]?finals?\b/i,
     /\bSemi[-\s]?finals?\b/i,
+    /\b(?:Third|3rd)\s+Place(?:\s+Match)?\b/i,
+    /\bConsolation\s+Finals?\b/i,
     /\bWinners?'?\s+Finals?\b/i,
     /\bLosers?'?\s+Finals?\b/i,
     /\bGrand\s+Finals?\b/i,
@@ -278,8 +280,8 @@ function normalizeStageSlotLabel(value: string | null | undefined) {
   }
 
   const withoutTournamentPrefix = text
-    .replace(/^.+?\b(?:Group Stage|Regular\s+Season|Stage\s+\d+|Week\s+\d+|Round\s+of\s+\d+|LCQ\s+Round\s+\d+|Upper\s+Bracket\s+(?:Round\s+\d+|Quarter[-\s]?finals?|Semi[-\s]?finals?|Finals?)|Lower\s+Bracket\s+(?:Round\s+\d+|Quarter[-\s]?finals?|Semi[-\s]?finals?|Finals?)|Winners?'?\s+Round\s+\d+|Losers?'?\s+Round\s+\d+|To\s+Playoffs?|Advance\s+to\s+Playoffs?|Playoffs?|Quarter[-\s]?finals?|Semi[-\s]?finals?|Winners?'?\s+Finals?|Losers?'?\s+Finals?|Grand\s+Finals?)\b/i, (match) => {
-      const stage = match.match(/\b(?:Group Stage|Regular\s+Season|Stage\s+\d+|Week\s+\d+|Round\s+of\s+\d+|LCQ\s+Round\s+\d+|Upper\s+Bracket\s+(?:Round\s+\d+|Quarter[-\s]?finals?|Semi[-\s]?finals?|Finals?)|Lower\s+Bracket\s+(?:Round\s+\d+|Quarter[-\s]?finals?|Semi[-\s]?finals?|Finals?)|Winners?'?\s+Round\s+\d+|Losers?'?\s+Round\s+\d+|To\s+Playoffs?|Advance\s+to\s+Playoffs?|Playoffs?|Quarter[-\s]?finals?|Semi[-\s]?finals?|Winners?'?\s+Finals?|Losers?'?\s+Finals?|Grand\s+Finals?)\b/i);
+    .replace(/^.+?\b(?:Group Stage|Regular\s+Season|Stage\s+\d+|Week\s+\d+|Round\s+of\s+\d+|LCQ\s+Round\s+\d+|Upper\s+Bracket\s+(?:Round\s+\d+|Quarter[-\s]?finals?|Semi[-\s]?finals?|Finals?)|Lower\s+Bracket\s+(?:Round\s+\d+|Quarter[-\s]?finals?|Semi[-\s]?finals?|Finals?)|Winners?'?\s+Round\s+\d+|Losers?'?\s+Round\s+\d+|To\s+Playoffs?|Advance\s+to\s+Playoffs?|Playoffs?|Quarter[-\s]?finals?|Semi[-\s]?finals?|(?:Third|3rd)\s+Place(?:\s+Match)?|Consolation\s+Finals?|Winners?'?\s+Finals?|Losers?'?\s+Finals?|Grand\s+Finals?)\b/i, (match) => {
+      const stage = match.match(/\b(?:Group Stage|Regular\s+Season|Stage\s+\d+|Week\s+\d+|Round\s+of\s+\d+|LCQ\s+Round\s+\d+|Upper\s+Bracket\s+(?:Round\s+\d+|Quarter[-\s]?finals?|Semi[-\s]?finals?|Finals?)|Lower\s+Bracket\s+(?:Round\s+\d+|Quarter[-\s]?finals?|Semi[-\s]?finals?|Finals?)|Winners?'?\s+Round\s+\d+|Losers?'?\s+Round\s+\d+|To\s+Playoffs?|Advance\s+to\s+Playoffs?|Playoffs?|Quarter[-\s]?finals?|Semi[-\s]?finals?|(?:Third|3rd)\s+Place(?:\s+Match)?|Consolation\s+Finals?|Winners?'?\s+Finals?|Losers?'?\s+Finals?|Grand\s+Finals?)\b/i);
       return stage?.[0] || match;
     })
     .trim();
@@ -288,7 +290,7 @@ function normalizeStageSlotLabel(value: string | null | undefined) {
 }
 
 function hasStageSlotLabelHint(value: string) {
-  return /\b(?:Group Stage|Round Robin|Regular\s+Season|Stage\s+\d+|Week\s+\d+|Round\s+of\s+\d+|LCQ\s+Round\s+\d+|Upper\s+Bracket|Lower\s+Bracket|Winners?'?\s+Round\s+\d+|Losers?'?\s+Round\s+\d+|To\s+Playoffs?|Advance\s+to\s+Playoffs?|Playoffs?|Quarter[-\s]?finals?|Semi[-\s]?finals?|Winners?'?\s+Finals?|Losers?'?\s+Finals?|Grand\s+Finals?|Finals?)\b/i.test(value);
+  return /\b(?:Group Stage|Round Robin|Regular\s+Season|Stage\s+\d+|Week\s+\d+|Round\s+of\s+\d+|LCQ\s+Round\s+\d+|Upper\s+Bracket|Lower\s+Bracket|Winners?'?\s+Round\s+\d+|Losers?'?\s+Round\s+\d+|To\s+Playoffs?|Advance\s+to\s+Playoffs?|Playoffs?|Quarter[-\s]?finals?|Semi[-\s]?finals?|(?:Third|3rd)\s+Place(?:\s+Match)?|Consolation\s+Finals?|Winners?'?\s+Finals?|Losers?'?\s+Finals?|Grand\s+Finals?|Finals?)\b/i.test(value);
 }
 
 function normalizeKnownStageName(value: string) {
@@ -314,6 +316,8 @@ function normalizeKnownStageName(value: string) {
   if (losersRound) return titleCaseStage(losersRound[0]).replace(/^Losers'?/, "Losers'");
   if (/quarter/i.test(text)) return "Quarterfinals";
   if (/semi/i.test(text)) return "Semifinals";
+  if (/(?:third|3rd)\s+place/i.test(text)) return "Third Place Match";
+  if (/consolation/i.test(text)) return /finals/i.test(text) ? "Consolation Finals" : "Consolation Final";
   if (/winners?/i.test(text)) return "Winners' Finals";
   if (/losers?/i.test(text)) return "Losers' Finals";
   if (/grand/i.test(text)) return /grand\s+finals/i.test(text) ? "Grand Finals" : "Grand Final";
