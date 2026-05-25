@@ -35,6 +35,13 @@ export interface BuildResult {
   warnings: string[];
 }
 
+export type DuplicateAnnouncementOffsetCandidate = {
+  id: string;
+  uploadDate: Date;
+  team1: number;
+  team2: number | "";
+};
+
 export async function buildFixtPayload(
   tournamentId: string,
   disciplineSlug: string,
@@ -51,9 +58,6 @@ export async function buildFixtPayload(
     ?.map(parseScheduleSelectionId)
     .filter((token): token is { matchId: string; side?: TbdAnnouncementSide } => Boolean(token));
   const hasExplicitSelection = Boolean(selectedTokens && selectedTokens.length > 0);
-  const selectedBaseMatchIds = selectedTokens && selectedTokens.length > 0
-    ? Array.from(new Set(selectedTokens.map((token) => token.matchId)))
-    : undefined;
   const selectedFullMatchIds = new Set(
     selectedTokens?.filter((token) => !token.side).map((token) => token.matchId) || []
   );
@@ -64,10 +68,6 @@ export async function buildFixtPayload(
     sides.add(token.side);
     selectedSidesByMatchId.set(token.matchId, sides);
   }
-
-  const matchIdFilter = selectedBaseMatchIds && selectedBaseMatchIds.length > 0
-    ? { in: selectedBaseMatchIds }
-    : undefined;
 
   // 1. Fetch settings from Prisma (discipline-specific or global)
   const settings = await resolveAdminSettings(disciplineSlug);
@@ -105,7 +105,6 @@ export async function buildFixtPayload(
   const matches = await prisma.tournamentMatch.findMany({
     where: { 
       tournamentId,
-      matchId: matchIdFilter
     },
     orderBy: { matchDate: 'asc' },
   });
@@ -121,11 +120,26 @@ export async function buildFixtPayload(
   const readyMatchIds = new Set<string>();
 
   const dedupedMatches = dedupeTournamentMatches(matches);
+  const duplicateAnnouncementSecondOffsets = buildDuplicateAnnouncementSecondOffsets(
+    collectDuplicateAnnouncementOffsetCandidates({
+      matches: dedupedMatches,
+      disciplineSlug,
+      source,
+      mappingMap,
+    })
+  );
 
   for (const match of dedupedMatches) {
     const teamAName = match.teamAName;
     const teamBName = match.teamBName;
     const selectedSides = selectedSidesByMatchId.get(match.matchId);
+    const isSelectedMatch =
+      !hasExplicitSelection ||
+      selectedFullMatchIds.has(match.matchId) ||
+      Boolean(selectedSides?.size);
+
+    if (!isSelectedMatch) continue;
+
     const selectedFullMatch = !hasExplicitSelection || selectedFullMatchIds.has(match.matchId);
     const exactMatchDate = resolveExactMatchDate(match);
     const hasScores = match.scoreA !== null || match.scoreB !== null;
@@ -160,7 +174,6 @@ export async function buildFixtPayload(
     }
 
     const matchDate = applyDisciplineScheduleLead(exactMatchDate, disciplineSlug);
-    const uploadDate = formatUploadDate(matchDate, settings.timezone, settings.dateFormat);
     const uploadableTbdSides = getUploadableTbdAnnouncementSides(match, { disciplineSlug, source });
     const isStageAnnouncementSlot = uploadableTbdSides.includes('stage');
     if (isStageAnnouncementSlot) {
@@ -187,7 +200,11 @@ export async function buildFixtPayload(
         }
 
         readyMatches.push({
-          date: uploadDate,
+          date: formatUploadDate(
+            applyDuplicateAnnouncementSecondOffset(matchDate, duplicateAnnouncementSecondOffsets.get(virtualMatchId)),
+            settings.timezone,
+            settings.dateFormat
+          ),
           team1,
           team2: "",
         });
@@ -227,7 +244,11 @@ export async function buildFixtPayload(
         }
 
         readyMatches.push({
-          date: uploadDate,
+          date: formatUploadDate(
+            applyDuplicateAnnouncementSecondOffset(matchDate, duplicateAnnouncementSecondOffsets.get(virtualMatchId)),
+            settings.timezone,
+            settings.dateFormat
+          ),
           team1,
           team2: "",
         });
@@ -300,7 +321,7 @@ export async function buildFixtPayload(
     }
 
     readyMatches.push({
-      date: uploadDate,
+      date: formatUploadDate(matchDate, settings.timezone, settings.dateFormat),
       team1,
       team2,
     });
@@ -329,6 +350,94 @@ export async function buildFixtPayload(
     skippedMatches,
     warnings,
   };
+}
+
+function collectDuplicateAnnouncementOffsetCandidates(params: {
+  matches: Array<{
+    id: string;
+    matchId: string;
+    matchDate?: Date | string | number | null;
+    matchDateTime?: string | null;
+    rawText?: string | null;
+    scoreA?: number | null;
+    scoreB?: number | null;
+    status?: string | null;
+    stage?: string | null;
+    round?: string | null;
+    teamAName?: string | null;
+    teamBName?: string | null;
+    hasPlaceholderTeams?: boolean | null;
+  }>;
+  disciplineSlug: string;
+  source: ReturnType<typeof detectTournamentSource>;
+  mappingMap: ReturnType<typeof buildTeamMappingLookup>;
+}) {
+  const candidates: DuplicateAnnouncementOffsetCandidate[] = [];
+
+  for (const match of params.matches) {
+    const exactMatchDate = resolveExactMatchDate(match);
+    if (!exactMatchDate) continue;
+    if (match.scoreA !== null && match.scoreA !== undefined) continue;
+    if (match.scoreB !== null && match.scoreB !== undefined) continue;
+    if (match.status?.toLowerCase().includes('finished') || match.status?.toLowerCase().includes('completed')) continue;
+
+    const uploadDate = applyDisciplineScheduleLead(exactMatchDate, params.disciplineSlug);
+    const sides = getUploadableTbdAnnouncementSides(match, {
+      disciplineSlug: params.disciplineSlug,
+      source: params.source,
+    });
+
+    for (const side of sides) {
+      const announcementName = side === 'stage'
+        ? getStageSlotAnnouncementLabel(match)
+        : side === 'teamA'
+          ? match.teamAName
+          : match.teamBName;
+      const mapping = findTeamMapping(params.mappingMap, announcementName || '');
+      const team1 = parsePositiveInteger(mapping?.platformId || null);
+      if (!team1) continue;
+
+      candidates.push({
+        id: `${match.matchId}::${side}`,
+        uploadDate,
+        team1,
+        team2: "",
+      });
+    }
+  }
+
+  return candidates;
+}
+
+export function buildDuplicateAnnouncementSecondOffsets(candidates: DuplicateAnnouncementOffsetCandidate[]) {
+  const groups = new Map<string, DuplicateAnnouncementOffsetCandidate[]>();
+
+  for (const candidate of candidates) {
+    if (candidate.team2 !== "") continue;
+    const key = [
+      Math.floor(candidate.uploadDate.getTime() / 1000),
+      candidate.team1,
+      candidate.team2,
+    ].join('|');
+    const group = groups.get(key) || [];
+    group.push(candidate);
+    groups.set(key, group);
+  }
+
+  const offsets = new Map<string, number>();
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    group.forEach((candidate, index) => {
+      offsets.set(candidate.id, index + 1);
+    });
+  }
+
+  return offsets;
+}
+
+function applyDuplicateAnnouncementSecondOffset(matchDate: Date, offsetSeconds: number | null | undefined) {
+  if (!offsetSeconds) return matchDate;
+  return new Date(matchDate.getTime() + offsetSeconds * 1000);
 }
 
 function formatUploadDate(matchDate: Date, timezone: string | null | undefined, dateFormat: string | null | undefined) {
