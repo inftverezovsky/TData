@@ -87,6 +87,48 @@ test("Counter-Strike and LoL normalizers ignore crosstable matrix rows as match 
   assert.equal(lol.matches.length, 0);
 });
 
+test("Counter-Strike normalizer extracts empty Bracket wikitext slots as dated announcements", () => {
+  const normalized = normalizeCounterStrikeTournament({
+    title: "Betclic Clash/2026/Online",
+    pageUrl: "https://liquipedia.net/counterstrike/Betclic_Clash/2026/Online",
+    wikitext: `
+      ${infobox}
+      ===Playoffs===
+      {{Bracket|Bracket/8U4L2DSL1D
+      <!-- Upper Bracket Quarterfinals -->
+      |R1M1={{Match
+        |opponent1={{TeamOpponent|}}|opponent2={{TeamOpponent|}}
+        |date=May 27, 2026 - 11:00 {{Abbr/CEST}}
+        |map1={{Map|map=|finished=}}
+        }}
+      |R1M2={{Match
+        |opponent1={{TeamOpponent|}}|opponent2={{TeamOpponent|}}
+        |date=May 27, 2026 - 11:00 {{Abbr/CEST}}
+        |map1={{Map|map=|finished=}}
+        }}
+      <!-- Lower Bracket Round 1 -->
+      |R1M5={{Match
+        |opponent1={{TeamOpponent|}}|opponent2={{TeamOpponent|}}
+        |date=May 27, 2026 - 13:00 {{Abbr/CEST}}
+        |map1={{Map|map=|finished=}}
+        |map2={{Map|map=|finished=}}
+        |map3={{Map|map=|finished=}}
+        }}
+      }}
+    `,
+  });
+
+  assert.equal(normalized.matches.length, 3);
+  assert.equal(normalized.matches[0].matchDate?.toISOString(), "2026-05-27T09:00:00.000Z");
+  assert.equal(normalized.matches[0].round, "Upper Bracket Quarterfinals");
+  assert.equal(normalized.matches[1].round, "Upper Bracket Quarterfinals");
+  assert.equal(normalized.matches[2].round, "Lower Bracket Round 1");
+  assert.equal(normalized.matches[0].format, "BO1");
+  assert.equal(normalized.matches[2].format, "BO3");
+  assert.ok(normalized.matches[0].rawText?.startsWith("slot=R1M1"));
+  assert.ok(normalized.matches[1].rawText?.startsWith("slot=R1M2"));
+});
+
 test("Valorant normalizer only keeps stage subpages from the selected event", () => {
   const normalized = normalizeValorantTournament({
     title: "Source League/2026/Spring/Promotion",

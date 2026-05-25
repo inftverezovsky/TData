@@ -2,6 +2,7 @@ import type { ImportStatus } from "@prisma/client";
 import * as cheerio from "cheerio";
 import {
   cleanWikiValue,
+  extractBalancedTemplate,
   extractFirstTemplateByPrefix,
   extractSection,
   extractTemplatesByNamePrefix,
@@ -13,7 +14,7 @@ import { createHash } from "crypto";
 import { generateInternalTeamId, isPlaceholderTeam } from "@/lib/teams/teams";
 import { applyTbdPairCycling } from "@/lib/matches/tbdCycling";
 import { getBestOfLabel } from "@/lib/matches/format";
-import { findLiquipediaBracketRoundLabel } from "@/lib/liquipedia/bracketLabels";
+import { findLiquipediaBracketRoundLabel, isLikelyLiquipediaLayoutNoise } from "@/lib/liquipedia/bracketLabels";
 
 /* ───── Types ───── */
 
@@ -491,55 +492,153 @@ function extractMatchesFromParsedHtml(html: string, pageUrl: string): Normalized
 
 /* ───── Extract matches from wikitext (fallback) ───── */
 
+type BracketWikitextMatchEntry = {
+  match: NormalizedMatch;
+  template: string;
+};
+
 function extractMatchesFromWikitext(wikitext: string): NormalizedMatch[] {
+  const bracketEntries = extractBracketMatchEntriesFromWikitext(wikitext);
+  const bracketTemplateSet = new Set(bracketEntries.map((entry) => entry.template));
   const templates = [
     ...extractTemplatesByNamePrefix(wikitext, "Match", 400),
     ...extractTemplatesByNamePrefix(wikitext, "BracketMatch", 400)
-  ];
+  ].filter((template) => !bracketTemplateSet.has(template));
 
-  const matches: NormalizedMatch[] = [];
+  const matches: NormalizedMatch[] = bracketEntries.map((entry) => entry.match);
 
   for (const template of templates) {
-    const parsed = parseTemplate(template);
-    const params = parsed.params;
-
-    const rawTeamA = firstClean(
-      params.team1, params.opponent1, params.player1,
-      params.p1, params.team_a, params.teama
-    );
-    const rawTeamB = firstClean(
-      params.team2, params.opponent2, params.player2,
-      params.p2, params.team_b, params.teamb
-    );
-
-    if (!rawTeamA && !rawTeamB) continue;
-
-    const teamAName = rawTeamA ? (normalizeTeamName(rawTeamA) ?? rawTeamA) : null;
-    const teamBName = rawTeamB ? (normalizeTeamName(rawTeamB) ?? rawTeamB) : null;
-
-    const dateVal = parseWikiDate(params.date ?? params.time ?? params.datetime);
-
-    const formatText = firstClean(params.bestof, params.bo, params.format);
-
-    matches.push({
-      stage: firstClean(params.stage, params.section),
-      round: firstClean(params.round, params.match, params.title),
-      matchDate: dateVal,
-      matchDateTime: firstClean(params.date, params.time, params.datetime),
-      teamAName,
-      teamBName,
-      scoreA: parseInteger(params.score1 ?? params.team1score ?? params.p1score ?? params.games1),
-      scoreB: parseInteger(params.score2 ?? params.team2score ?? params.p2score ?? params.games2),
-      format: getBestOfLabel(formatText) || getBestOfLabel(template),
-      status: firstClean(params.status, params.finished, params.walkover),
-      court: firstClean(params.court, params.stream, params.twitch),
-      rawText: template.slice(0, 2500)
-    });
+    const match = buildMatchFromWikitextTemplate(template);
+    if (!match) continue;
+    matches.push(match);
 
     if (matches.length >= 200) break;
   }
 
   return matches;
+}
+
+function extractBracketMatchEntriesFromWikitext(wikitext: string): BracketWikitextMatchEntry[] {
+  const bracketTemplates = extractBracketTemplates(wikitext);
+  const entries: BracketWikitextMatchEntry[] = [];
+
+  for (const bracketTemplate of bracketTemplates) {
+    const parsed = parseTemplate(bracketTemplate);
+    const params = parsed.params;
+    const bracketStage = firstClean(params.matchsection, params.section, params.stage);
+    const slotLabels = buildBracketSlotLabels(bracketTemplate, params);
+
+    for (const [key, value] of Object.entries(params)) {
+      const slotMatch = key.match(/^r\d+m\d+$/i);
+      if (!slotMatch) continue;
+
+      const matchTemplate = extractFirstTemplateByPrefix(value, "Match");
+      if (!matchTemplate) continue;
+
+      const slot = slotMatch[0].toUpperCase();
+      const match = buildMatchFromWikitextTemplate(matchTemplate, {
+        stage: bracketStage,
+        round: slotLabels.get(slot),
+        keepEmptyPlaceholders: true,
+        sourceSlot: slot,
+      });
+      if (!match) continue;
+
+      entries.push({ match, template: matchTemplate });
+    }
+  }
+
+  return entries;
+}
+
+function extractBracketTemplates(wikitext: string) {
+  const regex = /\{\{\s*Bracket(?:\/[^\s|{}]+)?(?=\s*(?:\||\}\}))/gi;
+  const templates: string[] = [];
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(wikitext)) && templates.length < 100) {
+    const template = extractBalancedTemplate(wikitext, match.index);
+    if (template) templates.push(template);
+    regex.lastIndex = match.index + 2;
+  }
+
+  return templates;
+}
+
+function buildBracketSlotLabels(bracketTemplate: string, params: Record<string, string>) {
+  const labels = new Map<string, string>();
+  let currentLabel: string | null = null;
+  const slotRegex = /(?:<!--\s*([\s\S]*?)\s*-->\s*)?\|\s*(R\d+M\d+)(header)?\s*=/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = slotRegex.exec(bracketTemplate))) {
+    const slot = match[2].toUpperCase();
+    const commentLabel = cleanBracketSlotLabel(match[1]);
+    const headerLabel = cleanBracketSlotLabel(params[`${slot.toLowerCase()}header`]);
+    const exactLabel = headerLabel || commentLabel;
+
+    if (exactLabel) currentLabel = exactLabel;
+    if (!match[3]) {
+      const label = exactLabel || currentLabel;
+      if (label) labels.set(slot, label);
+    }
+  }
+
+  return labels;
+}
+
+function cleanBracketSlotLabel(value: string | null | undefined) {
+  const cleaned = firstClean(value);
+  if (!cleaned || isLikelyLiquipediaLayoutNoise(cleaned)) return null;
+  return cleaned;
+}
+
+function buildMatchFromWikitextTemplate(
+  template: string,
+  context: {
+    stage?: string | null;
+    round?: string | null;
+    keepEmptyPlaceholders?: boolean;
+    sourceSlot?: string | null;
+  } = {}
+): NormalizedMatch | null {
+  const parsed = parseTemplate(template);
+  const params = parsed.params;
+
+  const rawTeamA = firstClean(
+    params.team1, params.opponent1, params.player1,
+    params.p1, params.team_a, params.teama
+  );
+  const rawTeamB = firstClean(
+    params.team2, params.opponent2, params.player2,
+    params.p2, params.team_b, params.teamb
+  );
+
+  if (!rawTeamA && !rawTeamB && !context.keepEmptyPlaceholders) return null;
+
+  const teamAName = rawTeamA ? (normalizeTeamName(rawTeamA) ?? rawTeamA) : "TBD";
+  const teamBName = rawTeamB ? (normalizeTeamName(rawTeamB) ?? rawTeamB) : "TBD";
+  const dateText = buildTemplateDateText(params);
+  const dateVal = parseWikiDate(dateText);
+  const formatText = firstClean(params.bestof, params.bo, params.format, params.matchtype, params.type);
+  const rawText = [context.sourceSlot ? `slot=${context.sourceSlot}` : null, template.slice(0, 2500)]
+    .filter(Boolean)
+    .join("\n");
+
+  return {
+    stage: firstClean(params.stage, params.section, context.stage),
+    round: firstClean(params.round, params.match, params.title, context.round),
+    matchDate: dateVal,
+    matchDateTime: dateText,
+    teamAName,
+    teamBName,
+    scoreA: parseInteger(params.score1 ?? params.team1score ?? params.p1score ?? params.games1),
+    scoreB: parseInteger(params.score2 ?? params.team2score ?? params.p2score ?? params.games2),
+    format: getBestOfLabel(formatText) || getBestOfLabel(template),
+    status: firstClean(params.status, params.finished, params.walkover),
+    court: firstClean(params.court, params.stream, params.twitch),
+    rawText
+  };
 }
 
 /* ───── Normalize & validate a match candidate ───── */
@@ -761,6 +860,19 @@ function normalizeTeamName(raw: string) {
     .replace(/_/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function buildTemplateDateText(params: Record<string, string>) {
+  const datetime = firstClean(params.datetime, params.timestamp, params.starttime, params.start_time);
+  if (datetime) return datetime;
+
+  const date = firstClean(params.date, params.day, params.startdate, params.start_date);
+  const time = firstClean(params.time, params.hour);
+  const timezone = firstClean(params.timezone, params.tz, params.zone);
+  const combined = [date, time, timezone].filter(Boolean).join(" ");
+  if (combined) return combined;
+
+  return firstClean(params.datetime, params.timestamp, params.time, params.date);
 }
 
 function isLikelyTeamName(name: string) {
