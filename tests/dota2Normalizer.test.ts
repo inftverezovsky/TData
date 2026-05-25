@@ -74,12 +74,14 @@ test("Dota2 normalizer keeps Liquipedia bracket slot labels from wikitext", () =
       <!-- Round 1 -->
       |R1M1header=LCQ Round 1
       |R1M1={{Match
+      <!--|opponent1={{TeamOpponent|}}|opponent2={{TeamOpponent|}}-->
       |opponent1={{LiteralOpponent|#8}}
       |opponent2={{LiteralOpponent|#9}}
       |date=May 30, 2026 - 14:00 {{Abbr/CEST}}
       |map1={{Map}}|map2={{Map}}|map3={{Map}}
       }}
       |R1M2={{Match
+      <!--|opponent1={{TeamOpponent|}}|opponent2={{TeamOpponent|}}-->
       |opponent1={{LiteralOpponent|#7}}
       |opponent2={{LiteralOpponent|#10}}
       |date=May 30, 2026 - 14:00 {{Abbr/CEST}}

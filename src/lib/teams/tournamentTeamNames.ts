@@ -1,5 +1,5 @@
 import { isPlaceholderTeam, isTbdPlaceholderTeam, normalizeTeamName } from "@/lib/teams/teams";
-import { getStageSlotAnnouncementLabel } from "@/lib/matches/scheduleView";
+import { getStageSlotAnnouncementLabel, getUploadableTbdAnnouncementSides } from "@/lib/matches/scheduleView";
 import { hasExactMatchTime } from "@/lib/matches/time";
 import {
   buildTeamNameCanonicalizer,
@@ -48,10 +48,13 @@ export function collectTournamentTeamNames({
       isPlaceholderTeam(match.teamAName) &&
       isPlaceholderTeam(match.teamBName)
     ) {
-      const stageName = getStageSlotAnnouncementLabel(match);
-      addTeamName(rawNames, stageName, true);
-      forcedNames.add(normalizeTeamName(stageName));
-      continue;
+      const uploadableTbdSides = getUploadableTbdAnnouncementSides(match, { source });
+      if (uploadableTbdSides.includes("stage")) {
+        const stageName = getStageSlotAnnouncementLabel(match);
+        addTeamName(rawNames, stageName, true);
+        forcedNames.add(normalizeTeamName(stageName));
+        continue;
+      }
     }
     addTeamName(rawNames, match.teamAName);
     addTeamName(rawNames, match.teamBName);

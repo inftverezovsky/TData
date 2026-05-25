@@ -30,6 +30,7 @@ export type ScheduleAnnouncementEntry<T extends ScheduleViewMatch> = T & {
   singleAnnouncementTeamName?: string;
   isSingleTeamAnnouncement?: boolean;
   isStageAnnouncement?: boolean;
+  isStageAnnouncementFallback?: boolean;
 };
 
 const TBD_ANNOUNCEMENT_SELECTION_SEPARATOR = "::";
@@ -130,8 +131,12 @@ export function expandScheduleAnnouncementMatch<T extends ScheduleViewMatch>(
   options: ScheduleViewOptions = {}
 ): ScheduleAnnouncementEntry<T>[] {
   if (!isAnnouncementScheduleMatch(match)) return [];
-  if (isStageSlotAnnouncement(match, options)) {
-    const stageLabel = getExplicitStageSlotAnnouncementLabel(match) || getStageSlotAnnouncementLabel(match);
+  const isExplicitStageSlot = isStageSlotAnnouncement(match, options);
+  const isFallbackStageSlot = !isExplicitStageSlot && isFallbackStageSlotAnnouncement(match, options);
+
+  if (isExplicitStageSlot || isFallbackStageSlot) {
+    const stageLabel = getExplicitStageSlotAnnouncementLabel(match)
+      || (isFallbackStageSlot ? getFallbackStageSlotAnnouncementLabel(match) : getStageSlotAnnouncementLabel(match));
     const sourceMatchId = match.matchId || match.id;
     const selectionId = sourceMatchId
       ? buildTbdAnnouncementSelectionId(sourceMatchId, "stage")
@@ -144,6 +149,7 @@ export function expandScheduleAnnouncementMatch<T extends ScheduleViewMatch>(
       singleAnnouncementTeamName: stageLabel,
       isSingleTeamAnnouncement: true,
       isStageAnnouncement: true,
+      isStageAnnouncementFallback: isFallbackStageSlot,
     }];
   }
 
@@ -221,6 +227,21 @@ function isStageSlotAnnouncement(match: ScheduleViewMatch, options: ScheduleView
 
 export function getStageSlotAnnouncementLabel(match: ScheduleViewMatch) {
   return getExplicitStageSlotAnnouncementLabel(match) || "Group Stage";
+}
+
+function isFallbackStageSlotAnnouncement(match: ScheduleViewMatch, options: ScheduleViewOptions) {
+  if (!supportsStageAnnouncements(options.source)) return false;
+  const teamA = getScheduleTeamState(match.teamAName);
+  const teamB = getScheduleTeamState(match.teamBName);
+  return (
+    teamA.placeholder &&
+    teamB.placeholder &&
+    (teamA.unsupportedPlaceholder || teamB.unsupportedPlaceholder)
+  );
+}
+
+function getFallbackStageSlotAnnouncementLabel(match: ScheduleViewMatch) {
+  return normalizeStageSlotLabel(match.stage) || normalizeStageSlotLabel(match.round) || "Playoffs";
 }
 
 function getExplicitStageSlotAnnouncementLabel(match: ScheduleViewMatch) {

@@ -97,13 +97,28 @@ test("Counter-Strike normalizer extracts empty Bracket wikitext slots as dated a
       {{Bracket|Bracket/8U4L2DSL1D
       <!-- Upper Bracket Quarterfinals -->
       |R1M1={{Match
-        |opponent1={{TeamOpponent|}}|opponent2={{TeamOpponent|}}
+        <!--|opponent1={{TeamOpponent|}}|opponent2={{TeamOpponent|}}-->
+        |opponent1literal=Group B 2<sup>nd</sup> Place|opponent2literal=Group A 3<sup>rd</sup> Place
         |date=May 27, 2026 - 11:00 {{Abbr/CEST}}
         |map1={{Map|map=|finished=}}
         }}
       |R1M2={{Match
-        |opponent1={{TeamOpponent|}}|opponent2={{TeamOpponent|}}
+        <!--|opponent1={{TeamOpponent|}}|opponent2={{TeamOpponent|}}-->
+        |opponent1literal=Group A 2<sup>nd</sup> Place|opponent2literal=Group B 3<sup>rd</sup> Place
         |date=May 27, 2026 - 11:00 {{Abbr/CEST}}
+        |map1={{Map|map=|finished=}}
+        }}
+      <!-- Semifinals -->
+      |R2M1={{Match
+        <!--|opponent1={{TeamOpponent|}}|opponent2={{TeamOpponent|}}-->
+        |opponent1literal=Group A 1<sup>st</sup> Place
+        |date=May 28, 2026 - 11:00 {{Abbr/CEST}}
+        |map1={{Map|map=|finished=}}
+        }}
+      |R2M2={{Match
+        <!--|opponent1={{TeamOpponent|}}|opponent2={{TeamOpponent|}}-->
+        |opponent1literal=Group B 1<sup>st</sup> Place
+        |date=May 28, 2026 - 11:00 {{Abbr/CEST}}
         |map1={{Map|map=|finished=}}
         }}
       <!-- Lower Bracket Round 1 -->
@@ -118,13 +133,15 @@ test("Counter-Strike normalizer extracts empty Bracket wikitext slots as dated a
     `,
   });
 
-  assert.equal(normalized.matches.length, 3);
+  assert.equal(normalized.matches.length, 5);
   assert.equal(normalized.matches[0].matchDate?.toISOString(), "2026-05-27T09:00:00.000Z");
   assert.equal(normalized.matches[0].round, "Upper Bracket Quarterfinals");
   assert.equal(normalized.matches[1].round, "Upper Bracket Quarterfinals");
-  assert.equal(normalized.matches[2].round, "Lower Bracket Round 1");
+  assert.equal(normalized.matches[2].round, "Semifinals");
+  assert.equal(normalized.matches[3].round, "Semifinals");
+  assert.equal(normalized.matches[4].round, "Lower Bracket Round 1");
   assert.equal(normalized.matches[0].format, "BO1");
-  assert.equal(normalized.matches[2].format, "BO3");
+  assert.equal(normalized.matches[4].format, "BO3");
   assert.ok(normalized.matches[0].rawText?.startsWith("slot=R1M1"));
   assert.ok(normalized.matches[1].rawText?.startsWith("slot=R1M2"));
 });

@@ -183,6 +183,24 @@ test("collectTournamentTeamNames keeps numbered TBD mapping names when source is
   assert.deepEqual(names, ["TBD1", "TBD2"]);
 });
 
+test("collectTournamentTeamNames does not expose fallback bracket placeholders as mappable stage names", () => {
+  const names = collectTournamentTeamNames({
+    disciplineSlug: "counterstrike",
+    source: "liquipedia",
+    matches: [
+      {
+        teamAName: "TBD",
+        teamBName: "-->",
+        rawText: "slot=R2M2\n{{Match|opponent1=TBD|opponent2=-->|date=May 29, 2026 - 15:55 CEST}}",
+        matchDate: new Date("2026-05-29T13:55:00.000Z"),
+      },
+    ],
+    participants: [],
+  });
+
+  assert.deepEqual(names, ["TBD"]);
+});
+
 test("team mapping lookup prefers saved platform IDs over stale unmapped duplicates", () => {
   const lookup = buildTeamMappingLookup([
     {

@@ -137,7 +137,6 @@ export default function MatchList({
   }, []);
 
   const isDisplayEntrySelectable = useCallback((match: DisplayMatch) => {
-    if (match.isSingleTeamAnnouncement) return true;
     return isUploadableScheduleEntry(match, { disciplineSlug, source });
   }, [disciplineSlug, source]);
 

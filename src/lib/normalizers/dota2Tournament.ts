@@ -692,7 +692,7 @@ function extractBracketTemplates(wikitext: string) {
 function buildBracketSlotLabels(bracketTemplate: string, params: Record<string, string>) {
   const labels = new Map<string, string>();
   let currentLabel: string | null = null;
-  const slotRegex = /(?:<!--\s*([\s\S]*?)\s*-->\s*)?\|\s*(R\d+M\d+)(header)?\s*=/gi;
+  const slotRegex = /^[\t ]*(?:<!--\s*([^\r\n]*?)\s*-->\s*)?\|\s*(R\d+M\d+)(header)?\s*=/gim;
   let match: RegExpExecArray | null;
 
   while ((match = slotRegex.exec(bracketTemplate))) {

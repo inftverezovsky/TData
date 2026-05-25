@@ -282,6 +282,32 @@ test("seed and arrow bracket placeholders render as stage announcements, not mat
   }
 });
 
+test("sourced bracket placeholder pairs without a recovered round render as a safe stage fallback", () => {
+  const match = {
+    id: "missing-round-arrow-row",
+    matchId: "missing-round-arrow-match",
+    matchDate: new Date("2026-05-29T13:55:00.000Z"),
+    matchDateTime: "May 29, 2026 - 15:55 CEST",
+    rawText: "slot=R2M2\n{{Match|opponent1=TBD|opponent2=-->|date=May 29, 2026 - 15:55 CEST}}",
+    scoreA: null,
+    scoreB: null,
+    format: "BO3",
+    hasPlaceholderTeams: true,
+    teamAName: "TBD",
+    teamBName: "-->",
+  };
+
+  const entries = expandScheduleAnnouncementsForDiscipline([match], "counterstrike", "liquipedia");
+
+  assert.equal(isUploadReadyScheduleMatch(match), false);
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].isStageAnnouncement, true);
+  assert.equal(entries[0].isStageAnnouncementFallback, true);
+  assert.equal(entries[0].singleAnnouncementTeamName, "Playoffs");
+  assert.deepEqual(getUploadableTbdAnnouncementSides(entries[0], { disciplineSlug: "counterstrike", source: "liquipedia" }), []);
+  assert.equal(isUploadableScheduleEntry(entries[0], { disciplineSlug: "counterstrike", source: "liquipedia" }), false);
+});
+
 test("source-less TBD-vs-TBD slots keep numbered TBD announcements", () => {
   const entries = expandScheduleAnnouncementsForDiscipline([
     {
