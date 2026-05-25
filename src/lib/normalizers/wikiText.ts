@@ -95,6 +95,7 @@ export function cleanWikiValue(value?: string | null) {
 
 export function parseWikiDate(value?: string | null): Date | null {
   const templatedDate = parseKnownDateTemplate(value);
+  if (templatedDate === INVALID_EXPLICIT_TIMEZONE) return null;
   if (templatedDate) return templatedDate;
 
   const cleaned = cleanWikiValue(value);
@@ -114,6 +115,7 @@ export function parseWikiDate(value?: string | null): Date | null {
       timezone
     );
     if (timezoneDate) return timezoneDate;
+    if (hasExplicitTimezone(timezone)) return null;
 
     const date = new Date(`${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}T${hour.padStart(2, "0")}:${min.padStart(2, "0")}:${(sec || "00").padStart(2, "0")}Z`);
     return date;
@@ -135,6 +137,7 @@ export function parseWikiDate(value?: string | null): Date | null {
         timezone
       );
       if (timezoneDate) return timezoneDate;
+      if (hasExplicitTimezone(timezone)) return null;
     }
 
     const date = new Date(`${monthStr} ${day}, ${year} ${hour}:${min}:00 UTC`);
@@ -164,7 +167,23 @@ export function parseWikiDate(value?: string | null): Date | null {
   return null;
 }
 
-function parseKnownDateTemplate(value?: string | null): Date | null {
+export function hasUnknownExplicitTimezone(value?: string | null) {
+  if (!value) return false;
+  if (parseKnownDateTemplate(value) === INVALID_EXPLICIT_TIMEZONE) return true;
+
+  const cleaned = cleanWikiValue(value);
+  if (!cleaned) return false;
+
+  return findExplicitDateTimezoneTokens(cleaned).some((timezone) => {
+    const normalized = timezone.trim().toUpperCase();
+    if (normalized === "AM" || normalized === "PM") return false;
+    return parseTimezoneOffsetMinutes(normalized) === null;
+  });
+}
+
+const INVALID_EXPLICIT_TIMEZONE = Symbol("invalid explicit timezone");
+
+function parseKnownDateTemplate(value?: string | null): Date | null | typeof INVALID_EXPLICIT_TIMEZONE {
   if (!value) return null;
 
   const templateMatches = String(value).match(/\{\{[^{}]+\}\}/g) ?? [];
@@ -183,7 +202,10 @@ function parseKnownDateTemplate(value?: string | null): Date | null {
   return null;
 }
 
-function parseDateTemplatePositionals(positional: string[], params: Record<string, string>): Date | null {
+function parseDateTemplatePositionals(
+  positional: string[],
+  params: Record<string, string>
+): Date | null | typeof INVALID_EXPLICIT_TIMEZONE {
   const clean = (value?: string | null) => cleanWikiValue(value) || "";
   const first = clean(positional[0]);
   const second = clean(positional[1]);
@@ -214,6 +236,7 @@ function parseDateTemplatePositionals(positional: string[], params: Record<strin
     if (isValidDatePart(year, month, day, hour, minute, secondValue)) {
       const timezoneDate = buildTimezoneAwareDate(year, month, day, hour, minute, secondValue, timezone);
       if (timezoneDate) return timezoneDate;
+      if (hasExplicitTimezone(timezone)) return INVALID_EXPLICIT_TIMEZONE;
       return new Date(Date.UTC(year, month - 1, day, hour, minute, secondValue));
     }
   }
@@ -221,6 +244,9 @@ function parseDateTemplatePositionals(positional: string[], params: Record<strin
   if (first) {
     const time = /^\d{1,2}:\d{2}(?::\d{2})?$/.test(second) ? second : "";
     const timezone = time ? third : second;
+    if (time && hasExplicitTimezone(timezone) && parseTimezoneOffsetMinutes(timezone) === null) {
+      return INVALID_EXPLICIT_TIMEZONE;
+    }
     return parseWikiDate([first, time, timezone].filter(Boolean).join(" "));
   }
 
@@ -255,6 +281,27 @@ function buildTimezoneAwareDate(
   return Number.isFinite(date.getTime()) ? date : null;
 }
 
+function hasExplicitTimezone(timezone?: string | null) {
+  return Boolean(timezone && timezone.trim().length > 0);
+}
+
+function findExplicitDateTimezoneTokens(value: string) {
+  const tokens: string[] = [];
+  const patterns = [
+    /(20\d{2}|19\d{2})[-/]([01]?\d)[-/]([0-3]?\d)[ T]([0-2]?\d):([0-5]\d)(?::([0-5]\d))?\s*(Z|UTC|GMT|[A-Z]{2,5}|[+-][0-2]\d:?[\d]{2})\b/gi,
+    /([a-zA-Z]+)\s+([0-3]?\d),?\s+(20\d{2}|19\d{2})\s*-\s*([0-2]?\d):([0-5]\d)\s*(Z|UTC|GMT|[A-Z]{2,5}|[+-][0-2]\d:?[\d]{2})\b/gi,
+  ];
+
+  for (const pattern of patterns) {
+    for (const match of value.matchAll(pattern)) {
+      const timezone = match[match.length - 1];
+      if (timezone) tokens.push(timezone);
+    }
+  }
+
+  return tokens;
+}
+
 function parseTimezoneOffsetMinutes(timezone?: string | null) {
   if (!timezone) return null;
   const normalized = timezone.trim().toUpperCase();
@@ -278,11 +325,23 @@ function parseTimezoneOffsetMinutes(timezone?: string | null) {
     GMT: 0,
     BST: 60,
     BRT: -180,
+    KST: 540,
+    JST: 540,
+    SGT: 480,
+    HKT: 480,
+    ICT: 420,
+    WIB: 420,
+    WITA: 480,
+    WIT: 540,
+    AEST: 600,
+    AEDT: 660,
+    NZST: 720,
+    NZDT: 780,
+    TRT: 180,
     PST: -480,
     PDT: -420,
     MST: -420,
     MDT: -360,
-    CST: -360,
     CDT: -300,
     EST: -300,
     EDT: -240,

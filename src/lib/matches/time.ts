@@ -1,4 +1,4 @@
-import { parseWikiDate } from "@/lib/normalizers/wikiText";
+import { hasUnknownExplicitTimezone, parseWikiDate } from "@/lib/normalizers/wikiText";
 
 export type MatchTimeInput = {
   matchDate?: Date | string | number | null;
@@ -22,6 +22,10 @@ export function hasExplicitTimeText(...values: Array<unknown>) {
 export function resolveExactMatchDate(match: MatchTimeInput): Date | null {
   const timestampDate = getTimestampDate(match.matchDateTime, match.rawText);
   if (timestampDate) return timestampDate;
+
+  if (hasUnknownExplicitTimezone(match.matchDateTime) || hasUnknownExplicitTimezone(match.rawText)) {
+    return null;
+  }
 
   const date = parseDateLike(match.matchDate);
   if (date && isTrustedExactDate(match, date)) return date;

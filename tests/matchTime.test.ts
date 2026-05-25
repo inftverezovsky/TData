@@ -25,6 +25,28 @@ test("resolveExactMatchDate parses explicit Liquipedia date text", () => {
   })?.toISOString(), "2026-05-13T10:00:00.000Z");
 });
 
+test("resolveExactMatchDate does not trust unknown explicit timezones", () => {
+  assert.equal(hasExactMatchTime({
+    matchDate: null,
+    matchDateTime: "May 31, 2026 - 14:00 {{Abbr/XYZ}}",
+  }), false);
+});
+
+test("resolveExactMatchDate does not let stored dates bypass unknown timezones", () => {
+  assert.equal(resolveExactMatchDate({
+    matchDate: new Date("2026-05-31T14:00:00.000Z"),
+    matchDateTime: "May 31, 2026 - 14:00 {{Abbr/XYZ}}",
+  }), null);
+});
+
+test("resolveExactMatchDate prefers source timestamps over text timezone parsing", () => {
+  assert.equal(resolveExactMatchDate({
+    matchDate: null,
+    matchDateTime: "May 31, 2026 - 14:00 {{Abbr/XYZ}}",
+    rawText: '<span class="timer-object" data-timestamp="1780246800">May 31 - 14:00 XYZ</span>',
+  })?.toISOString(), "2026-05-31T17:00:00.000Z");
+});
+
 test("hasExactMatchTime trusts non-midnight parsed dates", () => {
   assert.equal(hasExactMatchTime({
     matchDate: new Date("2026-05-23T12:15:00.000Z"),

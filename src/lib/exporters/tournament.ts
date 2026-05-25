@@ -1,4 +1,4 @@
-import { applyDisciplineScheduleLead } from "@/lib/matches/scheduleOffset";
+import { applyDisciplineScheduleLead, formatMoscowDate, formatMoscowDateTime } from "@/lib/matches/scheduleOffset";
 
 type ExportTournament = {
   name: string;
@@ -102,7 +102,7 @@ export function matchesToCsv(tournament: ExportTournament, disciplineSlug?: stri
     ["match_id", "match_date_time", "date", "stage", "round", "team_a_id", "team_a_name", "team_b_id", "team_b_name", "court", "score_a", "score_b", "format", "status", "source_url"],
     tournament.matches.map((match) => [
       match.matchId ?? "",
-      match.matchDateTime ?? "",
+      formatDateTime(match.matchDate, disciplineSlug) ?? match.matchDateTime ?? "",
       formatDate(match.matchDate, disciplineSlug) ?? "",
       match.stage ?? "",
       match.round ?? "",
@@ -132,14 +132,14 @@ function formatDate(value?: Date | string | null, disciplineSlug?: string) {
   if (!value) return null;
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return null;
-  return applyDisciplineScheduleLead(date, disciplineSlug).toISOString().slice(0, 10);
+  return formatMoscowDate(applyDisciplineScheduleLead(date, disciplineSlug));
 }
 
 function formatDateTime(value?: Date | string | null, disciplineSlug?: string) {
   if (!value) return null;
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return null;
-  return applyDisciplineScheduleLead(date, disciplineSlug).toISOString();
+  return formatMoscowDateTime(applyDisciplineScheduleLead(date, disciplineSlug));
 }
 
 function escapeMarkdown(value: string) {

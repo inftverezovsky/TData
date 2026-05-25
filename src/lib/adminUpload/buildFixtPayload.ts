@@ -2,6 +2,7 @@ import { DateTime } from 'luxon';
 import { prisma } from '@/lib/db/db';
 import { dedupeTournamentMatches } from '@/lib/matches/dedupe';
 import { applyDisciplineScheduleLead } from '@/lib/matches/scheduleOffset';
+import { hasUnknownExplicitTimezone } from '@/lib/normalizers/wikiText';
 import {
   getStageSlotAnnouncementLabel,
   getUploadableTbdAnnouncementSides,
@@ -155,10 +156,16 @@ export async function buildFixtPayload(
     }
 
     if (!exactMatchDate) {
-      warnings.push(`Матч ${teamAName} vs ${teamBName} пропущен: нет точного времени.`);
+      const missingTimeReason =
+        hasUnknownExplicitTimezone(match.matchDateTime) || hasUnknownExplicitTimezone(match.rawText)
+          ? 'неизвестный часовой пояс'
+          : 'нет точного времени';
+      warnings.push(`Матч ${teamAName} vs ${teamBName} пропущен: ${missingTimeReason}.`);
       skippedMatches.push({
         matchId: match.matchId,
-        reason: 'Missing exact match time',
+        reason: missingTimeReason === 'неизвестный часовой пояс'
+          ? 'Unknown explicit timezone'
+          : 'Missing exact match time',
         teams: `${teamAName} vs ${teamBName}`,
       });
       continue;
@@ -440,9 +447,10 @@ function applyDuplicateAnnouncementSecondOffset(matchDate: Date, offsetSeconds: 
   return new Date(matchDate.getTime() + offsetSeconds * 1000);
 }
 
-function formatUploadDate(matchDate: Date, timezone: string | null | undefined, dateFormat: string | null | undefined) {
-  const configuredDate = DateTime.fromJSDate(matchDate).setZone(timezone || 'Europe/Moscow');
-  return (configuredDate.isValid ? configuredDate : DateTime.fromJSDate(matchDate).setZone('Europe/Moscow'))
+export function formatUploadDate(matchDate: Date, timezone: string | null | undefined, dateFormat: string | null | undefined) {
+  void timezone;
+  return DateTime.fromJSDate(matchDate)
+    .setZone('Europe/Moscow')
     .toFormat(toLuxonDateFormat(dateFormat || 'DD.MM.YYYY HH:mm:ss'));
 }
 

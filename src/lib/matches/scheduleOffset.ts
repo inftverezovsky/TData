@@ -42,6 +42,15 @@ export function formatMoscowDateTime(date: Date) {
   }).format(date).replace(",", "");
 }
 
+export function formatMoscowDate(date: Date) {
+  return new Intl.DateTimeFormat("sv-SE", {
+    timeZone: MOSCOW_TIME_ZONE,
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(date);
+}
+
 export function adjustMoscowDateTimeStringForDiscipline(
   value: string,
   disciplineSlug: string | null | undefined

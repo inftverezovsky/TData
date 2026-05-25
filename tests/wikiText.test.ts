@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cleanWikiValue, parseWikiDate } from "../src/lib/normalizers/wikiText";
+import { cleanWikiValue, hasUnknownExplicitTimezone, parseWikiDate } from "../src/lib/normalizers/wikiText";
 
 test("cleanWikiValue preserves Liquipedia timezone abbreviation templates", () => {
   assert.equal(
@@ -18,6 +18,14 @@ test("parseWikiDate respects explicit Liquipedia timezone abbreviations", () => 
     parseWikiDate("May 31, 2026 - 14:00 {{Abbr/BRT}}")?.toISOString(),
     "2026-05-31T17:00:00.000Z",
   );
+  assert.equal(
+    parseWikiDate("May 31, 2026 - 20:00 {{Abbr/MSK}}")?.toISOString(),
+    "2026-05-31T17:00:00.000Z",
+  );
+  assert.equal(
+    parseWikiDate("May 31, 2026 - 17:00 UTC")?.toISOString(),
+    "2026-05-31T17:00:00.000Z",
+  );
 });
 
 test("parseWikiDate preserves known Liquipedia date template fields", () => {
@@ -30,4 +38,15 @@ test("parseWikiDate preserves known Liquipedia date template fields", () => {
     "2026-05-13T00:00:00.000Z",
   );
   assert.equal(parseWikiDate("2026"), null);
+});
+
+test("parseWikiDate rejects unknown explicit timezones instead of assuming UTC", () => {
+  assert.equal(parseWikiDate("May 31, 2026 - 14:00 {{Abbr/XYZ}}"), null);
+  assert.equal(parseWikiDate("{{Date|2026-05-31|14:00|XYZ}}"), null);
+  assert.equal(parseWikiDate("2026-05-31 14:00 XYZ"), null);
+});
+
+test("parseWikiDate rejects ambiguous CST timezone", () => {
+  assert.equal(parseWikiDate("May 31, 2026 - 14:00 {{Abbr/CST}}"), null);
+  assert.equal(hasUnknownExplicitTimezone("May 31, 2026 - 14:00 {{Abbr/CST}}"), true);
 });

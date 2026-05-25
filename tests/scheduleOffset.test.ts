@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   adjustMoscowDateTimeStringForDiscipline,
   applyDisciplineScheduleLead,
+  formatMoscowDateTime,
   getDisciplineScheduleLeadMinutes,
 } from "../src/lib/matches/scheduleOffset";
 
@@ -24,4 +25,13 @@ test("league of legends Moscow date strings are shifted ten minutes earlier", ()
     adjustMoscowDateTimeStringForDiscipline("11.06.2026 16:00:00", "leagueoflegends"),
     "11.06.2026 15:50:00"
   );
+});
+
+test("UTC dates are formatted as Moscow time", () => {
+  assert.equal(formatMoscowDateTime(new Date("2026-05-31T17:00:00.000Z")), "31.05.2026 20:00:00");
+});
+
+test("counterstrike lead is applied after source time is converted to UTC", () => {
+  const sourceDate = new Date("2026-05-31T17:00:00.000Z");
+  assert.equal(formatMoscowDateTime(applyDisciplineScheduleLead(sourceDate, "counterstrike")), "31.05.2026 19:55:00");
 });
