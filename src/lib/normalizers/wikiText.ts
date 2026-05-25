@@ -277,6 +277,7 @@ function parseTimezoneOffsetMinutes(timezone?: string | null) {
     UTC: 0,
     GMT: 0,
     BST: 60,
+    BRT: -180,
     PST: -480,
     PDT: -420,
     MST: -420,

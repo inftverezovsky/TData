@@ -529,7 +529,7 @@ function extractBracketMatchEntriesFromWikitext(wikitext: string): BracketWikite
     const slotLabels = buildBracketSlotLabels(bracketTemplate, params);
 
     for (const [key, value] of Object.entries(params)) {
-      const slotMatch = key.match(/^r\d+m\d+$/i);
+      const slotMatch = key.match(/^r(?:\d+|x)m(?:\d+|[a-z]+)$/i);
       if (!slotMatch) continue;
 
       const matchTemplate = extractFirstTemplateByPrefix(value, "Match");
@@ -568,7 +568,7 @@ function extractBracketTemplates(wikitext: string) {
 function buildBracketSlotLabels(bracketTemplate: string, params: Record<string, string>) {
   const labels = new Map<string, string>();
   let currentLabel: string | null = null;
-  const slotRegex = /^[\t ]*(?:<!--\s*([^\r\n]*?)\s*-->\s*)?\|\s*(R\d+M\d+)(header)?\s*=/gim;
+  const slotRegex = /^[\t ]*(?:<!--\s*([^\r\n]*?)\s*-->\s*)?\|\s*(R(?:\d+|x)M(?:\d+|[A-Za-z]+))(header)?\s*=/gim;
   let match: RegExpExecArray | null;
 
   while ((match = slotRegex.exec(bracketTemplate))) {

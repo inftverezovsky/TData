@@ -14,6 +14,10 @@ test("parseWikiDate respects explicit Liquipedia timezone abbreviations", () => 
     parseWikiDate("May 13, 2026 - 12:00 {{Abbr/CEST}}")?.toISOString(),
     "2026-05-13T10:00:00.000Z",
   );
+  assert.equal(
+    parseWikiDate("May 31, 2026 - 14:00 {{Abbr/BRT}}")?.toISOString(),
+    "2026-05-31T17:00:00.000Z",
+  );
 });
 
 test("parseWikiDate preserves known Liquipedia date template fields", () => {

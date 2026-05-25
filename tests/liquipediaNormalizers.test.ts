@@ -129,21 +129,32 @@ test("Counter-Strike normalizer extracts empty Bracket wikitext slots as dated a
         |map2={{Map|map=|finished=}}
         |map3={{Map|map=|finished=}}
         }}
+      <!-- Third Place Match -->
+      |RxMTP={{Match
+        |opponent1={{TeamOpponent|}}|opponent2={{TeamOpponent|}}
+        |date=May 31, 2026 - 14:00 {{Abbr/BRT}}
+        |map1={{Map|map=|finished=}}
+        |map2={{Map|map=|finished=}}
+        |map3={{Map|map=|finished=}}
+        }}
       }}
     `,
   });
 
-  assert.equal(normalized.matches.length, 5);
+  assert.equal(normalized.matches.length, 6);
   assert.equal(normalized.matches[0].matchDate?.toISOString(), "2026-05-27T09:00:00.000Z");
   assert.equal(normalized.matches[0].round, "Upper Bracket Quarterfinals");
   assert.equal(normalized.matches[1].round, "Upper Bracket Quarterfinals");
   assert.equal(normalized.matches[2].round, "Semifinals");
   assert.equal(normalized.matches[3].round, "Semifinals");
   assert.equal(normalized.matches[4].round, "Lower Bracket Round 1");
+  assert.equal(normalized.matches[5].round, "Third Place Match");
+  assert.equal(normalized.matches[5].matchDate?.toISOString(), "2026-05-31T17:00:00.000Z");
   assert.equal(normalized.matches[0].format, "BO1");
   assert.equal(normalized.matches[4].format, "BO3");
   assert.ok(normalized.matches[0].rawText?.startsWith("slot=R1M1"));
   assert.ok(normalized.matches[1].rawText?.startsWith("slot=R1M2"));
+  assert.ok(normalized.matches[5].rawText?.startsWith("slot=RXMTP"));
 });
 
 test("Valorant normalizer only keeps stage subpages from the selected event", () => {
