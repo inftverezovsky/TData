@@ -4,6 +4,7 @@ import {
   extractFandomCargoScheduleMatches,
   normalizeFandomLeagueOfLegendsTournament,
 } from "../src/lib/fandom/leagueoflegends";
+import { expandScheduleAnnouncementsForDiscipline } from "../src/lib/matches/scheduleView";
 
 const fandomInfobox = `
 {{Infobox Tournament
@@ -206,4 +207,59 @@ test("Fandom LoL parser uses HTML fallback dates and normalizes BestOf", () => {
   assert.equal(normalized.matches[0].teamBName, "TBD");
   assert.equal(normalized.matches[0].matchDate?.toISOString(), "2026-07-15T12:00:00.000Z");
   assert.equal(normalized.matches[0].format, "BO3");
+});
+
+test("Fandom LoL parser merges cargo and HTML duplicate TBD stage slots", () => {
+  const normalized = normalizeFandomLeagueOfLegendsTournament({
+    title: "2026 Mid-Season Invitational",
+    pageUrl: "https://lol.fandom.com/wiki/2026_Mid-Season_Invitational",
+    wikitext: fandomInfobox,
+    parsedHtml: `
+      <h2><span class="mw-headline" id="Match_Schedule">Match Schedule</span></h2>
+      <h3><span class="mw-headline" id="Stage_2_(Bracket)">Stage 2 (Bracket)</span></h3>
+      <table>
+        <tr class="ml-row ml-row-tbd" data-date="2026-06-28 03:00:00">
+          <td class="matchlist-team1 ml-team" data-teamhighlight="TBD"></td>
+          <td class="matchlist-score"></td>
+          <td class="matchlist-score"></td>
+          <td><span class="countdowndate">28 June 2026 03:00:00 +0000</span></td>
+          <td class="matchlist-team2 ml-team" data-teamhighlight="TBD"></td>
+        </tr>
+      </table>
+    `,
+    cargoMatches: [
+      {
+        title: {
+          MatchId: "2026 Mid-Season Invitational_Play-In Day 1_1",
+          Team1: "TBD",
+          Team2: "TBD",
+          Team1Final: "TBD",
+          Team2Final: "TBD",
+          Team1Score: "",
+          Team2Score: "",
+          BestOf: "5",
+          DateTime_UTC: "2026-06-28 03:00:00",
+          HasTime: "1",
+          Tab: "Play-In Day 1",
+          Round: "Match Day 1",
+        },
+      },
+    ],
+  });
+
+  assert.equal(normalized.matches.length, 1);
+  assert.equal(normalized.matches[0].format, "BO5");
+  assert.equal(normalized.matches[0].stage, "Play-In Day 1");
+  assert.equal(normalized.matches[0].round, "Stage 2 (Bracket)");
+
+  const announcements = expandScheduleAnnouncementsForDiscipline(
+    normalized.matches.map((match) => ({ ...match, matchId: match.matchId || undefined })),
+    "leagueoflegends",
+    "fandom",
+  );
+
+  assert.equal(announcements.length, 1);
+  assert.equal(announcements[0].isStageAnnouncement, true);
+  assert.equal(announcements[0].singleAnnouncementTeamName, "Stage 2");
+  assert.equal(announcements.some((entry) => /^TBD\d*$/i.test(entry.singleAnnouncementTeamName || "")), false);
 });

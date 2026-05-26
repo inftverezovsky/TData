@@ -57,12 +57,16 @@ export function normalizeFandomLeagueOfLegendsTournament(input: {
   }
   const cargoRowsFound = input.cargoMatches?.length ?? 0;
   const cargoMatches = extractFandomCargoScheduleMatches(input.cargoMatches || [], input.pageUrl, diagnosticIssues);
-  const rawMatches = [
-    ...cargoMatches,
+  const fallbackMatches = [
     ...extractFandomTopScheduleMatches(input.parsedHtml || "", input.pageUrl, input.title, diagnosticIssues),
     ...extractFandomMatchlistMatches(input.parsedHtml || "", input.pageUrl, diagnosticIssues),
     ...extractFandomBracketMatches(input.parsedHtml || "", input.pageUrl, diagnosticIssues),
     ...extractFandomWikitextMatches(input.wikitext, input.pageUrl, diagnosticIssues),
+  ];
+  const enrichedCargoMatches = mergeFandomCargoSlotContext(cargoMatches, fallbackMatches);
+  const rawMatches = [
+    ...enrichedCargoMatches,
+    ...filterFandomFallbackMatchesCoveredByCargo(fallbackMatches, enrichedCargoMatches),
   ];
   const matches = rawMatches
     .map((match, index) => normalizeFandomMatch(match, input.title, String(index), teamNameMap))
@@ -297,6 +301,93 @@ export function extractFandomCargoScheduleMatches(rows: unknown[], pageUrl: stri
   }
 
   return matches;
+}
+
+function mergeFandomCargoSlotContext(cargoMatches: NormalizedMatch[], fallbackMatches: NormalizedMatch[]) {
+  if (cargoMatches.length === 0 || fallbackMatches.length === 0) return cargoMatches;
+
+  const fallbackBySlot = new Map<string, NormalizedMatch[]>();
+  for (const fallback of fallbackMatches) {
+    const key = getFandomPlaceholderSlotKey(fallback);
+    if (!key) continue;
+    const group = fallbackBySlot.get(key) || [];
+    group.push(fallback);
+    fallbackBySlot.set(key, group);
+  }
+
+  return cargoMatches.map((match) => {
+    const key = getFandomPlaceholderSlotKey(match);
+    const fallback = key ? fallbackBySlot.get(key)?.shift() : null;
+    if (!fallback) return match;
+
+    return {
+      ...match,
+      stage: chooseFandomSlotContext(match.stage, fallback.stage),
+      round: chooseFandomSlotContext(match.round, fallback.round),
+      format: match.format || fallback.format || null,
+      rawText: [match.rawText, fallback.rawText].filter(Boolean).join("\n").slice(0, 2500) || match.rawText || fallback.rawText || null,
+    };
+  });
+}
+
+function filterFandomFallbackMatchesCoveredByCargo(fallbackMatches: NormalizedMatch[], cargoMatches: NormalizedMatch[]) {
+  if (fallbackMatches.length === 0 || cargoMatches.length === 0) return fallbackMatches;
+
+  const cargoCoverage = new Map<string, number>();
+  for (const match of cargoMatches) {
+    const key = getFandomPlaceholderSlotKey(match);
+    if (!key) continue;
+    cargoCoverage.set(key, (cargoCoverage.get(key) || 0) + 1);
+  }
+
+  return fallbackMatches.filter((match) => {
+    const key = getFandomPlaceholderSlotKey(match);
+    if (!key) return true;
+
+    const remaining = cargoCoverage.get(key) || 0;
+    if (remaining <= 0) return true;
+
+    cargoCoverage.set(key, remaining - 1);
+    return false;
+  });
+}
+
+function getFandomPlaceholderSlotKey(match: NormalizedMatch) {
+  if (!isPlaceholderTeam(match.teamAName) || !isPlaceholderTeam(match.teamBName)) return null;
+
+  const date = match.matchDate
+    ? new Date(match.matchDate)
+    : parseFandomDate(match.matchDateTime);
+  if (!date || !Number.isFinite(date.getTime())) return null;
+
+  return [
+    match.sourceUrl || "",
+    Math.floor(date.getTime() / 60000),
+  ].join("|");
+}
+
+function chooseFandomSlotContext(primary: string | null | undefined, fallback: string | null | undefined) {
+  const primaryText = cleanFandomSlotContext(primary);
+  const fallbackText = cleanFandomSlotContext(fallback);
+  if (!primaryText) return fallbackText || null;
+  if (!fallbackText) return primaryText;
+  if (isGenericFandomSlotContext(primaryText) && isUsefulFandomSlotContext(fallbackText)) return fallbackText;
+  return primaryText;
+}
+
+function cleanFandomSlotContext(value: string | null | undefined) {
+  return cleanWikiValue(value)
+    ?.replace(/\[\]/g, "")
+    .replace(/\s+/g, " ")
+    .trim() || "";
+}
+
+function isGenericFandomSlotContext(value: string) {
+  return /^(?:match schedule|match day\s+\d+|day\s+\d+|schedule|results?)$/i.test(value.trim());
+}
+
+function isUsefulFandomSlotContext(value: string) {
+  return /\b(?:stage\s*\d+|play[-\s]?in|bracket\s+round|bracket\s+stage|knockout|playoffs?|quarter[-\s]?finals?|semi[-\s]?finals?|finals?|grand\s+final|group\s+stage|swiss|upper\s+bracket|lower\s+bracket)\b/i.test(value);
 }
 
 function extractFandomTopScheduleMatches(html: string, pageUrl: string, pageTitle: string, issues: EsportsDiagnosticIssue[] = []): NormalizedMatch[] {

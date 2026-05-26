@@ -564,4 +564,62 @@ test("stage slot labels prefer round and normalize group stage", () => {
     }),
     "Stage 2",
   );
+  assert.equal(
+    getStageSlotAnnouncementLabel({
+      teamAName: "TBD1",
+      teamBName: "TBD2",
+      round: "Stage 2 (Bracket)",
+    }),
+    "Stage 2",
+  );
+  assert.equal(
+    getStageSlotAnnouncementLabel({
+      teamAName: "TBD1",
+      teamBName: "TBD2",
+      stage: "Play-In Day 1",
+    }),
+    "Play-In Day 1",
+  );
+  assert.equal(
+    getStageSlotAnnouncementLabel({
+      teamAName: "TBD1",
+      teamBName: "TBD2",
+      stage: "Play In Stage",
+    }),
+    "Play-In",
+  );
+  assert.equal(
+    getStageSlotAnnouncementLabel({
+      teamAName: "TBD1",
+      teamBName: "TBD2",
+      round: "Bracket Round 2",
+    }),
+    "Bracket Round 2",
+  );
+});
+
+test("League of Legends sourced stage slots never split into numbered TBD announcements", () => {
+  const entries = expandScheduleAnnouncementsForDiscipline([
+    {
+      id: "lol-fandom-playin-row",
+      matchId: "lol-fandom-playin-1",
+      matchDate: new Date("2026-06-28T03:00:00.000Z"),
+      matchDateTime: "2026-06-28 03:00:00",
+      rawText: "TBD vs TBD Play-In Day 1 Best of 5",
+      scoreA: null,
+      scoreB: null,
+      format: "BO5",
+      teamAName: "TBD1",
+      teamBName: "TBD2",
+      stage: "Play-In Day 1",
+      round: "Match Day 1",
+      hasPlaceholderTeams: true,
+    },
+  ], "leagueoflegends", "fandom");
+
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].isStageAnnouncement, true);
+  assert.equal(entries[0].singleAnnouncementSide, "stage");
+  assert.equal(entries[0].singleAnnouncementTeamName, "Play-In Day 1");
+  assert.equal(entries.some((entry) => /^TBD\d*$/i.test(entry.singleAnnouncementTeamName || "")), false);
 });

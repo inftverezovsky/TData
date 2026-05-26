@@ -292,6 +292,8 @@ function normalizeStageSlotLabel(value: string | null | undefined) {
     /\bGroup\s+Stage\b/i,
     /\bRound\s+Robin\b/i,
     /\bRegular\s+Season\b/i,
+    /\bPlay[-\s]?In(?:\s+Stage|\s+Day\s+\d+)?\b/i,
+    /\bBracket\s+Round\s+\d+\b/i,
     /\bStage\s+\d+\b/i,
     /\bWeek\s+\d+\b/i,
     /\bRound\s+of\s+\d+\b/i,
@@ -322,8 +324,8 @@ function normalizeStageSlotLabel(value: string | null | undefined) {
   }
 
   const withoutTournamentPrefix = text
-    .replace(/^.+?\b(?:Group Stage|Regular\s+Season|Stage\s+\d+|Week\s+\d+|Round\s+of\s+\d+|LCQ\s+Round\s+\d+|Upper\s+Bracket\s+(?:Round\s+\d+|Quarter[-\s]?finals?|Semi[-\s]?finals?|Finals?)|Lower\s+Bracket\s+(?:Round\s+\d+|Quarter[-\s]?finals?|Semi[-\s]?finals?|Finals?)|Winners?'?\s+Round\s+\d+|Losers?'?\s+Round\s+\d+|To\s+Playoffs?|Advance\s+to\s+Playoffs?|Playoffs?|Quarter[-\s]?finals?|Semi[-\s]?finals?|(?:Third|3rd)\s+Place(?:\s+Match)?|Consolation\s+Finals?|Winners?'?\s+Finals?|Losers?'?\s+Finals?|Grand\s+Finals?)\b/i, (match) => {
-      const stage = match.match(/\b(?:Group Stage|Regular\s+Season|Stage\s+\d+|Week\s+\d+|Round\s+of\s+\d+|LCQ\s+Round\s+\d+|Upper\s+Bracket\s+(?:Round\s+\d+|Quarter[-\s]?finals?|Semi[-\s]?finals?|Finals?)|Lower\s+Bracket\s+(?:Round\s+\d+|Quarter[-\s]?finals?|Semi[-\s]?finals?|Finals?)|Winners?'?\s+Round\s+\d+|Losers?'?\s+Round\s+\d+|To\s+Playoffs?|Advance\s+to\s+Playoffs?|Playoffs?|Quarter[-\s]?finals?|Semi[-\s]?finals?|(?:Third|3rd)\s+Place(?:\s+Match)?|Consolation\s+Finals?|Winners?'?\s+Finals?|Losers?'?\s+Finals?|Grand\s+Finals?)\b/i);
+    .replace(/^.+?\b(?:Group Stage|Regular\s+Season|Play[-\s]?In(?:\s+Stage|\s+Day\s+\d+)?|Bracket\s+Round\s+\d+|Stage\s+\d+|Week\s+\d+|Round\s+of\s+\d+|LCQ\s+Round\s+\d+|Upper\s+Bracket\s+(?:Round\s+\d+|Quarter[-\s]?finals?|Semi[-\s]?finals?|Finals?)|Lower\s+Bracket\s+(?:Round\s+\d+|Quarter[-\s]?finals?|Semi[-\s]?finals?|Finals?)|Winners?'?\s+Round\s+\d+|Losers?'?\s+Round\s+\d+|To\s+Playoffs?|Advance\s+to\s+Playoffs?|Playoffs?|Quarter[-\s]?finals?|Semi[-\s]?finals?|(?:Third|3rd)\s+Place(?:\s+Match)?|Consolation\s+Finals?|Winners?'?\s+Finals?|Losers?'?\s+Finals?|Grand\s+Finals?)\b/i, (match) => {
+      const stage = match.match(/\b(?:Group Stage|Regular\s+Season|Play[-\s]?In(?:\s+Stage|\s+Day\s+\d+)?|Bracket\s+Round\s+\d+|Stage\s+\d+|Week\s+\d+|Round\s+of\s+\d+|LCQ\s+Round\s+\d+|Upper\s+Bracket\s+(?:Round\s+\d+|Quarter[-\s]?finals?|Semi[-\s]?finals?|Finals?)|Lower\s+Bracket\s+(?:Round\s+\d+|Quarter[-\s]?finals?|Semi[-\s]?finals?|Finals?)|Winners?'?\s+Round\s+\d+|Losers?'?\s+Round\s+\d+|To\s+Playoffs?|Advance\s+to\s+Playoffs?|Playoffs?|Quarter[-\s]?finals?|Semi[-\s]?finals?|(?:Third|3rd)\s+Place(?:\s+Match)?|Consolation\s+Finals?|Winners?'?\s+Finals?|Losers?'?\s+Finals?|Grand\s+Finals?)\b/i);
       return stage?.[0] || match;
     })
     .trim();
@@ -332,13 +334,18 @@ function normalizeStageSlotLabel(value: string | null | undefined) {
 }
 
 function hasStageSlotLabelHint(value: string) {
-  return /\b(?:Group Stage|Round Robin|Regular\s+Season|Stage\s+\d+|Week\s+\d+|Round\s+of\s+\d+|Round\s+\d+|LCQ\s+Round\s+\d+|Upper\s+Bracket|Lower\s+Bracket|Winners?'?\s+Round\s+\d+|Losers?'?\s+Round\s+\d+|To\s+Playoffs?|Advance\s+to\s+Playoffs?|Playoffs?|Quarter[-\s]?finals?|Semi[-\s]?finals?|(?:Third|3rd)\s+Place(?:\s+Match)?|Consolation\s+Finals?|Winners?'?\s+Finals?|Losers?'?\s+Finals?|Grand\s+Finals?|Finals?)\b/i.test(value);
+  return /\b(?:Group Stage|Round Robin|Regular\s+Season|Play[-\s]?In(?:\s+Stage|\s+Day\s+\d+)?|Bracket\s+Round\s+\d+|Stage\s+\d+|Week\s+\d+|Round\s+of\s+\d+|Round\s+\d+|LCQ\s+Round\s+\d+|Upper\s+Bracket|Lower\s+Bracket|Winners?'?\s+Round\s+\d+|Losers?'?\s+Round\s+\d+|To\s+Playoffs?|Advance\s+to\s+Playoffs?|Playoffs?|Quarter[-\s]?finals?|Semi[-\s]?finals?|(?:Third|3rd)\s+Place(?:\s+Match)?|Consolation\s+Finals?|Winners?'?\s+Finals?|Losers?'?\s+Finals?|Grand\s+Finals?|Finals?)\b/i.test(value);
 }
 
 function normalizeKnownStageName(value: string) {
   const text = value.replace(/\s+/g, " ").trim();
   if (/round robin/i.test(text)) return "Group Stage";
   if (/regular\s+season/i.test(text)) return "Regular Season";
+  const playInDay = text.match(/play[-\s]?in\s+day\s+\d+/i);
+  if (playInDay) return titleCaseStage(playInDay[0]).replace(/^Play In\b/, "Play-In");
+  if (/play[-\s]?in/i.test(text)) return "Play-In";
+  const bracketRound = text.match(/bracket\s+round\s+\d+/i);
+  if (bracketRound) return titleCaseStage(bracketRound[0]);
   if (/advance\s+to\s+playoffs?/i.test(text) || /^to\s+playoffs?/i.test(text)) return "To Playoff";
   const lcqRound = text.match(/lcq\s+round\s+\d+/i);
   if (lcqRound) return titleCaseStage(lcqRound[0]).replace(/^Lcq\b/, "LCQ");

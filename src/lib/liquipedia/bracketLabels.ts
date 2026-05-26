@@ -75,6 +75,9 @@ function findRoundHeaderFromBody($: cheerio.CheerioAPI, $match: cheerio.Cheerio<
   for (let depth = 0; current.length > 0 && depth < 14; depth += 1) {
     if (current.hasClass("brkts-round-body")) {
       const labels = getHeaderLabels($, current.prevAll(".brkts-round-header").first());
+      const inferred = inferHeaderLabelFromRoundBody($, current, $match, labels, roundNumber);
+      if (inferred) return inferred;
+
       const picked = pickHeaderLabel(labels, roundNumber);
       if (picked) return picked;
     }
@@ -83,6 +86,27 @@ function findRoundHeaderFromBody($: cheerio.CheerioAPI, $match: cheerio.Cheerio<
   }
 
   return null;
+}
+
+function inferHeaderLabelFromRoundBody(
+  $: cheerio.CheerioAPI,
+  $body: cheerio.Cheerio<any>,
+  $match: cheerio.Cheerio<any>,
+  labels: string[],
+  roundNumber: number | null
+) {
+  if ((roundNumber && labels[roundNumber - 1]) || labels.length <= 1) return null;
+
+  const matchNode = $match.get(0);
+  if (!matchNode) return null;
+
+  const directCenterContainsMatch = $body.children(".brkts-round-center").toArray().some((centerEl) => {
+    return centerEl === matchNode || $.contains(centerEl, matchNode);
+  });
+
+  if (!directCenterContainsMatch) return null;
+
+  return labels[labels.length - 1] || null;
 }
 
 function findRoundHeaderFromColumn($: cheerio.CheerioAPI, $match: cheerio.Cheerio<any>) {
