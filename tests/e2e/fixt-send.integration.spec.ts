@@ -90,6 +90,19 @@ test.describe("FIxt upload integration", () => {
       });
       expect(previewTbdSideJson.serialized).toContain('s:5:"team2";s:0:"";');
 
+      const previewLegacyTbdSide = await request.post(`/api/${disciplineSlug}/tournament/${tournamentId}/admin-fixt-preview`, {
+        headers: { cookie },
+        data: { selectedMatchIds: [`${placeholderMatchId}::teamA`] },
+      });
+      await expect(previewLegacyTbdSide).toBeOK();
+      await expect(await previewLegacyTbdSide.json()).toMatchObject({
+        ok: true,
+        readyMatchesCount: 1,
+        phpArray: {
+          match: [{ team1: 333, team2: "" }],
+        },
+      });
+
       const sendTbdSide = await request.post(`/api/${disciplineSlug}/tournament/${tournamentId}/admin-fixt-send`, {
         headers: { cookie },
         data: { selectedMatchIds: [`${placeholderMatchId}::stage`] },

@@ -171,6 +171,61 @@ test("collectTournamentTeamNames exposes sourced stage announcements instead of 
   }
 });
 
+test("collectTournamentTeamNames hides sourced stage announcements without exact time", () => {
+  const names = collectTournamentTeamNames({
+    disciplineSlug: "counterstrike",
+    source: "liquipedia",
+    matches: [
+      {
+        teamAName: "TBD1",
+        teamBName: "TBD2",
+        round: "Round of 16",
+        rawText: "slot=R1M1 TBD vs TBD Best of 3",
+        matchDate: null,
+        matchDateTime: null,
+        hasPlaceholderTeams: true,
+      },
+      {
+        teamAName: "TBD3",
+        teamBName: "TBD4",
+        round: "Quarterfinals",
+        rawText: "slot=QF TBD vs TBD Best of 3",
+        matchDateTime: "May 31, 2026",
+        hasPlaceholderTeams: true,
+      },
+    ],
+    participants: [],
+  });
+
+  assert.deepEqual(names, []);
+});
+
+test("collectTournamentTeamNames exposes sourced fallback stage labels instead of numbered TBD", () => {
+  const names = collectTournamentTeamNames({
+    disciplineSlug: "counterstrike",
+    source: "hltv",
+    matches: [
+      {
+        teamAName: "TBD1",
+        teamBName: "TBD2",
+        rawText: "21:00 bo3 Winline MPKBK CIS LAN Season 5 - Group D Winners' Match",
+        matchDate: new Date("2026-05-26T18:55:00.000Z"),
+        hasPlaceholderTeams: true,
+      },
+      {
+        teamAName: "TBD3",
+        teamBName: "TBD4",
+        rawText: "TBD vs TBD BO3",
+        matchDate: new Date("2026-05-26T20:55:00.000Z"),
+        hasPlaceholderTeams: true,
+      },
+    ],
+    participants: [],
+  });
+
+  assert.deepEqual(names, ["Group Stage"]);
+});
+
 test("collectTournamentTeamNames keeps numbered TBD mapping names when source is unknown", () => {
   const names = collectTournamentTeamNames({
     disciplineSlug: "dota2",
@@ -183,7 +238,7 @@ test("collectTournamentTeamNames keeps numbered TBD mapping names when source is
   assert.deepEqual(names, ["TBD1", "TBD2"]);
 });
 
-test("collectTournamentTeamNames does not expose fallback bracket placeholders as mappable stage names", () => {
+test("collectTournamentTeamNames exposes common fallback labels for sourced bracket placeholders", () => {
   const names = collectTournamentTeamNames({
     disciplineSlug: "counterstrike",
     source: "liquipedia",
@@ -198,7 +253,7 @@ test("collectTournamentTeamNames does not expose fallback bracket placeholders a
     participants: [],
   });
 
-  assert.deepEqual(names, ["TBD"]);
+  assert.deepEqual(names, ["Group Stage"]);
 });
 
 test("team mapping lookup prefers saved platform IDs over stale unmapped duplicates", () => {

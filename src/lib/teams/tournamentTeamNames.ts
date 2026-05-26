@@ -1,6 +1,5 @@
 import { isPlaceholderTeam, isTbdPlaceholderTeam, normalizeTeamName } from "@/lib/teams/teams";
-import { getStageSlotAnnouncementLabel, getUploadableTbdAnnouncementSides } from "@/lib/matches/scheduleView";
-import { hasExactMatchTime } from "@/lib/matches/time";
+import { expandScheduleAnnouncementMatch } from "@/lib/matches/scheduleView";
 import {
   buildTeamNameCanonicalizer,
   type TeamNameSource,
@@ -18,6 +17,7 @@ type TournamentTeamMatch = {
   scoreA?: number | null;
   scoreB?: number | null;
   status?: string | null;
+  hasPlaceholderTeams?: boolean | null;
 };
 
 type TournamentTeamParticipant = TeamNameSource & {
@@ -43,18 +43,19 @@ export function collectTournamentTeamNames({
   for (const match of matches) {
     if (
       shouldExposeStageAnnouncements &&
-      hasExactMatchTime(match) &&
-      !hasFinishedResult(match) &&
       isPlaceholderTeam(match.teamAName) &&
       isPlaceholderTeam(match.teamBName)
     ) {
-      const uploadableTbdSides = getUploadableTbdAnnouncementSides(match, { source });
-      if (uploadableTbdSides.includes("stage")) {
-        const stageName = getStageSlotAnnouncementLabel(match);
-        addTeamName(rawNames, stageName, true);
-        forcedNames.add(normalizeTeamName(stageName));
-        continue;
+      if (!hasFinishedResult(match)) {
+        const stageAnnouncement = expandScheduleAnnouncementMatch(match, { source })
+          .find((entry) => entry.isStageAnnouncement && entry.singleAnnouncementTeamName);
+        if (stageAnnouncement?.singleAnnouncementTeamName) {
+          const stageName = stageAnnouncement.singleAnnouncementTeamName;
+          addTeamName(rawNames, stageName, true);
+          forcedNames.add(normalizeTeamName(stageName));
+        }
       }
+      continue;
     }
     addTeamName(rawNames, match.teamAName);
     addTeamName(rawNames, match.teamBName);

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/db";
+import { isKnownStageAnnouncementLabel } from "@/lib/matches/scheduleView";
 import { buildTeamMappingLookup, findTeamMapping } from "@/lib/teams/mappingLookup";
 import { isPlaceholderTeam, normalizeTeamName } from "@/lib/teams/teams";
 import { scorePlatformTeamCandidate } from "@/lib/teams/fuzzyMatch";
@@ -376,6 +377,7 @@ export async function runAutoMappingForDiscipline(
 
 export function isInvalidAutoMappingName(name: string | null | undefined) {
   const raw = String(name ?? "").trim();
+  if (isKnownStageAnnouncementLabel(raw)) return false;
   if (!raw || isPlaceholderTeam(raw)) return true;
   if (raw.includes("{{") || raw.includes("}}") || raw.includes("-->") || raw.includes("<--")) return true;
   if (/^[-–—<>]+$/.test(raw)) return true;

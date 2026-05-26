@@ -13,6 +13,7 @@ import {
   isUploadableScheduleEntry,
   isUploadReadyScheduleMatch,
   parseScheduleSelectionId,
+  resolveStageSlotAnnouncement,
 } from "../src/lib/matches/scheduleView";
 
 test("exact-time matches are upload-ready and not announcements", () => {
@@ -258,6 +259,83 @@ test("all sourced TBD-vs-TBD slots render as one stage announcement", () => {
   }
 });
 
+test("HLTV group placeholder rows render as one common stage announcement", () => {
+  const match = {
+    id: "hltv-group-row",
+    matchId: "hltv-2394635",
+    matchDate: new Date("2026-05-26T18:55:00.000Z"),
+    matchDateTime: null,
+    rawText: "21:00 bo3 Winline MPKBK CIS LAN Season 5 - Group D Winners' Match",
+    scoreA: null,
+    scoreB: null,
+    format: "BO3",
+    teamAName: "TBD1",
+    teamBName: "TBD2",
+    hasPlaceholderTeams: true,
+  };
+  const entries = expandScheduleAnnouncementsForDiscipline([
+    match,
+  ], "counterstrike", "hltv");
+
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].isStageAnnouncement, true);
+  assert.equal(entries[0].isStageAnnouncementFallback, false);
+  assert.equal(entries[0].singleAnnouncementSide, "stage");
+  assert.equal(entries[0].singleAnnouncementTeamName, "Group Stage");
+  assert.equal(entries[0].selectionId, buildTbdAnnouncementSelectionId("hltv-2394635", "stage"));
+  assert.equal(entries.some((entry) => /^TBD\d*$/i.test(entry.singleAnnouncementTeamName || "")), false);
+  assert.deepEqual(resolveStageSlotAnnouncement(match, { disciplineSlug: "counterstrike", source: "hltv" }), {
+    side: "stage",
+    label: "Group Stage",
+    isFallback: false,
+  });
+});
+
+test("sourced stage announcement resolver requires two named placeholder sides", () => {
+  const baseMatch = {
+    id: "missing-placeholder-side",
+    matchId: "missing-placeholder-side",
+    matchDate: new Date("2026-06-04T09:00:00.000Z"),
+    rawText: "TBD vs TBD BO3",
+    scoreA: null,
+    scoreB: null,
+    hasPlaceholderTeams: true,
+  };
+
+  for (const match of [
+    { ...baseMatch, teamAName: null, teamBName: null },
+    { ...baseMatch, teamAName: null, teamBName: "TBD1" },
+    { ...baseMatch, teamAName: "TBD1", teamBName: "" },
+  ]) {
+    assert.equal(resolveStageSlotAnnouncement(match, { disciplineSlug: "counterstrike", source: "hltv" }), null);
+    assert.deepEqual(expandScheduleAnnouncementsForDiscipline([match], "counterstrike", "hltv"), []);
+  }
+});
+
+test("sourced placeholder fallback rows never split into numbered TBD announcements", () => {
+  for (const source of ["liquipedia", "hltv", "dltv", "fandom", "vlr"] as const) {
+    const entries = expandScheduleAnnouncementsForDiscipline([
+      {
+        id: `${source}-fallback-row`,
+        matchId: `${source}-fallback-match`,
+        matchDate: new Date("2026-06-04T09:00:00.000Z"),
+        rawText: "TBD vs TBD BO3",
+        scoreA: null,
+        scoreB: null,
+        teamAName: "TBD1",
+        teamBName: "TBD2",
+        hasPlaceholderTeams: true,
+      },
+    ], "counterstrike", source);
+
+    assert.equal(entries.length, 1, source);
+    assert.equal(entries[0].isStageAnnouncement, true, source);
+    assert.equal(entries[0].isStageAnnouncementFallback, true, source);
+    assert.equal(entries[0].singleAnnouncementTeamName, "Group Stage", source);
+    assert.equal(entries.some((entry) => /^TBD\d*$/i.test(entry.singleAnnouncementTeamName || "")), false, source);
+  }
+});
+
 test("seed and arrow bracket placeholders render as stage announcements, not matches", () => {
   const cases = [
     {
@@ -304,7 +382,7 @@ test("seed and arrow bracket placeholders render as stage announcements, not mat
   }
 });
 
-test("sourced bracket placeholder pairs without a recovered round render as a safe stage fallback", () => {
+test("sourced bracket placeholder pairs without a recovered round use a common stage fallback", () => {
   const match = {
     id: "missing-round-arrow-row",
     matchId: "missing-round-arrow-match",
@@ -325,12 +403,12 @@ test("sourced bracket placeholder pairs without a recovered round render as a sa
   assert.equal(entries.length, 1);
   assert.equal(entries[0].isStageAnnouncement, true);
   assert.equal(entries[0].isStageAnnouncementFallback, true);
-  assert.equal(entries[0].singleAnnouncementTeamName, "Playoffs");
-  assert.deepEqual(getUploadableTbdAnnouncementSides(entries[0], { disciplineSlug: "counterstrike", source: "liquipedia" }), []);
-  assert.equal(isUploadableScheduleEntry(entries[0], { disciplineSlug: "counterstrike", source: "liquipedia" }), false);
+  assert.equal(entries[0].singleAnnouncementTeamName, "Group Stage");
+  assert.deepEqual(getUploadableTbdAnnouncementSides(entries[0], { disciplineSlug: "counterstrike", source: "liquipedia" }), ["stage"]);
+  assert.equal(isUploadableScheduleEntry(entries[0], { disciplineSlug: "counterstrike", source: "liquipedia" }), true);
 });
 
-test("Liquipedia stage placeholders without exact time render as non-uploadable announcements", () => {
+test("Liquipedia stage placeholders without exact time stay hidden", () => {
   const entries = expandScheduleAnnouncementsForDiscipline([
     {
       id: "liquipedia-no-time-stage-row",
@@ -348,10 +426,31 @@ test("Liquipedia stage placeholders without exact time render as non-uploadable 
     },
   ], "counterstrike", "liquipedia");
 
+  assert.deepEqual(entries, []);
+});
+
+test("sourced stage announcements keep explicit midnight times", () => {
+  const entries = expandScheduleAnnouncementsForDiscipline([
+    {
+      id: "liquipedia-midnight-stage-row",
+      matchId: "liquipedia-midnight-stage-1",
+      matchDate: new Date("2026-06-04T00:00:00.000Z"),
+      matchDateTime: "June 4, 2026 - 00:00 UTC",
+      rawText: "{{Match|opponent1=TBD|opponent2=TBD|date=June 4, 2026 - 00:00 UTC}}",
+      scoreA: null,
+      scoreB: null,
+      format: "BO3",
+      teamAName: "TBD1",
+      teamBName: "TBD2",
+      round: "Quarterfinals",
+      hasPlaceholderTeams: true,
+    },
+  ], "counterstrike", "liquipedia");
+
   assert.equal(entries.length, 1);
   assert.equal(entries[0].isStageAnnouncement, true);
-  assert.equal(entries[0].singleAnnouncementTeamName, "Round 1");
-  assert.equal(isUploadableScheduleEntry(entries[0], { disciplineSlug: "counterstrike", source: "liquipedia" }), false);
+  assert.equal(entries[0].singleAnnouncementTeamName, "Quarterfinals");
+  assert.equal(isUploadableScheduleEntry(entries[0], { disciplineSlug: "counterstrike", source: "liquipedia" }), true);
 });
 
 test("source-less TBD-vs-TBD slots keep numbered TBD announcements", () => {
@@ -376,7 +475,7 @@ test("source-less TBD-vs-TBD slots keep numbered TBD announcements", () => {
   assert.deepEqual(entries.map((entry) => entry.singleAnnouncementTeamName), ["TBD1", "TBD2"]);
 });
 
-test("sourced TBD-vs-TBD slots without explicit stage keep numbered TBD announcements", () => {
+test("sourced TBD-vs-TBD slots without explicit stage use a common stage fallback", () => {
   const entries = expandScheduleAnnouncementsForDiscipline([
     {
       id: "liquipedia-placeholder-row",
@@ -392,13 +491,11 @@ test("sourced TBD-vs-TBD slots without explicit stage keep numbered TBD announce
     },
   ], "dota2", "liquipedia");
 
-  assert.equal(entries.length, 2);
-  assert.deepEqual(entries.map((entry) => entry.singleAnnouncementTeamName), ["TBD1", "TBD2"]);
-  assert.deepEqual(entries.map((entry) => entry.selectionId), [
-    buildTbdAnnouncementSelectionId("liquipedia-placeholder-1", "teamA"),
-    buildTbdAnnouncementSelectionId("liquipedia-placeholder-1", "teamB"),
-  ]);
-  assert.equal(entries.some((entry) => entry.isStageAnnouncement), false);
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].isStageAnnouncement, true);
+  assert.equal(entries[0].isStageAnnouncementFallback, true);
+  assert.equal(entries[0].singleAnnouncementTeamName, "Group Stage");
+  assert.equal(entries[0].selectionId, buildTbdAnnouncementSelectionId("liquipedia-placeholder-1", "stage"));
 });
 
 test("Team-vs-TBD stays an uploadable normal match for stage-supporting sources", () => {
@@ -437,10 +534,8 @@ test("stage slots without exact time or with results are not uploadable", () => 
     isUploadableScheduleEntry({ ...baseMatch, matchDate: null }, { disciplineSlug: "counterstrike", source: "hltv" }),
     false,
   );
-  assert.deepEqual(
-    expandScheduleAnnouncementsForDiscipline([{ ...baseMatch, matchDate: null }], "counterstrike", "hltv"),
-    [],
-  );
+  const noTimeEntries = expandScheduleAnnouncementsForDiscipline([{ ...baseMatch, matchDate: null }], "counterstrike", "hltv");
+  assert.deepEqual(noTimeEntries, []);
   assert.equal(
     isUploadableScheduleEntry(
       { ...baseMatch, matchDate: new Date("2026-06-04T09:00:00.000Z"), scoreA: 1, scoreB: 0 },
@@ -595,6 +690,38 @@ test("stage slot labels prefer round and normalize group stage", () => {
       round: "Bracket Round 2",
     }),
     "Bracket Round 2",
+  );
+  assert.equal(
+    getStageSlotAnnouncementLabel({
+      teamAName: "TBD1",
+      teamBName: "TBD2",
+      rawText: "21:00 bo3 Winline MPKBK CIS LAN Season 5 - Group D Winners' Match",
+    }),
+    "Group Stage",
+  );
+  assert.equal(
+    getStageSlotAnnouncementLabel({
+      teamAName: "TBD1",
+      teamBName: "TBD2",
+      round: "Quarter-final #1",
+    }),
+    "Quarterfinals",
+  );
+  assert.equal(
+    getStageSlotAnnouncementLabel({
+      teamAName: "TBD1",
+      teamBName: "TBD2",
+      round: "Semi-final #2",
+    }),
+    "Semifinals",
+  );
+  assert.equal(
+    getStageSlotAnnouncementLabel({
+      teamAName: "TBD1",
+      teamBName: "TBD2",
+      round: "3rd Place Decider Match",
+    }),
+    "Third Place Match",
   );
 });
 

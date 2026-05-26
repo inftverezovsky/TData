@@ -7,6 +7,7 @@ import {
   getStageSlotAnnouncementLabel,
   getUploadableTbdAnnouncementSides,
   parseScheduleSelectionId,
+  resolveStageSlotAnnouncement,
   type TbdAnnouncementSide,
 } from '@/lib/matches/scheduleView';
 import { resolveExactMatchDate } from '@/lib/matches/time';
@@ -182,15 +183,16 @@ export async function buildFixtPayload(
 
     const matchDate = applyDisciplineScheduleLead(exactMatchDate, disciplineSlug);
     const uploadableTbdSides = getUploadableTbdAnnouncementSides(match, { disciplineSlug, source });
+    const stageAnnouncement = resolveStageSlotAnnouncement(match, { disciplineSlug, source });
     const isStageAnnouncementSlot = uploadableTbdSides.includes('stage');
     if (isStageAnnouncementSlot) {
+      const stageName = stageAnnouncement?.label || getStageSlotAnnouncementLabel(match, { disciplineSlug, source });
       const requestedStageAnnouncement =
         !hasExplicitSelection ||
         selectedFullMatch ||
-        Boolean(selectedSides?.has('stage'));
+        Boolean(selectedSides && (selectedSides.has('stage') || selectedSides.has('teamA') || selectedSides.has('teamB')));
 
       if (requestedStageAnnouncement) {
-        const stageName = getStageSlotAnnouncementLabel(match);
         const mapping = findTeamMapping(mappingMap, stageName);
         const platformId = mapping?.platformId || null;
         const team1 = parsePositiveInteger(platformId);
@@ -220,7 +222,7 @@ export async function buildFixtPayload(
         skippedMatches.push({
           matchId: match.matchId,
           reason: 'Selected stage announcement side is not upload-ready',
-          teams: `${getStageSlotAnnouncementLabel(match)} (${Array.from(selectedSides).join(', ')})`,
+          teams: `${stageName} (${Array.from(selectedSides).join(', ')})`,
         });
       }
       continue;
@@ -396,7 +398,13 @@ function collectDuplicateAnnouncementOffsetCandidates(params: {
 
     for (const side of sides) {
       const announcementName = side === 'stage'
-        ? getStageSlotAnnouncementLabel(match)
+        ? resolveStageSlotAnnouncement(match, {
+            disciplineSlug: params.disciplineSlug,
+            source: params.source,
+          })?.label || getStageSlotAnnouncementLabel(match, {
+            disciplineSlug: params.disciplineSlug,
+            source: params.source,
+          })
         : side === 'teamA'
           ? match.teamAName
           : match.teamBName;

@@ -33,6 +33,12 @@ export type ScheduleAnnouncementEntry<T extends ScheduleViewMatch> = T & {
   isStageAnnouncementFallback?: boolean;
 };
 
+export type StageSlotAnnouncementResolution = {
+  side: "stage";
+  label: string;
+  isFallback: boolean;
+};
+
 const TBD_ANNOUNCEMENT_SELECTION_SEPARATOR = "::";
 type ScheduleViewOptions = { disciplineSlug?: string | null; source?: TournamentSource | null };
 
@@ -86,7 +92,7 @@ export function isUploadableScheduleEntry(match: ScheduleViewMatch, options: Sch
   if (isGeneratedScheduleMatrixRow(match)) return false;
   if (hasScore(match)) return false;
   if (!hasExactMatchTime(match)) return false;
-  if (isStageSlotAnnouncement(match, options)) return true;
+  if (resolveStageSlotAnnouncement(match, options)) return true;
 
   const teamA = getScheduleTeamState(match.teamAName);
   const teamB = getScheduleTeamState(match.teamBName);
@@ -100,11 +106,17 @@ export function isUploadableScheduleEntry(match: ScheduleViewMatch, options: Sch
 export function isAnnouncementScheduleMatch(match: ScheduleViewMatch, options: ScheduleViewOptions = {}) {
   if (isGeneratedScheduleMatrixRow(match)) return false;
   if (hasScore(match)) return false;
-  const hasExactTime = hasExactMatchTime(match);
-  if (!hasExactTime && !isStageSlotAnnouncementWithoutExactTime(match, options)) return false;
+  if (!hasExactMatchTime(match)) return false;
+
+  const stageAnnouncement = resolveStageSlotAnnouncement(match, options);
+  if (stageAnnouncement) return true;
 
   const teamA = getScheduleTeamState(match.teamAName);
   const teamB = getScheduleTeamState(match.teamBName);
+
+  if (supportsStageAnnouncements(options.source) && teamA.placeholder && teamB.placeholder) {
+    return false;
+  }
 
   if (teamA.real || teamB.real) {
     return teamA.unsupportedPlaceholder || teamB.unsupportedPlaceholder;
@@ -130,7 +142,7 @@ export function getUploadableTbdAnnouncementSides(match: ScheduleViewMatch, opti
   if (isGeneratedScheduleMatrixRow(match)) return [];
   if (hasScore(match)) return [];
   if (!hasExactMatchTime(match)) return [];
-  if (isStageSlotAnnouncement(match, options)) return ["stage"];
+  if (resolveStageSlotAnnouncement(match, options)) return ["stage"];
 
   const teamA = getScheduleTeamState(match.teamAName);
   const teamB = getScheduleTeamState(match.teamBName);
@@ -147,12 +159,9 @@ export function expandScheduleAnnouncementMatch<T extends ScheduleViewMatch>(
   options: ScheduleViewOptions = {}
 ): ScheduleAnnouncementEntry<T>[] {
   if (!isAnnouncementScheduleMatch(match, options)) return [];
-  const isExplicitStageSlot = isStageSlotAnnouncement(match, options);
-  const isFallbackStageSlot = !isExplicitStageSlot && isFallbackStageSlotAnnouncement(match, options);
+  const stageAnnouncement = resolveStageSlotAnnouncement(match, options);
 
-  if (isExplicitStageSlot || isFallbackStageSlot) {
-    const stageLabel = getExplicitStageSlotAnnouncementLabel(match)
-      || (isFallbackStageSlot ? getFallbackStageSlotAnnouncementLabel(match) : getStageSlotAnnouncementLabel(match));
+  if (stageAnnouncement) {
     const sourceMatchId = match.matchId || match.id;
     const selectionId = sourceMatchId
       ? buildTbdAnnouncementSelectionId(sourceMatchId, "stage")
@@ -162,10 +171,10 @@ export function expandScheduleAnnouncementMatch<T extends ScheduleViewMatch>(
       selectionId,
       sourceMatchId,
       singleAnnouncementSide: "stage",
-      singleAnnouncementTeamName: stageLabel,
+      singleAnnouncementTeamName: stageAnnouncement.label,
       isSingleTeamAnnouncement: true,
       isStageAnnouncement: true,
-      isStageAnnouncementFallback: isFallbackStageSlot,
+      isStageAnnouncementFallback: stageAnnouncement.isFallback,
     }];
   }
 
@@ -234,34 +243,47 @@ function getScheduleTeamState(name: string | null | undefined) {
   };
 }
 
-function isStageSlotAnnouncement(match: ScheduleViewMatch, options: ScheduleViewOptions) {
-  if (!supportsStageAnnouncements(options.source)) return false;
-  const teamA = getScheduleTeamState(match.teamAName);
-  const teamB = getScheduleTeamState(match.teamBName);
-  return teamA.placeholder && teamB.placeholder && Boolean(getExplicitStageSlotAnnouncementLabel(match));
+function isNamedPlaceholderSide(name: string | null | undefined) {
+  const value = String(name ?? "").trim();
+  return Boolean(value && isPlaceholderTeam(value));
 }
 
-function isStageSlotAnnouncementWithoutExactTime(match: ScheduleViewMatch, options: ScheduleViewOptions) {
-  return options.source === "liquipedia" && isStageSlotAnnouncement(match, options);
+export function resolveStageSlotAnnouncement(
+  match: ScheduleViewMatch,
+  options: ScheduleViewOptions = {}
+): StageSlotAnnouncementResolution | null {
+  if (!supportsStageAnnouncements(options.source)) return null;
+
+  if (!isNamedPlaceholderSide(match.teamAName) || !isNamedPlaceholderSide(match.teamBName)) return null;
+
+  const explicitLabel = getExplicitStageSlotAnnouncementLabel(match);
+  if (explicitLabel) {
+    return {
+      side: "stage",
+      label: explicitLabel,
+      isFallback: false,
+    };
+  }
+
+  return {
+    side: "stage",
+    label: getSourcedPlaceholderStageFallbackLabel(match),
+    isFallback: true,
+  };
 }
 
-export function getStageSlotAnnouncementLabel(match: ScheduleViewMatch) {
-  return getExplicitStageSlotAnnouncementLabel(match) || "Group Stage";
+export function getStageSlotAnnouncementLabel(
+  match: ScheduleViewMatch,
+  options: ScheduleViewOptions = {}
+) {
+  return resolveStageSlotAnnouncement(match, options)?.label
+    || getExplicitStageSlotAnnouncementLabel(match)
+    || (supportsStageAnnouncements(options.source) ? getSourcedPlaceholderStageFallbackLabel(match) : "Group Stage");
 }
 
-function isFallbackStageSlotAnnouncement(match: ScheduleViewMatch, options: ScheduleViewOptions) {
-  if (!supportsStageAnnouncements(options.source)) return false;
-  const teamA = getScheduleTeamState(match.teamAName);
-  const teamB = getScheduleTeamState(match.teamBName);
-  return (
-    teamA.placeholder &&
-    teamB.placeholder &&
-    (teamA.unsupportedPlaceholder || teamB.unsupportedPlaceholder)
-  );
-}
-
-function getFallbackStageSlotAnnouncementLabel(match: ScheduleViewMatch) {
-  return normalizeStageSlotLabel(match.stage) || normalizeStageSlotLabel(match.round) || "Playoffs";
+export function isKnownStageAnnouncementLabel(value: string | null | undefined) {
+  const normalized = normalizeStageSlotLabel(value);
+  return Boolean(normalized && normalized === String(value ?? "").replace(/\s+/g, " ").trim());
 }
 
 function getExplicitStageSlotAnnouncementLabel(match: ScheduleViewMatch) {
@@ -288,6 +310,7 @@ function normalizeStageSlotLabel(value: string | null | undefined) {
   if (/^(?:r\d+m\d+|m\d+|slot\s*\d+)$/i.test(text) || /^[#\d\s-]+$/.test(text)) return "";
 
   const known = [
+    /\bGroup\s+[A-Z0-9]+\s+(?:Winners?'?|Winner'?s?|Elimination|Decider|Opening)(?:\s+Match)?\b/i,
     /\bSwiss\s+Round\s+\d+(?:\s*#\d+)?\b/i,
     /\bGroup\s+Stage\b/i,
     /\bRound\s+Robin\b/i,
@@ -341,6 +364,7 @@ function normalizeKnownStageName(value: string) {
   const text = value.replace(/\s+/g, " ").trim();
   if (/round robin/i.test(text)) return "Group Stage";
   if (/regular\s+season/i.test(text)) return "Regular Season";
+  if (/\bgroup\s+[a-z0-9]+\s+(?:winners?'?|winner'?s?|elimination|decider|opening)(?:\s+match)?\b/i.test(text)) return "Group Stage";
   const playInDay = text.match(/play[-\s]?in\s+day\s+\d+/i);
   if (playInDay) return titleCaseStage(playInDay[0]).replace(/^Play In\b/, "Play-In");
   if (/play[-\s]?in/i.test(text)) return "Play-In";
@@ -376,6 +400,17 @@ function normalizeKnownStageName(value: string) {
   if (/playoffs?/i.test(text)) return "Playoffs";
   if (/^final/i.test(text)) return "Finals";
   return text;
+}
+
+function getSourcedPlaceholderStageFallbackLabel(match: ScheduleViewMatch) {
+  const text = [match.round, match.stage, match.rawText]
+    .map((value) => cleanLiquipediaBracketLabel(value).replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .join(" ");
+
+  if (/\b(?:group|swiss|round\s+robin|regular)\b/i.test(text)) return "Group Stage";
+  if (/\b(?:bracket|playoffs?|finals?|winners?|losers?|decider)\b/i.test(text)) return "Playoffs";
+  return "Group Stage";
 }
 
 function normalizeBracketStageName(value: string, bracket: "Upper" | "Lower") {

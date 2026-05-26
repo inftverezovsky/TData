@@ -10,6 +10,14 @@ test("hasExactMatchTime rejects date-only announcements", () => {
   }), false);
 });
 
+test("hasExactMatchTime keeps explicit midnight times", () => {
+  assert.equal(hasExactMatchTime({
+    matchDate: new Date("2026-06-04T00:00:00.000Z"),
+    matchDateTime: "June 4, 2026 - 00:00 UTC",
+    rawText: "TBD vs TBD Quarterfinals",
+  }), true);
+});
+
 test("resolveExactMatchDate restores Liquipedia timer timestamps from raw HTML", () => {
   assert.equal(resolveExactMatchDate({
     matchDate: null,

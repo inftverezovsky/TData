@@ -100,4 +100,6 @@ test("invalid auto mapping names include parser artifacts and pure numbers", () 
   assert.equal(isInvalidAutoMappingName("tl"), true);
   assert.equal(isInvalidAutoMappingName("G2"), false);
   assert.equal(isInvalidAutoMappingName("BIG"), false);
+  assert.equal(isInvalidAutoMappingName("Group Stage"), false);
+  assert.equal(isInvalidAutoMappingName("Playoffs"), false);
 });
