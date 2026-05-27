@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { resolveUploadPolicy, resolveUploadPolicyPreMappingSkip } from "../src/lib/adminUpload/uploadPolicy";
+import {
+  getUploadPolicyRequestedTbdSides,
+  isUploadPolicyStageAnnouncementRequested,
+  resolveUploadPolicy,
+  resolveUploadPolicyPreMappingSkip,
+} from "../src/lib/adminUpload/uploadPolicy";
 
 test("resolveUploadPolicy keeps default esport uploads scoped to the requested discipline", () => {
   const policy = resolveUploadPolicy({
@@ -53,4 +58,57 @@ test("resolveUploadPolicyPreMappingSkip rejects non-uploadable rows before team 
   );
 
   assert.equal(resolveUploadPolicyPreMappingSkip({ matchDate: "2026-06-01T10:00:00Z" }), null);
+});
+
+test("UploadPolicy selection helpers preserve TBD and stage announcement request behavior", () => {
+  assert.deepEqual(
+    getUploadPolicyRequestedTbdSides({
+      selectedFullMatch: false,
+      selectedSides: new Set(["teamB"]),
+      uploadableTbdSides: ["teamA", "teamB"],
+    }),
+    ["teamB"],
+  );
+
+  assert.deepEqual(
+    getUploadPolicyRequestedTbdSides({
+      selectedFullMatch: true,
+      uploadableTbdSides: ["teamA", "teamB"],
+    }),
+    ["teamA", "teamB"],
+  );
+
+  assert.deepEqual(
+    getUploadPolicyRequestedTbdSides({
+      selectedFullMatch: false,
+      uploadableTbdSides: ["teamA", "teamB"],
+    }),
+    [],
+  );
+
+  assert.equal(
+    isUploadPolicyStageAnnouncementRequested({
+      hasExplicitSelection: false,
+      selectedFullMatch: false,
+    }),
+    true,
+  );
+
+  assert.equal(
+    isUploadPolicyStageAnnouncementRequested({
+      hasExplicitSelection: true,
+      selectedFullMatch: false,
+      selectedSides: new Set(["teamA"]),
+    }),
+    true,
+  );
+
+  assert.equal(
+    isUploadPolicyStageAnnouncementRequested({
+      hasExplicitSelection: true,
+      selectedFullMatch: false,
+      selectedSides: new Set(),
+    }),
+    false,
+  );
 });

@@ -93,6 +93,36 @@ export function getUploadPolicyTbdAnnouncementSides(policy: Pick<UploadPolicy, "
   return getUploadableTbdAnnouncementSides(match, policy.matchContext);
 }
 
+export function isUploadPolicyStageAnnouncementSlot(policy: Pick<UploadPolicy, "matchContext">, match: ScheduleViewMatch): boolean {
+  return getUploadPolicyTbdAnnouncementSides(policy, match).includes("stage");
+}
+
+export function isUploadPolicyStageAnnouncementRequested(input: {
+  hasExplicitSelection: boolean;
+  selectedFullMatch: boolean;
+  selectedSides?: Set<TbdAnnouncementSide>;
+}): boolean {
+  const { hasExplicitSelection, selectedFullMatch, selectedSides } = input;
+  return (
+    !hasExplicitSelection ||
+    selectedFullMatch ||
+    Boolean(selectedSides && (selectedSides.has("stage") || selectedSides.has("teamA") || selectedSides.has("teamB")))
+  );
+}
+
+export function getUploadPolicyRequestedTbdSides(input: {
+  selectedSides?: Set<TbdAnnouncementSide>;
+  selectedFullMatch: boolean;
+  uploadableTbdSides: TbdAnnouncementSide[];
+}): TbdAnnouncementSide[] {
+  const { selectedSides, selectedFullMatch, uploadableTbdSides } = input;
+  return selectedSides
+    ? uploadableTbdSides.filter((side) => selectedSides.has(side))
+    : selectedFullMatch
+      ? uploadableTbdSides
+      : [];
+}
+
 export function resolveUploadPolicyStageAnnouncementLabel(
   policy: Pick<UploadPolicy, "matchContext">,
   match: ScheduleViewMatch,

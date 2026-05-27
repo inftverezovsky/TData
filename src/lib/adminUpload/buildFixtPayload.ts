@@ -5,14 +5,16 @@ import { applyDisciplineScheduleLead } from '@/lib/matches/scheduleOffset';
 import { hasUnknownExplicitTimezone } from '@/lib/normalizers/wikiText';
 import {
   parseScheduleSelectionId,
-  resolveStageSlotAnnouncement,
   type TbdAnnouncementSide,
 } from '@/lib/matches/scheduleView';
 import { resolveExactMatchDate } from '@/lib/matches/time';
 import { isPlaceholderTeam, isTbdPlaceholderTeam } from '@/lib/teams/teams';
 import { buildTeamMappingLookup, findTeamMapping } from '@/lib/teams/mappingLookup';
 import {
+  getUploadPolicyRequestedTbdSides,
   getUploadPolicyTbdAnnouncementSides,
+  isUploadPolicyStageAnnouncementRequested,
+  isUploadPolicyStageAnnouncementSlot,
   resolveUploadPolicy,
   resolveUploadPolicyPreMappingSkip,
   resolveUploadPolicyStageAnnouncementLabel,
@@ -106,7 +108,7 @@ export async function buildFixtPayload(
     sourceUrl: tournament.sourceUrl,
     normalization: tournament.normalization,
   });
-  const { source, teamMappingDisciplineSlug, matchContext, scheduleLeadDisciplineSlug } = uploadPolicy;
+  const { source, teamMappingDisciplineSlug, scheduleLeadDisciplineSlug } = uploadPolicy;
 
   if (!shapkaId) warnings.push('Shapka ID is not set.');
   if (!sportId) warnings.push('Sport ID is not set.');
@@ -190,14 +192,14 @@ export async function buildFixtPayload(
 
     const matchDate = applyDisciplineScheduleLead(exactMatchDate, scheduleLeadDisciplineSlug);
     const uploadableTbdSides = getUploadPolicyTbdAnnouncementSides(uploadPolicy, match);
-    const stageAnnouncement = resolveStageSlotAnnouncement(match, matchContext);
-    const isStageAnnouncementSlot = uploadableTbdSides.includes('stage');
+    const isStageAnnouncementSlot = isUploadPolicyStageAnnouncementSlot(uploadPolicy, match);
     if (isStageAnnouncementSlot) {
-      const stageName = stageAnnouncement?.label || resolveUploadPolicyStageAnnouncementLabel(uploadPolicy, match);
-      const requestedStageAnnouncement =
-        !hasExplicitSelection ||
-        selectedFullMatch ||
-        Boolean(selectedSides && (selectedSides.has('stage') || selectedSides.has('teamA') || selectedSides.has('teamB')));
+      const stageName = resolveUploadPolicyStageAnnouncementLabel(uploadPolicy, match);
+      const requestedStageAnnouncement = isUploadPolicyStageAnnouncementRequested({
+        hasExplicitSelection,
+        selectedFullMatch,
+        selectedSides,
+      });
 
       if (requestedStageAnnouncement) {
         const mapping = findTeamMapping(mappingMap, stageName);
@@ -235,11 +237,11 @@ export async function buildFixtPayload(
       continue;
     }
 
-    const requestedTbdSides = selectedSides
-      ? uploadableTbdSides.filter((side) => selectedSides.has(side))
-      : selectedFullMatch
-        ? uploadableTbdSides
-        : [];
+    const requestedTbdSides = getUploadPolicyRequestedTbdSides({
+      selectedSides,
+      selectedFullMatch,
+      uploadableTbdSides,
+    });
 
     if (requestedTbdSides.length > 0) {
       for (const side of requestedTbdSides) {
