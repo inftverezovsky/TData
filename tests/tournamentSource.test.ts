@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { getSourceProvider, sourceProviders } from "../src/lib/sources/providerRegistry";
 import { detectTournamentSource, getTournamentSourceLabel, supportsStageAnnouncements } from "../src/lib/utils/tournamentSource";
 
 test("detectTournamentSource detects HLTV URLs", () => {
@@ -57,4 +58,17 @@ test("supportsStageAnnouncements includes placeholder-slot sources", () => {
     assert.equal(supportsStageAnnouncements(source), true, source);
   }
   assert.equal(supportsStageAnnouncements(null), false);
+});
+
+test("source provider registry contains all known tournament sources", () => {
+  assert.deepEqual(
+    sourceProviders.map((provider) => provider.id),
+    ["liquipedia", "hltv", "vlr", "dltv", "fandom", "volleyballworld", "beachvolleyru", "germanbeachtour"],
+  );
+
+  for (const provider of sourceProviders) {
+    assert.equal(getSourceProvider(provider.id), provider);
+    assert.equal(getTournamentSourceLabel(provider.id), provider.label);
+    assert.equal(supportsStageAnnouncements(provider.id), provider.supportsStageAnnouncements);
+  }
 });

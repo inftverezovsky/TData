@@ -13,8 +13,7 @@ import {
 import { resolveExactMatchDate } from '@/lib/matches/time';
 import { isPlaceholderTeam, isTbdPlaceholderTeam } from '@/lib/teams/teams';
 import { buildTeamMappingLookup, findTeamMapping } from '@/lib/teams/mappingLookup';
-import { detectTournamentSource } from '@/lib/utils/tournamentSource';
-import { resolveTournamentTeamMappingDisciplineSlug } from '@/lib/tbvolley/config';
+import { resolveUploadPolicy, getUploadPolicyTbdAnnouncementSides, resolveUploadPolicyStageAnnouncementLabel, type UploadPolicy } from '@/lib/adminUpload/uploadPolicy';
 import { resolveAdminSettings } from './resolveAdminSettings';
 
 export interface FixtMatch {
@@ -98,8 +97,12 @@ export async function buildFixtPayload(
   const shapkaId = mapping?.adminShapkaId || settings.defaultShapkaId;
   const sportId = settings.adminSportId;
   const max = settings.adminMax;
-  const source = detectTournamentSource(tournament.sourceUrl);
-  const teamMappingDisciplineSlug = resolveTournamentTeamMappingDisciplineSlug(disciplineSlug, tournament.normalization);
+  const uploadPolicy = resolveUploadPolicy({
+    disciplineSlug,
+    sourceUrl: tournament.sourceUrl,
+    normalization: tournament.normalization,
+  });
+  const { source, teamMappingDisciplineSlug, matchContext, scheduleLeadDisciplineSlug } = uploadPolicy;
 
   if (!shapkaId) warnings.push('Shapka ID is not set.');
   if (!sportId) warnings.push('Sport ID is not set.');
@@ -127,8 +130,7 @@ export async function buildFixtPayload(
   const duplicateAnnouncementSecondOffsets = buildDuplicateAnnouncementSecondOffsets(
     collectDuplicateAnnouncementOffsetCandidates({
       matches: dedupedMatches,
-      disciplineSlug,
-      source,
+      policy: uploadPolicy,
       mappingMap,
     })
   );
@@ -183,12 +185,12 @@ export async function buildFixtPayload(
       continue;
     }
 
-    const matchDate = applyDisciplineScheduleLead(exactMatchDate, disciplineSlug);
-    const uploadableTbdSides = getUploadableTbdAnnouncementSides(match, { disciplineSlug, source });
-    const stageAnnouncement = resolveStageSlotAnnouncement(match, { disciplineSlug, source });
+    const matchDate = applyDisciplineScheduleLead(exactMatchDate, scheduleLeadDisciplineSlug);
+    const uploadableTbdSides = getUploadPolicyTbdAnnouncementSides(uploadPolicy, match);
+    const stageAnnouncement = resolveStageSlotAnnouncement(match, matchContext);
     const isStageAnnouncementSlot = uploadableTbdSides.includes('stage');
     if (isStageAnnouncementSlot) {
-      const stageName = stageAnnouncement?.label || getStageSlotAnnouncementLabel(match, { disciplineSlug, source });
+      const stageName = stageAnnouncement?.label || resolveUploadPolicyStageAnnouncementLabel(uploadPolicy, match);
       const requestedStageAnnouncement =
         !hasExplicitSelection ||
         selectedFullMatch ||
@@ -379,8 +381,7 @@ function collectDuplicateAnnouncementOffsetCandidates(params: {
     teamBName?: string | null;
     hasPlaceholderTeams?: boolean | null;
   }>;
-  disciplineSlug: string;
-  source: ReturnType<typeof detectTournamentSource>;
+  policy: Pick<UploadPolicy, 'matchContext' | 'scheduleLeadDisciplineSlug'>;
   mappingMap: ReturnType<typeof buildTeamMappingLookup>;
 }) {
   const candidates: DuplicateAnnouncementOffsetCandidate[] = [];
@@ -392,21 +393,12 @@ function collectDuplicateAnnouncementOffsetCandidates(params: {
     if (match.scoreB !== null && match.scoreB !== undefined) continue;
     if (match.status?.toLowerCase().includes('finished') || match.status?.toLowerCase().includes('completed')) continue;
 
-    const uploadDate = applyDisciplineScheduleLead(exactMatchDate, params.disciplineSlug);
-    const sides = getUploadableTbdAnnouncementSides(match, {
-      disciplineSlug: params.disciplineSlug,
-      source: params.source,
-    });
+    const uploadDate = applyDisciplineScheduleLead(exactMatchDate, params.policy.scheduleLeadDisciplineSlug);
+    const sides = getUploadPolicyTbdAnnouncementSides(params.policy, match);
 
     for (const side of sides) {
       const announcementName = side === 'stage'
-        ? resolveStageSlotAnnouncement(match, {
-            disciplineSlug: params.disciplineSlug,
-            source: params.source,
-          })?.label || getStageSlotAnnouncementLabel(match, {
-            disciplineSlug: params.disciplineSlug,
-            source: params.source,
-          })
+        ? resolveUploadPolicyStageAnnouncementLabel(params.policy, match)
         : side === 'teamA'
           ? match.teamAName
           : match.teamBName;

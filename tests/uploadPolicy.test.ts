@@ -1,0 +1,33 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { resolveUploadPolicy } from "../src/lib/adminUpload/uploadPolicy";
+
+test("resolveUploadPolicy keeps default esport uploads scoped to the requested discipline", () => {
+  const policy = resolveUploadPolicy({
+    disciplineSlug: "counterstrike",
+    sourceUrl: "https://www.hltv.org/events/8049/pgl-astana-2026",
+    normalization: null,
+  });
+
+  assert.equal(policy.disciplineSlug, "counterstrike");
+  assert.equal(policy.source, "hltv");
+  assert.equal(policy.teamMappingDisciplineSlug, "counterstrike");
+  assert.equal(policy.scheduleLeadDisciplineSlug, "counterstrike");
+  assert.deepEqual(policy.matchContext, { disciplineSlug: "counterstrike", source: "hltv" });
+});
+
+test("resolveUploadPolicy keeps beach volleyball gender-specific team mapping scope", () => {
+  const policy = resolveUploadPolicy({
+    disciplineSlug: "beachvolleyball",
+    sourceUrl: "https://beach.volley.ru/calendar/01K9CBPGKV0CWX0442H8T704M7/allgames?sex=2",
+    normalization: {
+      beachVolleyRu: { gender: "women" },
+    },
+  });
+
+  assert.equal(policy.disciplineSlug, "beachvolleyball");
+  assert.equal(policy.source, "beachvolleyru");
+  assert.equal(policy.teamMappingDisciplineSlug, "beachvolleyball-women");
+  assert.equal(policy.scheduleLeadDisciplineSlug, "beachvolleyball");
+  assert.deepEqual(policy.matchContext, { disciplineSlug: "beachvolleyball", source: "beachvolleyru" });
+});

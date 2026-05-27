@@ -1,0 +1,22 @@
+# Normalize text files to LF so the repo behaves consistently in WSL/Linux/Docker.
+* text=auto eol=lf
+
+# Keep Windows helper scripts on CRLF for PowerShell/cmd compatibility.
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary/media/assets should never be line-ending-normalized.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.p12 binary
+*.crt binary
+*.key binary
+*.ttf binary
+*.woff binary
+*.woff2 binary
