@@ -1,10 +1,12 @@
 import {
   getStageSlotAnnouncementLabel,
   getUploadableTbdAnnouncementSides,
+  isGeneratedScheduleMatrixRow,
   type ScheduleViewMatch,
   type TbdAnnouncementSide,
   resolveStageSlotAnnouncement,
 } from "@/lib/matches/scheduleView";
+import { hasExactMatchTime } from "@/lib/matches/time";
 import { resolveTournamentTeamMappingDisciplineSlug } from "@/lib/tbvolley/config";
 import { detectTournamentSource, type TournamentSource } from "@/lib/utils/tournamentSource";
 
@@ -39,6 +41,52 @@ export function resolveUploadPolicy(input: {
       source,
     },
   };
+}
+
+export type UploadPolicyMatch = ScheduleViewMatch & {
+  status?: string | null;
+};
+
+export type UploadPolicySkipReason =
+  | "generated-matrix-row"
+  | "missing-exact-time"
+  | "finished-or-scored";
+
+export type UploadPolicySkipDecision = {
+  reason: UploadPolicySkipReason;
+  message: string;
+};
+
+export function resolveUploadPolicyPreMappingSkip(match: UploadPolicyMatch): UploadPolicySkipDecision | null {
+  if (isGeneratedScheduleMatrixRow(match)) {
+    return {
+      reason: "generated-matrix-row",
+      message: "Generated crosstable rows are not upload-ready",
+    };
+  }
+
+  if (!hasExactMatchTime(match)) {
+    return {
+      reason: "missing-exact-time",
+      message: "Match has no exact start time",
+    };
+  }
+
+  if (
+    match.scoreA !== null &&
+    match.scoreA !== undefined ||
+    match.scoreB !== null &&
+    match.scoreB !== undefined ||
+    match.status?.toLowerCase().includes("finished") ||
+    match.status?.toLowerCase().includes("completed")
+  ) {
+    return {
+      reason: "finished-or-scored",
+      message: "Match already finished (has score or finished status)",
+    };
+  }
+
+  return null;
 }
 
 export function getUploadPolicyTbdAnnouncementSides(policy: Pick<UploadPolicy, "matchContext">, match: ScheduleViewMatch): TbdAnnouncementSide[] {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { resolveUploadPolicy } from "../src/lib/adminUpload/uploadPolicy";
+import { resolveUploadPolicy, resolveUploadPolicyPreMappingSkip } from "../src/lib/adminUpload/uploadPolicy";
 
 test("resolveUploadPolicy keeps default esport uploads scoped to the requested discipline", () => {
   const policy = resolveUploadPolicy({
@@ -30,4 +30,27 @@ test("resolveUploadPolicy keeps beach volleyball gender-specific team mapping sc
   assert.equal(policy.teamMappingDisciplineSlug, "beachvolleyball-women");
   assert.equal(policy.scheduleLeadDisciplineSlug, "beachvolleyball");
   assert.deepEqual(policy.matchContext, { disciplineSlug: "beachvolleyball", source: "beachvolleyru" });
+});
+
+test("resolveUploadPolicyPreMappingSkip rejects non-uploadable rows before team mapping", () => {
+  assert.equal(resolveUploadPolicyPreMappingSkip({ matchDateTime: "June 1, 2026" })?.reason, "missing-exact-time");
+
+  assert.equal(
+    resolveUploadPolicyPreMappingSkip({
+      matchDate: "2026-06-01T10:00:00Z",
+      scoreA: 2,
+      scoreB: 1,
+    })?.reason,
+    "finished-or-scored",
+  );
+
+  assert.equal(
+    resolveUploadPolicyPreMappingSkip({
+      matchDate: "2026-06-01T10:00:00Z",
+      status: "completed",
+    })?.reason,
+    "finished-or-scored",
+  );
+
+  assert.equal(resolveUploadPolicyPreMappingSkip({ matchDate: "2026-06-01T10:00:00Z" }), null);
 });

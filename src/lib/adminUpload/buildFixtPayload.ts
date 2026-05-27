@@ -4,8 +4,6 @@ import { dedupeTournamentMatches } from '@/lib/matches/dedupe';
 import { applyDisciplineScheduleLead } from '@/lib/matches/scheduleOffset';
 import { hasUnknownExplicitTimezone } from '@/lib/normalizers/wikiText';
 import {
-  getStageSlotAnnouncementLabel,
-  getUploadableTbdAnnouncementSides,
   parseScheduleSelectionId,
   resolveStageSlotAnnouncement,
   type TbdAnnouncementSide,
@@ -13,7 +11,13 @@ import {
 import { resolveExactMatchDate } from '@/lib/matches/time';
 import { isPlaceholderTeam, isTbdPlaceholderTeam } from '@/lib/teams/teams';
 import { buildTeamMappingLookup, findTeamMapping } from '@/lib/teams/mappingLookup';
-import { resolveUploadPolicy, getUploadPolicyTbdAnnouncementSides, resolveUploadPolicyStageAnnouncementLabel, type UploadPolicy } from '@/lib/adminUpload/uploadPolicy';
+import {
+  getUploadPolicyTbdAnnouncementSides,
+  resolveUploadPolicy,
+  resolveUploadPolicyPreMappingSkip,
+  resolveUploadPolicyStageAnnouncementLabel,
+  type UploadPolicy,
+} from '@/lib/adminUpload/uploadPolicy';
 import { resolveAdminSettings } from './resolveAdminSettings';
 
 export interface FixtMatch {
@@ -148,8 +152,7 @@ export async function buildFixtPayload(
 
     const selectedFullMatch = !hasExplicitSelection || selectedFullMatchIds.has(match.matchId);
     const exactMatchDate = resolveExactMatchDate(match);
-    const hasScores = match.scoreA !== null || match.scoreB !== null;
-    const isFinished = match.status?.toLowerCase().includes('finished') || match.status?.toLowerCase().includes('completed');
+    const preMappingSkip = resolveUploadPolicyPreMappingSkip(match);
 
     if (!teamAName || !teamBName) {
       skippedMatches.push({
@@ -170,16 +173,16 @@ export async function buildFixtPayload(
         matchId: match.matchId,
         reason: missingTimeReason === 'неизвестный часовой пояс'
           ? 'Unknown explicit timezone'
-          : 'Missing exact match time',
+          : preMappingSkip?.message || 'Missing exact match time',
         teams: `${teamAName} vs ${teamBName}`,
       });
       continue;
     }
 
-    if (hasScores || isFinished) {
+    if (preMappingSkip) {
       skippedMatches.push({
         matchId: match.matchId,
-        reason: 'Match already finished (has score or finished status)',
+        reason: preMappingSkip.message,
         teams: `${teamAName} (${match.scoreA ?? 0}:${match.scoreB ?? 0}) ${teamBName}`,
       });
       continue;
@@ -389,9 +392,7 @@ function collectDuplicateAnnouncementOffsetCandidates(params: {
   for (const match of params.matches) {
     const exactMatchDate = resolveExactMatchDate(match);
     if (!exactMatchDate) continue;
-    if (match.scoreA !== null && match.scoreA !== undefined) continue;
-    if (match.scoreB !== null && match.scoreB !== undefined) continue;
-    if (match.status?.toLowerCase().includes('finished') || match.status?.toLowerCase().includes('completed')) continue;
+    if (resolveUploadPolicyPreMappingSkip(match)) continue;
 
     const uploadDate = applyDisciplineScheduleLead(exactMatchDate, params.policy.scheduleLeadDisciplineSlug);
     const sides = getUploadPolicyTbdAnnouncementSides(params.policy, match);
