@@ -8,7 +8,6 @@ import {
   type TbdAnnouncementSide,
 } from '@/lib/matches/scheduleView';
 import { resolveExactMatchDate } from '@/lib/matches/time';
-import { isPlaceholderTeam, isTbdPlaceholderTeam } from '@/lib/teams/teams';
 import { buildTeamMappingLookup, findTeamMapping } from '@/lib/teams/mappingLookup';
 import {
   getUploadPolicyRequestedTbdSides,
@@ -16,6 +15,7 @@ import {
   isUploadPolicyStageAnnouncementRequested,
   isUploadPolicyStageAnnouncementSlot,
   resolveUploadPolicy,
+  resolveUploadPolicyPlaceholderDecision,
   resolveUploadPolicyPreMappingSkip,
   resolveUploadPolicyStageAnnouncementLabel,
   type UploadPolicy,
@@ -291,15 +291,9 @@ export async function buildFixtPayload(
     let platformIdA = mappingA?.platformId || null;
     let platformIdB = mappingB?.platformId || null;
 
-    const teamAIsPlaceholder = isPlaceholderTeam(teamAName);
-    const teamBIsPlaceholder = isPlaceholderTeam(teamBName);
-    const teamAIsUploadableTbd = isTbdPlaceholderTeam(teamAName);
-    const teamBIsUploadableTbd = isTbdPlaceholderTeam(teamBName);
-    const hasUnsupportedPlaceholder =
-      (teamAIsPlaceholder && !teamAIsUploadableTbd) ||
-      (teamBIsPlaceholder && !teamBIsUploadableTbd);
+    const placeholderDecision = resolveUploadPolicyPlaceholderDecision(teamAName, teamBName);
 
-    if (hasUnsupportedPlaceholder) {
+    if (placeholderDecision.hasUnsupportedPlaceholder) {
       skippedMatches.push({
         matchId: match.matchId,
         reason: 'Placeholder/TBD teams are not upload-ready',

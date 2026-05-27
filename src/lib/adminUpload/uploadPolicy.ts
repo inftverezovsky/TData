@@ -8,6 +8,7 @@ import {
 } from "@/lib/matches/scheduleView";
 import { hasExactMatchTime } from "@/lib/matches/time";
 import { resolveTournamentTeamMappingDisciplineSlug } from "@/lib/tbvolley/config";
+import { isPlaceholderTeam, isTbdPlaceholderTeam } from "@/lib/teams/teams";
 import { detectTournamentSource, type TournamentSource } from "@/lib/utils/tournamentSource";
 
 export type UploadPolicyMatchContext = {
@@ -121,6 +122,31 @@ export function getUploadPolicyRequestedTbdSides(input: {
     : selectedFullMatch
       ? uploadableTbdSides
       : [];
+}
+
+export type UploadPolicyPlaceholderDecision = {
+  hasUnsupportedPlaceholder: boolean;
+  teamAIsPlaceholder: boolean;
+  teamBIsPlaceholder: boolean;
+  teamAIsUploadableTbd: boolean;
+  teamBIsUploadableTbd: boolean;
+};
+
+export function resolveUploadPolicyPlaceholderDecision(teamAName: string, teamBName: string): UploadPolicyPlaceholderDecision {
+  const teamAIsPlaceholder = isPlaceholderTeam(teamAName);
+  const teamBIsPlaceholder = isPlaceholderTeam(teamBName);
+  const teamAIsUploadableTbd = isTbdPlaceholderTeam(teamAName);
+  const teamBIsUploadableTbd = isTbdPlaceholderTeam(teamBName);
+
+  return {
+    hasUnsupportedPlaceholder:
+      (teamAIsPlaceholder && !teamAIsUploadableTbd) ||
+      (teamBIsPlaceholder && !teamBIsUploadableTbd),
+    teamAIsPlaceholder,
+    teamBIsPlaceholder,
+    teamAIsUploadableTbd,
+    teamBIsUploadableTbd,
+  };
 }
 
 export function resolveUploadPolicyStageAnnouncementLabel(

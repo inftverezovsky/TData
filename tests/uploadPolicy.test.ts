@@ -4,6 +4,7 @@ import {
   getUploadPolicyRequestedTbdSides,
   isUploadPolicyStageAnnouncementRequested,
   resolveUploadPolicy,
+  resolveUploadPolicyPlaceholderDecision,
   resolveUploadPolicyPreMappingSkip,
 } from "../src/lib/adminUpload/uploadPolicy";
 
@@ -111,4 +112,30 @@ test("UploadPolicy selection helpers preserve TBD and stage announcement request
     }),
     false,
   );
+});
+
+test("resolveUploadPolicyPlaceholderDecision identifies unsupported placeholders without blocking uploadable TBD", () => {
+  assert.deepEqual(resolveUploadPolicyPlaceholderDecision("TBD", "Team Liquid"), {
+    hasUnsupportedPlaceholder: false,
+    teamAIsPlaceholder: true,
+    teamBIsPlaceholder: false,
+    teamAIsUploadableTbd: true,
+    teamBIsUploadableTbd: false,
+  });
+
+  assert.deepEqual(resolveUploadPolicyPlaceholderDecision("Winner of Match 1", "Team Liquid"), {
+    hasUnsupportedPlaceholder: true,
+    teamAIsPlaceholder: true,
+    teamBIsPlaceholder: false,
+    teamAIsUploadableTbd: false,
+    teamBIsUploadableTbd: false,
+  });
+
+  assert.deepEqual(resolveUploadPolicyPlaceholderDecision("Team Liquid", "Natus Vincere"), {
+    hasUnsupportedPlaceholder: false,
+    teamAIsPlaceholder: false,
+    teamBIsPlaceholder: false,
+    teamAIsUploadableTbd: false,
+    teamBIsUploadableTbd: false,
+  });
 });
