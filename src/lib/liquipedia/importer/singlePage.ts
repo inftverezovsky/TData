@@ -7,7 +7,7 @@ import {
   fetchPageRevision,
   getLiquipediaImportRequestOptions,
 } from "@/lib/liquipedia/client";
-import { getSkipParsedHtml } from "@/lib/config/env";
+import { shouldFetchParsedHtmlForDiscipline } from "@/lib/config/env";
 import { isPlaceholderTeam } from "@/lib/teams/teams";
 import {
   hasPlaceholderTeams,
@@ -73,7 +73,7 @@ export async function processSinglePage(params: {
     let warning: string | null = null;
     let externalRequests = 0;
     const requestOptions = getLiquipediaImportRequestOptions();
-    const shouldFetchParsedHtml = disciplineSlug === "leagueoflegends" || !getSkipParsedHtml();
+    const shouldFetchParsedHtml = shouldFetchParsedHtmlForDiscipline(disciplineSlug);
 
     const fetchParsedHtml = async (targetTitle: string) => {
       try {

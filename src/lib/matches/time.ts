@@ -27,15 +27,15 @@ export function resolveExactMatchDate(match: MatchTimeInput): Date | null {
     return null;
   }
 
+  const date = parseDateLike(match.matchDate);
+  if (date && isTrustedExactDate(match, date)) return date;
+
   const explicitMatchDateTime = parseExplicitDateText(match.matchDateTime);
   if (explicitMatchDateTime) return explicitMatchDateTime;
 
   if (hasUnknownExplicitTimezone(match.rawText)) {
     return null;
   }
-
-  const date = parseDateLike(match.matchDate);
-  if (date && isTrustedExactDate(match, date)) return date;
 
   return parseExplicitDateText(match.rawText);
 }

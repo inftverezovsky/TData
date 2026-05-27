@@ -23,6 +23,14 @@ export const MANUAL_IMPORT_DISCIPLINES = {
     slug: "valorant",
     label: "Valorant",
   },
+  "beachvolleyball-men": {
+    slug: "beachvolleyball-men",
+    label: "Пляжный волейбол (м)",
+  },
+  "beachvolleyball-women": {
+    slug: "beachvolleyball-women",
+    label: "Пляжный волейбол (ж)",
+  },
 } as const;
 
 export type ManualImportDisciplineSlug = keyof typeof MANUAL_IMPORT_DISCIPLINES;

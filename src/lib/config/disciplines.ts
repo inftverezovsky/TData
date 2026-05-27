@@ -45,6 +45,10 @@ export async function getOrCreateDiscipline(slug: string) {
       name = "Valorant";
       baseApiUrl = getLiquipediaValorantApiUrl();
       break;
+    case "beachvolleyball":
+      name = "Beach Volleyball";
+      baseApiUrl = "https://en.volleyballworld.com/api/v1/globalschedule";
+      break;
     default:
       name = slug.charAt(0).toUpperCase() + slug.slice(1);
       baseApiUrl = `https://liquipedia.net/${normalizedSlug}/api.php`;

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  normalizeAdminTeamsImportScopeSlug,
   resolveAdminTeamsImportDisciplineSlug,
   toGoogleSheetsExportUrl,
 } from "../src/app/api/admin-teams/import/route";
@@ -28,4 +29,32 @@ test("resolveAdminTeamsImportDisciplineSlug prefers numeric admin discipline ID"
     }),
     "73"
   );
+});
+
+test("resolveAdminTeamsImportDisciplineSlug accepts custom discipline scope", () => {
+  assert.equal(
+    resolveAdminTeamsImportDisciplineSlug({
+      disciplineSlug: "Настольный теннис",
+    }),
+    "настольный-теннис"
+  );
+});
+
+test("resolveAdminTeamsImportDisciplineSlug supports beach volleyball scopes", () => {
+  assert.equal(
+    resolveAdminTeamsImportDisciplineSlug({
+      disciplineSlug: "beachvolleyball-men",
+    }),
+    "beachvolleyball-men"
+  );
+  assert.equal(
+    resolveAdminTeamsImportDisciplineSlug({
+      disciplineSlug: "beachvolleyball-women",
+    }),
+    "beachvolleyball-women"
+  );
+});
+
+test("normalizeAdminTeamsImportScopeSlug rejects unsafe scope keys", () => {
+  assert.equal(normalizeAdminTeamsImportScopeSlug("../tabletennis"), "");
 });

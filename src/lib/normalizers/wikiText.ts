@@ -399,6 +399,12 @@ export function parseInteger(value?: string | null) {
   return match ? Number(match[0]) : null;
 }
 
+export function parseTeamOpponentScore(value?: string | null) {
+  if (!value) return null;
+  const match = String(value).match(/\|\s*(?:score|score\d+)\s*=\s*(-?\d+)/i);
+  return match ? Number(match[1]) : null;
+}
+
 export function extractBalancedTemplate(wikitext: string, startIndex: number) {
   let depth = 0;
 

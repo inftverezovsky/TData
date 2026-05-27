@@ -326,6 +326,66 @@ test("LoL normalizer tracks no-time rows in diagnostics and infers BO from map s
   assert.equal(normalized.leagueOfLegendsDiagnostics?.skipReasons.no_exact_time, 1);
 });
 
+test("LoL normalizer reads scores embedded in TeamOpponent wikitext", () => {
+  const normalized = normalizeLeagueOfLegendsTournament({
+    title: "LoL Result Cup",
+    pageUrl: "https://liquipedia.net/leagueoflegends/LoL_Result_Cup",
+    wikitext: `
+      {{Infobox league|name=LoL Result Cup|sdate=2026-05-13|edate=2026-05-24}}
+      {{Match
+        |opponent1={{TeamOpponent|Alpha|score=2}}
+        |opponent2={{TeamOpponent|Bravo|score=1}}
+        |date=May 15, 2026 - 19:00 {{Abbr/CEST}}
+        |map1={{Map|map=Summoner's Rift|finished=1}}
+      }}
+    `,
+  });
+
+  assert.equal(normalized.matches.length, 1);
+  assert.equal(normalized.matches[0].teamAName, "Alpha");
+  assert.equal(normalized.matches[0].teamBName, "Bravo");
+  assert.equal(normalized.matches[0].scoreA, 2);
+  assert.equal(normalized.matches[0].scoreB, 1);
+  assert.equal(normalized.leagueOfLegendsDiagnostics?.coverage.finishedResults, 1);
+  assert.equal(normalized.leagueOfLegendsDiagnostics?.skipReasons.finished_result, 1);
+});
+
+test("Dota, Counter-Strike, and Valorant normalizers read TeamOpponent scores", () => {
+  const matchWikitext = `
+    {{Match
+      |opponent1={{TeamOpponent|Alpha|score=2}}
+      |opponent2={{TeamOpponent|Bravo|score=1}}
+      |date=May 15, 2026 - 19:00 {{Abbr/CEST}}
+      |map1={{Map|map=Parser Arena|finished=1}}
+    }}
+  `;
+  const cases = [
+    normalizeDota2Tournament({
+      title: "Dota Result Cup",
+      pageUrl: "https://liquipedia.net/dota2/Dota_Result_Cup",
+      wikitext: `{{Infobox league|name=Dota Result Cup|sdate=2026-05-13|edate=2026-05-24}}${matchWikitext}`,
+    }),
+    normalizeCounterStrikeTournament({
+      title: "CS Result Cup",
+      pageUrl: "https://liquipedia.net/counterstrike/CS_Result_Cup",
+      wikitext: `{{Infobox league|name=CS Result Cup|sdate=2026-05-13|edate=2026-05-24}}${matchWikitext}`,
+    }),
+    normalizeValorantTournament({
+      title: "Valorant Result Cup",
+      pageUrl: "https://liquipedia.net/valorant/Valorant_Result_Cup",
+      wikitext: `{{Infobox league|name=Valorant Result Cup|sdate=2026-05-13|edate=2026-05-24}}${matchWikitext}`,
+    }),
+  ];
+
+  for (const normalized of cases) {
+    assert.equal(normalized.matches.length, 1);
+    assert.equal(normalized.matches[0].teamAName, "Alpha");
+    assert.equal(normalized.matches[0].teamBName, "Bravo");
+    assert.equal(normalized.matches[0].scoreA, 2);
+    assert.equal(normalized.matches[0].scoreB, 1);
+  }
+});
+
 test("Valorant wikitext extraction does not duplicate MatchSchedule templates", () => {
   const normalized = normalizeValorantTournament({
     title: "Valorant Parser Cup",
@@ -382,6 +442,36 @@ test("Valorant normalizer reports diagnostics and keeps Team vs TBD with exact t
   assert.equal(normalized.matches[0].format, "BO3");
   assert.equal(normalized.valorantDiagnostics?.coverage.teamVsTbd, 1);
   assert.equal(normalized.valorantDiagnostics?.coverage.withExactTime, 1);
+});
+
+test("Valorant normalizer ignores duplicate vertical date cards when detailed matchlist exists", () => {
+  const normalized = normalizeValorantTournament({
+    title: "Valorant Parser Cup",
+    pageUrl: "https://liquipedia.net/valorant/Valorant_Parser_Cup",
+    wikitext: "{{Infobox league|name=Valorant Parser Cup|sdate=2026-06-01|edate=2026-06-02}}",
+    parsedHtml: `
+      <div class="brkts-matchlist">
+        <div class="brkts-matchlist-title"><b>Round 1 Matches</b></div>
+        <div class="brkts-matchlist-match">
+          <div class="brkts-matchlist-opponent"><span class="name"><a title="XLG Esports">XLG</a></span></div>
+          <div class="brkts-matchlist-score"></div>
+          <div class="brkts-matchlist-score"></div>
+          <div class="brkts-matchlist-opponent"><span class="name"><a title="NRG">NRG</a></span></div>
+          <span class="timer-object" data-timestamp="1780754400">June 6, 2026 - 15:00 BST</span>
+        </div>
+      </div>
+      <div class="match-info match-info--vertical">
+        <div class="match-info-top-row"><span class="match-info-countdown"><span class="timer-object" data-timestamp="1780754400">Jun 6 - 15:00 BST</span></span></div>
+        <span class="match-info-stage">June 6</span>
+        <div class="match-info-opponent-row"><span class="name"><a href="/valorant/XLG_Esports" title="XLG Esports">XLG</a></span></div>
+        <div class="match-info-opponent-row"><span class="name"><a href="/valorant/NRG" title="NRG">NRG</a></span></div>
+      </div>
+    `,
+  });
+
+  assert.equal(normalized.matches.length, 1);
+  assert.equal(normalized.matches[0].teamAName, "XLG Esports");
+  assert.equal(normalized.matches[0].teamBName, "NRG");
 });
 
 test("Valorant normalizer tracks no-time rows and infers BO from map slots", () => {

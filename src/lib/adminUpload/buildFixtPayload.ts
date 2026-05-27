@@ -14,6 +14,7 @@ import { resolveExactMatchDate } from '@/lib/matches/time';
 import { isPlaceholderTeam, isTbdPlaceholderTeam } from '@/lib/teams/teams';
 import { buildTeamMappingLookup, findTeamMapping } from '@/lib/teams/mappingLookup';
 import { detectTournamentSource } from '@/lib/utils/tournamentSource';
+import { resolveTournamentTeamMappingDisciplineSlug } from '@/lib/tbvolley/config';
 import { resolveAdminSettings } from './resolveAdminSettings';
 
 export interface FixtMatch {
@@ -80,7 +81,7 @@ export async function buildFixtPayload(
     }),
     prisma.tournament.findUnique({
       where: { id: tournamentId },
-      select: { disciplineSlug: true, sourceUrl: true },
+      select: { disciplineSlug: true, sourceUrl: true, normalization: true },
     }),
   ]);
 
@@ -98,6 +99,7 @@ export async function buildFixtPayload(
   const sportId = settings.adminSportId;
   const max = settings.adminMax;
   const source = detectTournamentSource(tournament.sourceUrl);
+  const teamMappingDisciplineSlug = resolveTournamentTeamMappingDisciplineSlug(disciplineSlug, tournament.normalization);
 
   if (!shapkaId) warnings.push('Shapka ID is not set.');
   if (!sportId) warnings.push('Sport ID is not set.');
@@ -113,7 +115,7 @@ export async function buildFixtPayload(
 
   // 3. Fetch all team mappings for this discipline to avoid N+1
   const teamMappings = await prisma.teamMapping.findMany({
-    where: { disciplineSlug },
+    where: { disciplineSlug: teamMappingDisciplineSlug },
   });
 
   const mappingMap = buildTeamMappingLookup(teamMappings);

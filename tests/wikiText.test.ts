@@ -1,6 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cleanWikiValue, hasUnknownExplicitTimezone, parseWikiDate } from "../src/lib/normalizers/wikiText";
+import {
+  cleanWikiValue,
+  hasUnknownExplicitTimezone,
+  parseTeamOpponentScore,
+  parseWikiDate,
+} from "../src/lib/normalizers/wikiText";
 
 test("cleanWikiValue preserves Liquipedia timezone abbreviation templates", () => {
   assert.equal(
@@ -66,4 +71,11 @@ test("parseWikiDate handles English date-only text deterministically", () => {
     parseWikiDate("May 31, 2026")?.toISOString(),
     "2026-05-31T00:00:00.000Z",
   );
+});
+
+test("parseTeamOpponentScore extracts embedded Liquipedia opponent scores", () => {
+  assert.equal(parseTeamOpponentScore("{{TeamOpponent|P11 Esports|score=2}}"), 2);
+  assert.equal(parseTeamOpponentScore("{{TeamOpponent|Alpha|score1=0}}"), 0);
+  assert.equal(parseTeamOpponentScore("{{TeamOpponent|DECOY 21}}"), null);
+  assert.equal(parseTeamOpponentScore("DECOY 21"), null);
 });

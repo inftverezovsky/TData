@@ -2,14 +2,42 @@
 
 import React, { useState } from "react";
 
+type BindingMode = "discipline" | "id";
+type KnownDisciplineOption =
+  | "dota2"
+  | "counterstrike"
+  | "valorant"
+  | "leagueoflegends"
+  | "beachvolleyball-men"
+  | "beachvolleyball-women"
+  | "custom";
+
+const DISCIPLINE_OPTIONS: Array<{ value: KnownDisciplineOption; label: string }> = [
+  { value: "dota2", label: "Dota 2" },
+  { value: "counterstrike", label: "Counter-Strike" },
+  { value: "valorant", label: "Valorant" },
+  { value: "leagueoflegends", label: "League of Legends" },
+  { value: "beachvolleyball-men", label: "Пляжный волейбол (м)" },
+  { value: "beachvolleyball-women", label: "Пляжный волейбол (ж)" },
+  { value: "custom", label: "Другая" },
+];
+
 export function AdminTeamImporter() {
   const [file, setFile] = useState<File | null>(null);
   const [url, setUrl] = useState("");
   const [importMode, setImportMode] = useState<"file" | "url">("file");
-  const [discipline, setDiscipline] = useState("dota2");
+  const [bindingMode, setBindingMode] = useState<BindingMode>("discipline");
+  const [discipline, setDiscipline] = useState<KnownDisciplineOption>("dota2");
+  const [customDiscipline, setCustomDiscipline] = useState("");
+  const [sportId, setSportId] = useState("");
   const [status, setStatus] = useState<"idle" | "uploading" | "success" | "error">("idle");
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
+  const disciplineScope = discipline === "custom" ? normalizeDisciplineKey(customDiscipline) : discipline;
+  const idScope = normalizeSportId(sportId);
+  const targetKey = bindingMode === "id" ? idScope : disciplineScope;
+  const canImportSource = importMode === "file" ? Boolean(file) : Boolean(url.trim());
+  const canImport = canImportSource && Boolean(targetKey) && status !== "uploading";
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -18,8 +46,7 @@ export function AdminTeamImporter() {
   };
 
   const handleUpload = async () => {
-    if (importMode === "file" && !file) return;
-    if (importMode === "url" && !url) return;
+    if (!canImport) return;
 
     setStatus("uploading");
     setError(null);
@@ -30,7 +57,11 @@ export function AdminTeamImporter() {
     } else {
       formData.append("url", url);
     }
-    formData.append("disciplineSlug", discipline);
+    if (bindingMode === "id") {
+      formData.append("disciplineId", idScope);
+    } else {
+      formData.append("disciplineSlug", disciplineScope);
+    }
 
     try {
       const response = await fetch("/api/admin-teams/import", {
@@ -83,22 +114,95 @@ export function AdminTeamImporter() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+        <div className="mb-5 grid grid-cols-1 gap-4 md:grid-cols-12 md:items-end">
           <div className="md:col-span-3 space-y-1.5">
-            <label className="text-[9px] font-bold uppercase tracking-widest text-slate-400 ml-1">Дисциплина</label>
-            <select
-              value={discipline}
-              onChange={(e) => setDiscipline(e.target.value)}
-              className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-500 transition-all cursor-pointer"
-            >
-              <option value="dota2">Dota 2</option>
-              <option value="counterstrike">CS</option>
-              <option value="valorant">Valorant</option>
-              <option value="leagueoflegends">LoL</option>
-            </select>
+            <label className="text-[9px] font-bold uppercase tracking-widest text-slate-400 ml-1">Тип привязки</label>
+            <div className="flex h-10 rounded-xl bg-slate-100 p-1">
+              <button
+                type="button"
+                onClick={() => setBindingMode("discipline")}
+                className={`flex-1 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                  bindingMode === "discipline" ? "bg-white text-slate-900 shadow-sm" : "text-slate-400 hover:text-slate-600"
+                }`}
+              >
+                Дисциплина
+              </button>
+              <button
+                type="button"
+                onClick={() => setBindingMode("id")}
+                className={`flex-1 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                  bindingMode === "id" ? "bg-white text-slate-900 shadow-sm" : "text-slate-400 hover:text-slate-600"
+                }`}
+              >
+                По ID
+              </button>
+            </div>
           </div>
 
-          <div className="md:col-span-6 space-y-1.5">
+          {bindingMode === "discipline" ? (
+            <>
+              <div className="md:col-span-3 space-y-1.5">
+                <label className="text-[9px] font-bold uppercase tracking-widest text-slate-400 ml-1">Выбор дисциплины</label>
+                <select
+                  value={discipline}
+                  onChange={(e) => setDiscipline(e.target.value as KnownDisciplineOption)}
+                  className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-500 transition-all cursor-pointer"
+                >
+                  {DISCIPLINE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {discipline === "custom" && (
+                <div className="md:col-span-3 space-y-1.5">
+                  <label className="text-[9px] font-bold uppercase tracking-widest text-slate-400 ml-1">
+                    Ключ дисциплины
+                  </label>
+                  <input
+                    type="text"
+                    value={customDiscipline}
+                    onChange={(e) => setCustomDiscipline(e.target.value)}
+                    placeholder="tabletennis"
+                    className="w-full h-10 px-4 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-950 focus:outline-none focus:border-indigo-500 transition-all"
+                  />
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="md:col-span-3 space-y-1.5">
+              <label className="text-[9px] font-bold uppercase tracking-widest text-slate-400 ml-1">Sport ID</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={sportId}
+                onChange={(e) => setSportId(e.target.value.replace(/[^\d]/g, ""))}
+                placeholder="46"
+                className="w-full h-10 px-4 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-950 focus:outline-none focus:border-indigo-500 transition-all"
+              />
+            </div>
+          )}
+
+          <div className={`${bindingMode === "discipline" && discipline !== "custom" ? "md:col-span-6" : "md:col-span-3"} space-y-1.5`}>
+            <label className="text-[9px] font-bold uppercase tracking-widest text-slate-400 ml-1">Справочник</label>
+            <div className={`flex h-10 items-center rounded-xl border px-4 text-xs font-black ${
+              targetKey ? "border-indigo-100 bg-indigo-50 text-indigo-700" : "border-amber-100 bg-amber-50 text-amber-700"
+            }`}>
+              {targetKey ? (
+                <span className="truncate">
+                  {bindingMode === "id" ? "ID" : "Дисциплина"} · {targetKey}
+                </span>
+              ) : (
+                "Укажите привязку"
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+          <div className="md:col-span-9 space-y-1.5">
             <label className="text-[9px] font-bold uppercase tracking-widest text-slate-400 ml-1">
               {importMode === "file" ? "Выбор файла (.xlsx)" : "Google Sheets URL"}
             </label>
@@ -132,11 +236,11 @@ export function AdminTeamImporter() {
           <div className="md:col-span-3">
             <button
               onClick={handleUpload}
-              disabled={(importMode === "file" ? !file : !url) || status === "uploading"}
+              disabled={!canImport}
               className={`
                 w-full h-10 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all
-                ${(importMode === "file" ? !file : !url) || status === "uploading" 
-                  ? "bg-slate-50 text-slate-300 cursor-not-allowed" 
+                ${!canImport
+                  ? "bg-slate-50 text-slate-300 cursor-not-allowed"
                   : "bg-slate-900 text-white hover:bg-slate-800 shadow-sm"
                 }
               `}
@@ -149,7 +253,7 @@ export function AdminTeamImporter() {
         {status === "success" && result && (
           <div className="mt-4 p-3 bg-emerald-50 border border-emerald-100 rounded-xl">
             <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-tight">
-              ✓ Успешно: {result.importedCount} команд добавлено.
+              ✓ Успешно: {result.importedCount} команд добавлено в {formatImportTarget(result.targetKey || targetKey)}.
               {result.mappingResult ? ` Автомаппинг: ${result.mappingResult.autoMappedCount || 0}, конфликтов: ${result.mappingResult.conflictCount || 0}.` : ""}
             </p>
           </div>
@@ -165,5 +269,22 @@ export function AdminTeamImporter() {
       </div>
     </div>
   );
+}
+
+function normalizeDisciplineKey(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^\p{L}\p{N}_-]/gu, "");
+}
+
+function normalizeSportId(value: string) {
+  const text = value.trim();
+  return /^[1-9]\d*$/.test(text) ? text : "";
+}
+
+function formatImportTarget(value: string) {
+  return /^[1-9]\d*$/.test(String(value)) ? `Sport ID ${value}` : `дисциплину ${value}`;
 }
 

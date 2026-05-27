@@ -9,6 +9,9 @@ import { importHltvTournament } from "@/lib/importSources/hltv";
 import { importVlrTournament } from "@/lib/importSources/vlr";
 import { importDltvTournament } from "@/lib/importSources/dltv";
 import { importFandomTournament } from "@/lib/importSources/fandom";
+import { importVolleyballWorldTournament } from "@/lib/importSources/volleyballworld";
+import { importBeachVolleyRuTournament } from "@/lib/importSources/beachVolleyRu";
+import { importGermanBeachTourTournament } from "@/lib/importSources/germanBeachTour";
 import { getLiquipediaResponseStatus, toLiquipediaUserFacingError } from "@/lib/liquipedia/userFacingErrors";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +21,14 @@ type Body = {
   pageId?: unknown;
   title?: unknown;
   pageUrl?: unknown;
-  source?: "liquipedia" | "hltv" | "vlr" | "dltv" | "fandom";
+  source?: "liquipedia" | "hltv" | "vlr" | "dltv" | "fandom" | "volleyballworld" | "beachvolleyru" | "germanbeachtour";
+  tournamentNo?: unknown;
+  eventId?: unknown;
+  tournamentId?: unknown;
+  gender?: unknown;
+  fromDate?: unknown;
+  toDate?: unknown;
+  days?: unknown;
   force?: boolean;
 };
 
@@ -33,9 +43,10 @@ export async function POST(
   const source = body.source || "liquipedia";
   const pageId = typeof body.pageId === "number" ? body.pageId : undefined;
   const title = typeof body.title === "string" ? body.title.trim() : "";
+  const nonLiquipediaSource = source === "hltv" || source === "vlr" || source === "dltv" || source === "fandom" || source === "volleyballworld" || source === "beachvolleyru" || source === "germanbeachtour";
   const pageUrl = typeof body.pageUrl === "string" && body.pageUrl.trim().length > 0
     ? body.pageUrl.trim()
-    : (source === "hltv" || source === "vlr" || source === "dltv" || source === "fandom" ? "" : makeLiquipediaPageUrl(title, slug));
+    : (nonLiquipediaSource ? "" : makeLiquipediaPageUrl(title, slug));
 
   if (!pageId && title.length < 2) {
     return NextResponse.json({ error: "Нужен pageId или title выбранной страницы" }, { status: 400 });
@@ -43,10 +54,8 @@ export async function POST(
 
   // 1. Resolve discipline and normalizer dynamically
   let discipline;
-  let normalizer;
   try {
     discipline = await getOrCreateDiscipline(slug);
-    normalizer = getNormalizer(slug);
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Неподдерживаемая игровая дисциплина" },
@@ -120,6 +129,91 @@ export async function POST(
         { status: slug !== "leagueoflegends" ? 400 : 500 }
       );
     }
+  }
+
+  if (source === "volleyballworld") {
+    const tournamentNo = typeof body.tournamentNo === "string" || typeof body.tournamentNo === "number" ? body.tournamentNo : null;
+    const gender = typeof body.gender === "string" ? body.gender : null;
+    const fromDate = typeof body.fromDate === "string" ? body.fromDate : null;
+    const toDate = typeof body.toDate === "string" ? body.toDate : null;
+    const days = typeof body.days === "string" || typeof body.days === "number" ? body.days : null;
+
+    try {
+      return NextResponse.json(await importVolleyballWorldTournament({
+        slug,
+        disciplineId: discipline.id,
+        title,
+        pageUrl,
+        tournamentNo,
+        gender,
+        fromDate,
+        toDate,
+        days,
+        force: body.force,
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Не удалось загрузить VolleyballWorld турнир";
+      return NextResponse.json(
+        { error: message, userMessage: message },
+        { status: slug !== "beachvolleyball" ? 400 : 500 }
+      );
+    }
+  }
+
+  if (source === "beachvolleyru") {
+    const eventId = typeof body.eventId === "string" || typeof body.eventId === "number" ? body.eventId : null;
+    const gender = typeof body.gender === "string" ? body.gender : null;
+
+    try {
+      return NextResponse.json(await importBeachVolleyRuTournament({
+        slug,
+        disciplineId: discipline.id,
+        title,
+        pageUrl,
+        eventId,
+        gender,
+        force: body.force,
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Не удалось загрузить турнир beach.volley.ru";
+      return NextResponse.json(
+        { error: message, userMessage: message },
+        { status: slug !== "beachvolleyball" ? 400 : 500 }
+      );
+    }
+  }
+
+  if (source === "germanbeachtour") {
+    const tournamentId = typeof body.tournamentId === "string" || typeof body.tournamentId === "number" ? body.tournamentId : null;
+    const gender = typeof body.gender === "string" ? body.gender : null;
+
+    try {
+      return NextResponse.json(await importGermanBeachTourTournament({
+        slug,
+        disciplineId: discipline.id,
+        title,
+        pageUrl,
+        tournamentId,
+        gender,
+        force: body.force,
+      }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Не удалось загрузить турнир German Beach Tour";
+      return NextResponse.json(
+        { error: message, userMessage: message },
+        { status: slug !== "beachvolleyball" ? 400 : 500 }
+      );
+    }
+  }
+
+  let normalizer;
+  try {
+    normalizer = getNormalizer(slug);
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Неподдерживаемая игровая дисциплина" },
+      { status: 400 }
+    );
   }
 
   const tournamentImport = await prisma.tournamentImport.create({

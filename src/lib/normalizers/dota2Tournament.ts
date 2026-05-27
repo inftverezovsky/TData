@@ -7,6 +7,7 @@ import {
   extractSection,
   extractTemplatesByNamePrefix,
   parseInteger,
+  parseTeamOpponentScore,
   parseTemplate,
   parseWikiDate,
   type WikiDateParseOptions
@@ -769,8 +770,10 @@ function buildMatchFromWikitextTemplate(
     matchDateTime: dateText,
     teamAName,
     teamBName,
-    scoreA: parseInteger(params.score1 ?? params.team1score ?? params.p1score ?? params.games1),
-    scoreB: parseInteger(params.score2 ?? params.team2score ?? params.p2score ?? params.games2),
+    scoreA: parseInteger(params.score1 ?? params.team1score ?? params.p1score ?? params.games1)
+      ?? parseTeamOpponentScore(params.team1 ?? params.opponent1 ?? params.player1 ?? params.p1 ?? params.team_a ?? params.teama),
+    scoreB: parseInteger(params.score2 ?? params.team2score ?? params.p2score ?? params.games2)
+      ?? parseTeamOpponentScore(params.team2 ?? params.opponent2 ?? params.player2 ?? params.p2 ?? params.team_b ?? params.teamb),
     format: getBestOfLabel(formatText) || getBestOfLabel(template),
     status: firstClean(params.status, params.finished, params.walkover),
     court: firstClean(params.court, params.stream, params.twitch),

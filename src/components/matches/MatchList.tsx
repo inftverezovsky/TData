@@ -7,6 +7,7 @@ import {
   expandScheduleAnnouncementsForDiscipline,
   getScheduleMatchBestOfLabel,
   isDisplayableScheduleMatch,
+  isScheduleMatchInUpcomingWindow,
   isSchedulePlaceholderMatch,
   isUploadableScheduleEntry,
   type ScheduleAnnouncementEntry,
@@ -40,7 +41,7 @@ type Match = {
 };
 
 type DisplayMatch = ScheduleAnnouncementEntry<Match>;
-type MappingInfo = { alias: string | null; platformId: string | null; logoUrl?: string | null };
+type MappingInfo = { alias: string | null; platformId: string | null; logoUrl?: string | null; countryCode?: string | null };
 type ScheduleMode = "matches" | "announcements";
 
 const moscowDateFormatter = new Intl.DateTimeFormat("ru-RU", {
@@ -113,6 +114,7 @@ export default function MatchList({
   const baseMatches = useMemo<DisplayMatch[]>(() => {
     return [...matches]
       .filter(isDisplayableScheduleMatch)
+      .filter((match) => isScheduleMatchInUpcomingWindow(match))
       .sort((a, b) => {
         const tsA = getMatchTimestamp(a) || Infinity;
         const tsB = getMatchTimestamp(b) || Infinity;
@@ -122,7 +124,11 @@ export default function MatchList({
   }, [matches]);
 
   const baseAnnouncements = useMemo<DisplayMatch[]>(() => {
-    return expandScheduleAnnouncementsForDiscipline(matches, disciplineSlug, source)
+    return expandScheduleAnnouncementsForDiscipline(
+      matches.filter((match) => isScheduleMatchInUpcomingWindow(match)),
+      disciplineSlug,
+      source,
+    )
       .sort((a, b) => {
         const tsA = getMatchTimestamp(a) || Infinity;
         const tsB = getMatchTimestamp(b) || Infinity;
@@ -357,12 +363,18 @@ export default function MatchList({
       || mappings[normalizeTeamName(effectiveName)]
       || mappings[getTeamAliasKey(effectiveName)];
     const pid = m?.platformId || "";
+    const countryCode = m?.countryCode || "";
     return (
       <div className={`flex flex-col min-w-0 ${side === "center" ? "items-center text-center" : side === "left" ? "text-left sm:text-right" : "text-left"}`}>
         <span className="truncate text-[13px] font-bold leading-tight text-slate-900 transition-colors group-hover:text-indigo-600 sm:text-[15px]">
           {effectiveName}
         </span>
         <div className={`flex items-center gap-1 mt-0.5 ${side === "center" ? "justify-center" : side === "left" ? "justify-start sm:justify-end" : "justify-start"}`}>
+          {countryCode ? (
+            <span className="text-[7px] font-black px-1 py-0 rounded-full border border-slate-200 bg-slate-50 text-slate-500">
+              {countryCode}
+            </span>
+          ) : null}
           <span className={`text-[7px] font-black px-1 py-0 rounded-full border ${pid ? "bg-emerald-50 border-emerald-100 text-emerald-700" : "bg-rose-50 border-rose-100 text-rose-600"}`}>
             {pid || "НЕТ ID"}
           </span>

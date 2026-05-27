@@ -8,7 +8,7 @@ import { prisma } from "@/lib/db/db";
 import { getLiquipediaUserAgent } from "@/lib/config/env";
 import { classifyParserError, isBlockedParserError } from "@/lib/proxy/parserErrors";
 import { markProxyFailure, markProxySuccess, maskProxyUrl, selectProxyCandidate } from "@/lib/proxy/proxySelector";
-import { extractDltvEventId, filterDltvEvents, parseDltvEventPage, parseDltvEvents, parseDltvMatchPage } from "./parse";
+import { extractDltvEventId, filterDltvEvents, filterDltvEventsByWindow, parseDltvEventPage, parseDltvEvents, parseDltvMatchPage } from "./parse";
 import type { DltvMatchPageFailure, DltvRunResult } from "./types";
 
 export type DltvMode = "events" | "search" | "event" | "health";
@@ -18,7 +18,14 @@ const DLTV_TIMEOUT_MS = Number(process.env.DLTV_TIMEOUT_MS || 40000);
 const DLTV_CACHE_TTL_MS = Number(process.env.DLTV_CACHE_TTL_MS || 30 * 60 * 1000);
 const DLTV_STALE_TTL_MS = Number(process.env.DLTV_STALE_TTL_MS || 6 * 60 * 60 * 1000);
 const DLTV_EVENT_MATCH_CONCURRENCY = Number(process.env.DLTV_EVENT_MATCH_CONCURRENCY || 4);
-const DLTV_CACHE_VERSION = 2;
+const DLTV_EVENTS_FUTURE_WINDOW_DAYS = Number(process.env.DLTV_EVENTS_FUTURE_WINDOW_DAYS || 60);
+const DLTV_CACHE_VERSION = 4;
+const DLTV_NEGATIVE_CACHE_TTL_BY_MODE: Record<DltvMode, number> = {
+  events: Number(process.env.DLTV_EVENTS_NEGATIVE_CACHE_TTL_MS || 60 * 1000),
+  search: Number(process.env.DLTV_SEARCH_NEGATIVE_CACHE_TTL_MS || 0),
+  event: Number(process.env.DLTV_EVENT_NEGATIVE_CACHE_TTL_MS || 5 * 60 * 1000),
+  health: Number(process.env.DLTV_HEALTH_NEGATIVE_CACHE_TTL_MS || 5 * 60 * 1000),
+};
 
 export const DLTV_CACHE_DIR = path.join(process.cwd(), "cache", "dltv");
 
@@ -30,16 +37,16 @@ export async function executeDltv(mode: DltvMode, queryOrUrl?: string, options: 
 
   const cacheKey = `${mode}:${queryOrUrl || "default"}`;
   if (!options.noCache) {
-    const fresh = readDltvCache(cacheKey, DLTV_CACHE_TTL_MS);
+    const fresh = readDltvCache(cacheKey, mode, DLTV_CACHE_TTL_MS);
     if (fresh) return { ...fresh, cacheHit: true, cacheLayer: "file" };
   }
 
   try {
     const result = await runDltvMode(mode, queryOrUrl);
-    writeDltvCache(cacheKey, result);
+    writeDltvCache(cacheKey, mode, result);
     return result;
   } catch (error) {
-    const stale = readDltvCache(cacheKey, DLTV_STALE_TTL_MS);
+    const stale = readDltvCache(cacheKey, mode, DLTV_STALE_TTL_MS);
     if (stale) {
       return {
         ...stale,
@@ -56,7 +63,7 @@ export async function executeDltv(mode: DltvMode, queryOrUrl?: string, options: 
 async function runDltvMode(mode: DltvMode, queryOrUrl?: string): Promise<DltvRunResult> {
   if (mode === "events" || mode === "search") {
     const html = await fetchDltvHtml(`${DLTV_BASE_URL}/events`, mode);
-    const events = parseDltvEvents(html, DLTV_BASE_URL);
+    const events = filterDltvEventsByWindow(parseDltvEvents(html, DLTV_BASE_URL), new Date(), DLTV_EVENTS_FUTURE_WINDOW_DAYS);
     return { ok: true, events: mode === "search" ? filterDltvEvents(events, queryOrUrl || "") : events };
   }
 
@@ -167,26 +174,43 @@ function resolveDltvEventUrl(value: string) {
   return `${DLTV_BASE_URL}/events/${encodeURIComponent(id)}`;
 }
 
-function readDltvCache(key: string, ttlMs: number): DltvRunResult | null {
+function readDltvCache(key: string, mode: DltvMode, ttlMs: number): DltvRunResult | null {
   const filePath = getDltvCachePath(key);
   if (!fs.existsSync(filePath)) return null;
   try {
     const cached = JSON.parse(fs.readFileSync(filePath, "utf8"));
     if (cached.version !== DLTV_CACHE_VERSION) return null;
-    if (!cached.timestamp || Date.now() - Number(cached.timestamp) > ttlMs) return null;
+    const cacheKind = cached.cacheKind || (isDltvEmptyResult(cached.result) ? "negative" : "positive");
+    const effectiveTtl = cacheKind === "negative" ? Math.min(ttlMs, getDltvNegativeCacheTtl(mode)) : ttlMs;
+    if (cacheKind === "negative" && effectiveTtl <= 0) return null;
+    if (!cached.timestamp || Date.now() - Number(cached.timestamp) > effectiveTtl) return null;
     return cached.result || null;
   } catch {
     return null;
   }
 }
 
-function writeDltvCache(key: string, result: DltvRunResult) {
+function writeDltvCache(key: string, mode: DltvMode, result: DltvRunResult) {
+  const cacheKind = isDltvEmptyResult(result) ? "negative" : "positive";
+  if (cacheKind === "negative" && getDltvNegativeCacheTtl(mode) <= 0) return;
   fs.mkdirSync(DLTV_CACHE_DIR, { recursive: true });
-  fs.writeFileSync(getDltvCachePath(key), JSON.stringify({ version: DLTV_CACHE_VERSION, timestamp: Date.now(), result }, null, 2));
+  fs.writeFileSync(getDltvCachePath(key), JSON.stringify({ version: DLTV_CACHE_VERSION, timestamp: Date.now(), cacheKind, result }, null, 2));
 }
 
 function getDltvCachePath(key: string) {
   return path.join(DLTV_CACHE_DIR, `${crypto.createHash("sha1").update(key).digest("hex")}.json`);
+}
+
+function getDltvNegativeCacheTtl(mode: DltvMode) {
+  const value = DLTV_NEGATIVE_CACHE_TTL_BY_MODE[mode];
+  return Number.isFinite(value) ? value : 5 * 60 * 1000;
+}
+
+function isDltvEmptyResult(result: DltvRunResult | null | undefined) {
+  return Boolean(result?.ok && (
+    (Array.isArray(result.events) && result.events.length === 0) ||
+    (Array.isArray(result.matches) && result.matches.length === 0)
+  ));
 }
 
 async function mapWithConcurrency<T, R>(items: T[], concurrency: number, mapper: (item: T) => Promise<R>) {

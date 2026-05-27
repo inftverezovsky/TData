@@ -10,6 +10,7 @@ import {
   isAnnouncementScheduleMatch,
   isDisplayableScheduleMatch,
   isGeneratedScheduleMatrixRow,
+  isScheduleMatchInUpcomingWindow,
   isUploadableScheduleEntry,
   isUploadReadyScheduleMatch,
   parseScheduleSelectionId,
@@ -244,6 +245,7 @@ test("all sourced TBD-vs-TBD slots render as one stage announcement", () => {
     ["dota2", "dltv"],
     ["leagueoflegends", "fandom"],
     ["valorant", "vlr"],
+    ["beachvolleyball", "volleyballworld"],
   ] as const;
 
   for (const [disciplineSlug, source] of cases) {
@@ -256,6 +258,55 @@ test("all sourced TBD-vs-TBD slots render as one stage announcement", () => {
     assert.equal(entries[0].selectionId, buildTbdAnnouncementSelectionId("source-stage-1", "stage"), source);
     assert.equal(isUploadableScheduleEntry(entries[0], { disciplineSlug, source }), true, source);
     assert.deepEqual(getUploadableTbdAnnouncementSides(entries[0], { disciplineSlug, source }), ["stage"], source);
+  }
+});
+
+test("VolleyballWorld winner/loser placeholders render as one stage announcement", () => {
+  const cases = [
+    {
+      matchId: "volleyballworld-8974-525029",
+      teamAName: "Winner of match 39",
+      teamBName: "Winner of match 40",
+      round: "Quarter-finals",
+      expected: "Quarterfinals",
+    },
+    {
+      matchId: "volleyballworld-8974-525033",
+      teamAName: "Winner of match 47",
+      teamBName: "Winner of match 48",
+      round: "Semi-finals",
+      expected: "Semifinals",
+    },
+    {
+      matchId: "volleyballworld-8974-525035",
+      teamAName: "Loser of match 51",
+      teamBName: "Loser of match 52",
+      round: "3rd place match",
+      expected: "Third Place Match",
+    },
+  ];
+
+  for (const item of cases) {
+    const entries = expandScheduleAnnouncementsForDiscipline([{
+      id: item.matchId,
+      matchId: item.matchId,
+      matchDate: new Date("2026-05-31T13:00:00.000Z"),
+      matchDateTime: "31.05.2026 16:00:00",
+      rawText: `${item.round} ${item.teamAName} vs ${item.teamBName}`,
+      scoreA: null,
+      scoreB: null,
+      format: "BO3",
+      stage: "Main Draw",
+      round: item.round,
+      teamAName: item.teamAName,
+      teamBName: item.teamBName,
+      hasPlaceholderTeams: true,
+    }], "beachvolleyball", "volleyballworld");
+
+    assert.equal(entries.length, 1, item.expected);
+    assert.equal(entries[0].isStageAnnouncement, true, item.expected);
+    assert.equal(entries[0].singleAnnouncementTeamName, item.expected);
+    assert.equal(entries[0].selectionId, buildTbdAnnouncementSelectionId(item.matchId, "stage"));
   }
 });
 
@@ -723,6 +774,30 @@ test("stage slot labels prefer round and normalize group stage", () => {
     }),
     "Third Place Match",
   );
+  assert.equal(
+    getStageSlotAnnouncementLabel({
+      teamAName: "TBD1",
+      teamBName: "TBD2",
+      stage: "Swiss Stage: Round 2 (1-0)",
+    }),
+    "Group Stage",
+  );
+  assert.equal(
+    getStageSlotAnnouncementLabel({
+      teamAName: "TBD1",
+      teamBName: "TBD2",
+      stage: "Round 2 High Matches",
+    }),
+    "Group Stage",
+  );
+  assert.equal(
+    getStageSlotAnnouncementLabel({
+      teamAName: "TBD1",
+      teamBName: "TBD2",
+      stage: "Playoffs: Lower Round 3",
+    }),
+    "Playoffs",
+  );
 });
 
 test("League of Legends sourced stage slots never split into numbered TBD announcements", () => {
@@ -749,4 +824,46 @@ test("League of Legends sourced stage slots never split into numbered TBD announ
   assert.equal(entries[0].singleAnnouncementSide, "stage");
   assert.equal(entries[0].singleAnnouncementTeamName, "Play-In Day 1");
   assert.equal(entries.some((entry) => /^TBD\d*$/i.test(entry.singleAnnouncementTeamName || "")), false);
+});
+
+test("schedule view window keeps only matches in the nearest month", () => {
+  const window = { fromDate: "2026-05-27", toDate: "2026-06-27" };
+
+  assert.equal(
+    isScheduleMatchInUpcomingWindow({ matchDate: new Date("2026-06-04T14:00:00.000Z") }, window),
+    true,
+  );
+  assert.equal(
+    isScheduleMatchInUpcomingWindow({ matchDate: new Date("2026-05-24T14:00:00.000Z") }, window),
+    false,
+  );
+  assert.equal(
+    isScheduleMatchInUpcomingWindow({ matchDate: new Date("2026-07-02T14:00:00.000Z") }, window),
+    false,
+  );
+});
+
+test("German Beach Tour TBD slots render as stage announcements", () => {
+  const entries = expandScheduleAnnouncementsForDiscipline([
+    {
+      id: "gbt-berlin-slot",
+      matchId: "germanbeachtour-14684-men-14684-1-1",
+      matchDate: new Date("2026-06-04T14:00:00.000Z"),
+      matchDateTime: "04.06.2026 17:00:00",
+      rawText: "Hauptfeld | Achtelfinale Winner | TBD vs TBD",
+      scoreA: null,
+      scoreB: null,
+      format: "BO3",
+      teamAName: "TBD",
+      teamBName: "TBD",
+      stage: "Hauptfeld",
+      round: "Achtelfinale Winner",
+      hasPlaceholderTeams: true,
+    },
+  ], "beachvolleyball", "germanbeachtour");
+
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].isStageAnnouncement, true);
+  assert.equal(entries[0].singleAnnouncementSide, "stage");
+  assert.equal(entries[0].singleAnnouncementTeamName, "Achtelfinale Winner");
 });

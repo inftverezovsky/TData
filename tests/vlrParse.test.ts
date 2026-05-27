@@ -1,12 +1,24 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  buildVlrEventMatchesUrl,
   parseVlrEventMatchesHtml,
   parseVlrEventsHtml,
   parseVlrMatchDetailHtml,
   parseVlrMatchesHtml,
   parseVlrUtcTimestamp,
 } from "../src/lib/vlr/parse";
+
+test("buildVlrEventMatchesUrl points event imports at the full schedule page", () => {
+  assert.equal(
+    buildVlrEventMatchesUrl("https://www.vlr.gg/event/2765/valorant-masters-london-2026"),
+    "https://www.vlr.gg/event/matches/2765/valorant-masters-london-2026",
+  );
+  assert.equal(
+    buildVlrEventMatchesUrl("2765"),
+    "https://www.vlr.gg/event/matches/2765",
+  );
+});
 
 test("parseVlrMatchesHtml parses grouped VLR match cards", () => {
   const matches = parseVlrMatchesHtml(`

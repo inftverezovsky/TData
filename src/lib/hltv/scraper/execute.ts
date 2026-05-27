@@ -368,7 +368,7 @@ async function getHltvProxyCandidate(attempt: number): Promise<HltvProxyCandidat
 
 function getMaxAttempts(mode: HltvMode) {
   if (mode === "health") return 1;
-  if (mode === "search") return Number(process.env.HLTV_SEARCH_MAX_ATTEMPTS || 1);
+  if (mode === "search") return Number(process.env.HLTV_SEARCH_MAX_ATTEMPTS || 2);
   if (mode === "events" || mode === "scrape") return 2;
   return 3;
 }

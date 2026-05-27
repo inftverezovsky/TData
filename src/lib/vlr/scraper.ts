@@ -8,6 +8,7 @@ import { classifyParserError, emptyValidIfNoItems, normalizeParserErrorClass, ty
 import { markProxyFailure, markProxySuccess, maskProxyUrl, selectProxyCandidate } from "@/lib/proxy/proxySelector";
 import { logParserRequest } from "@/lib/hltv/scraper/helpers";
 import {
+  buildVlrEventMatchesUrl,
   extractVlrEventId,
   filterVlrEventsByQuery,
   parseVlrEventMatchesHtml,
@@ -46,7 +47,7 @@ export type VlrDiagnosticsStats = {
 
 const VLR_ORIGIN = "https://www.vlr.gg";
 const VLR_CACHE_DIR = path.join(process.cwd(), "cache", "vlr");
-const CACHE_VERSION = "vlr-http-v1";
+const CACHE_VERSION = "vlr-http-v2";
 const POSITIVE_CACHE_TTL_BY_MODE: Record<VlrMode, number> = {
   matches: 5 * 60 * 1000,
   events: 10 * 60 * 1000,
@@ -54,7 +55,13 @@ const POSITIVE_CACHE_TTL_BY_MODE: Record<VlrMode, number> = {
   event: 10 * 60 * 1000,
   health: 5 * 60 * 1000,
 };
-const NEGATIVE_CACHE_TTL = 5 * 60 * 1000;
+const NEGATIVE_CACHE_TTL_BY_MODE: Record<VlrMode, number> = {
+  matches: Number(process.env.VLR_MATCHES_NEGATIVE_CACHE_TTL_MS || 5 * 60 * 1000),
+  events: Number(process.env.VLR_EVENTS_NEGATIVE_CACHE_TTL_MS || 60 * 1000),
+  search: Number(process.env.VLR_SEARCH_NEGATIVE_CACHE_TTL_MS || 0),
+  event: Number(process.env.VLR_EVENT_NEGATIVE_CACHE_TTL_MS || 5 * 60 * 1000),
+  health: Number(process.env.VLR_HEALTH_NEGATIVE_CACHE_TTL_MS || 5 * 60 * 1000),
+};
 
 let vlrQueue: Promise<any> = Promise.resolve();
 const activeRequests = new Map<string, Promise<VlrResult>>();
@@ -160,7 +167,8 @@ async function executeVlr(mode: VlrMode, queryOrId?: string, options: { noCache?
       errorClass,
     });
 
-    if (!directFirst && attempt < 2 && shouldRetry(errorClass)) {
+    const maxAttempts = Number(process.env.VLR_MAX_ATTEMPTS || 2);
+    if (attempt < maxAttempts && shouldRetry(errorClass)) {
       return executeVlr(mode, queryOrId, options, attempt + 1);
     }
 
@@ -190,14 +198,62 @@ async function scrapeVlrMode(mode: VlrMode, queryOrId?: string, proxyUrl?: strin
     const eventUrl = eventId.startsWith("http") ? eventId : `${VLR_ORIGIN}/event/${eventId}`;
     const html = await fetchVlrHtml(eventUrl, proxyUrl);
     const parsed = parseVlrEventMatchesHtml(html, eventUrl);
-    const enriched = await enrichMatches(parsed.matches, proxyUrl);
-    return { ok: true, title: parsed.title, matches: enriched.matches, diagnostics: { vlr: enriched.diagnostics } };
+    const matchesUrl = buildVlrEventMatchesUrl(eventUrl);
+    let matches = parsed.matches;
+    let warning: string | null = null;
+
+    if (matchesUrl) {
+      try {
+        const matchesHtml = await fetchVlrHtml(matchesUrl, proxyUrl);
+        const scheduleMatches = parseVlrMatchesHtml(matchesHtml, matchesUrl);
+        matches = mergeVlrMatches([
+          ...scheduleMatches,
+          ...parsed.matches,
+        ]);
+      } catch (error) {
+        warning = `Не удалось загрузить полное расписание VLR: ${error instanceof Error ? error.message : String(error)}`;
+      }
+    }
+
+    const enriched = await enrichMatches(matches, proxyUrl, Number(process.env.VLR_EVENT_ENRICH_LIMIT || 120));
+    return { ok: true, title: parsed.title, matches: enriched.matches, warning, diagnostics: { vlr: enriched.diagnostics } };
   }
 
   const html = await fetchVlrHtml(`${VLR_ORIGIN}/matches`, proxyUrl);
   const matches = parseVlrMatchesHtml(html);
   const enriched = await enrichMatches(matches, proxyUrl, Number(process.env.VLR_MATCHES_ENRICH_LIMIT || 80));
   return { ok: true, matches: enriched.matches, diagnostics: { vlr: enriched.diagnostics } };
+}
+
+function mergeVlrMatches(matches: VlrMatch[]) {
+  const seen = new Map<string, VlrMatch>();
+
+  for (const match of matches) {
+    if (!match.id) continue;
+    const existing = seen.get(match.id);
+    if (!existing) {
+      seen.set(match.id, match);
+      continue;
+    }
+
+    seen.set(match.id, {
+      ...existing,
+      ...match,
+      tournament: match.tournament || existing.tournament,
+      stage: match.stage || existing.stage || null,
+      team1: match.team1 || existing.team1,
+      team2: match.team2 || existing.team2,
+      utcTimestamp: match.utcTimestamp || existing.utcTimestamp || null,
+      unix_time: match.unix_time ?? existing.unix_time ?? null,
+      format: match.format || existing.format || null,
+      status: match.isLive || existing.isLive ? "live" : (match.status || existing.status || "upcoming"),
+      isLive: Boolean(match.isLive || existing.isLive),
+      dateLabel: match.dateLabel || existing.dateLabel || null,
+      rawText: match.rawText || existing.rawText || null,
+    });
+  }
+
+  return Array.from(seen.values());
 }
 
 async function enrichMatches(matches: VlrMatch[], proxyUrl?: string, limit = 50): Promise<{ matches: VlrMatch[]; diagnostics: VlrDiagnosticsStats }> {
@@ -249,7 +305,8 @@ function readCache(mode: VlrMode, queryOrId?: string): VlrResult | null {
   try {
     const data = JSON.parse(fs.readFileSync(cachePath, "utf8"));
     const age = Date.now() - Number(data.timestamp || 0);
-    const ttl = data.cacheKind === "negative" ? NEGATIVE_CACHE_TTL : POSITIVE_CACHE_TTL_BY_MODE[mode];
+    const ttl = data.cacheKind === "negative" ? getNegativeCacheTtl(mode) : POSITIVE_CACHE_TTL_BY_MODE[mode];
+    if (data.cacheKind === "negative" && ttl <= 0) return null;
     if (age >= ttl) return null;
     return { ...data.result, cacheHit: true, cacheLayer: "file", stale: false };
   } catch {
@@ -263,12 +320,18 @@ function setCache(mode: VlrMode, queryOrId: string | undefined, result: VlrResul
     fs.mkdirSync(VLR_CACHE_DIR, { recursive: true });
     const isEmpty = (Array.isArray(result.events) && result.events.length === 0) ||
       (Array.isArray(result.matches) && result.matches.length === 0);
+    if (isEmpty && getNegativeCacheTtl(mode) <= 0) return;
     fs.writeFileSync(getCachePath(mode, queryOrId), JSON.stringify({
       timestamp: Date.now(),
       cacheKind: isEmpty ? "negative" : "positive",
       result,
     }));
   } catch {}
+}
+
+function getNegativeCacheTtl(mode: VlrMode) {
+  const value = NEGATIVE_CACHE_TTL_BY_MODE[mode];
+  return Number.isFinite(value) ? value : 5 * 60 * 1000;
 }
 
 function getCachePath(mode: VlrMode, queryOrId = "") {

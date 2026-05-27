@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { filterDltvEvents, parseDltvEventPage, parseDltvEvents, parseDltvMatchPage } from "../src/lib/dltv/parse";
+import { filterDltvEvents, filterDltvEventsByWindow, parseDltvEventPage, parseDltvEvents, parseDltvMatchPage } from "../src/lib/dltv/parse";
 import { resolveDltvImportStatus } from "../src/lib/importSources/dltv";
 
 test("parseDltvEvents extracts and filters live/upcoming events", () => {
@@ -23,6 +23,20 @@ test("parseDltvEvents extracts and filters live/upcoming events", () => {
   assert.equal(events[0].status, "live");
   assert.equal(events[0].dates, "2026-05-13 00:00:00 - 2026-05-24 00:00:00");
   assert.equal(filterDltvEvents(events, "blast")[0].id, "blast-slam-7");
+});
+
+test("filterDltvEventsByWindow keeps only current and next 60 day events", () => {
+  const events = [
+    { id: "current", title: "Current", url: "/events/current", dates: "2026-05-20 00:00:00 - 2026-06-02 00:00:00", status: "ongoing" as const },
+    { id: "soon", title: "Soon", url: "/events/soon", dates: "2026-07-20 00:00:00 - 2026-07-25 00:00:00", status: "upcoming" as const },
+    { id: "far", title: "Far", url: "/events/far", dates: "2026-07-31 00:00:00 - 2026-08-05 00:00:00", status: "upcoming" as const },
+    { id: "old", title: "Old", url: "/events/old", dates: "2026-04-01 00:00:00 - 2026-04-05 00:00:00", status: "ongoing" as const },
+  ];
+
+  assert.deepEqual(
+    filterDltvEventsByWindow(events, new Date("2026-05-27T12:00:00Z"), 60).map((event) => event.id),
+    ["current", "soon"]
+  );
 });
 
 test("parseDltvEventPage extracts participants and unique match urls", () => {

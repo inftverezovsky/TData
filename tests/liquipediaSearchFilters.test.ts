@@ -64,3 +64,17 @@ test("LoL future window keeps major tournaments in search results", () => {
     true
   );
 });
+
+test("Liquipedia default future window is 60 days", () => {
+  const currentYear = new Date().getFullYear();
+  const isoInDays = (days: number) => new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+  assert.equal(
+    shouldShowLiquipediaSearchResult("European Pro League", "European Pro League", isoInDays(50), currentYear),
+    true
+  );
+  assert.equal(
+    shouldShowLiquipediaSearchResult("European Pro League", "European Pro League", isoInDays(75), currentYear),
+    false
+  );
+});

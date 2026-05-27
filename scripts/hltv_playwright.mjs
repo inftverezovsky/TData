@@ -16,7 +16,7 @@ const REQUEST_ID = String(args['request-id'] || args.requestId || crypto.randomB
 const NO_CACHE = Boolean(args.no_cache || args.noCache || args['no-cache'] || args.cache === false);
 
 const CACHE_DIR = './cache/hltv';
-const CACHE_VERSION = 'hltv-upcoming-only-v2';
+const CACHE_VERSION = 'hltv-upcoming-only-v3';
 const POSITIVE_CACHE_TTL_BY_MODE = {
   scrape: 10 * 60 * 1000,
   events: 10 * 60 * 1000,
@@ -24,9 +24,17 @@ const POSITIVE_CACHE_TTL_BY_MODE = {
   search: 60 * 60 * 1000,
   health: 5 * 60 * 1000,
 };
-const NEGATIVE_CACHE_TTL = 10 * 60 * 1000;
+const NEGATIVE_CACHE_TTL_BY_MODE = {
+  scrape: Number(process.env.HLTV_SCRAPE_NEGATIVE_CACHE_TTL_MS || 10 * 60 * 1000),
+  events: Number(process.env.HLTV_EVENTS_NEGATIVE_CACHE_TTL_MS || 60 * 1000),
+  event: Number(process.env.HLTV_EVENT_NEGATIVE_CACHE_TTL_MS || 10 * 60 * 1000),
+  search: Number(process.env.HLTV_SEARCH_NEGATIVE_CACHE_TTL_MS || 0),
+  health: Number(process.env.HLTV_HEALTH_NEGATIVE_CACHE_TTL_MS || 5 * 60 * 1000),
+};
 const STALE_CACHE_TTL = 24 * 60 * 60 * 1000;
 const SEARCH_RESULT_WAIT_MS = Number(process.env.HLTV_SEARCH_RESULT_WAIT_MS || 12000);
+const HLTV_EVENTS_FUTURE_WINDOW_DAYS = Number(process.env.HLTV_EVENTS_FUTURE_WINDOW_DAYS || 60);
+const HLTV_SEARCH_FUTURE_WINDOW_DAYS = Number(process.env.HLTV_SEARCH_FUTURE_WINDOW_DAYS || 60);
 
 function getCache(options = {}) {
   if (NO_CACHE) return null;
@@ -37,8 +45,9 @@ function getCache(options = {}) {
       const data = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
       const age = Date.now() - data.timestamp;
       const ttl = data.cacheKind === 'negative'
-        ? NEGATIVE_CACHE_TTL
+        ? getNegativeCacheTtl(MODE)
         : POSITIVE_CACHE_TTL_BY_MODE[MODE] || 10 * 60 * 1000;
+      if (data.cacheKind === 'negative' && ttl <= 0) return null;
       if (age < ttl || (options.allowStale && age < STALE_CACHE_TTL)) {
         return {
           ...data.result,
@@ -57,6 +66,7 @@ function setCache(result) {
     if (!result || !result.ok) return;
     const isEmpty = (Array.isArray(result.events) && result.events.length === 0) ||
       (Array.isArray(result.matches) && result.matches.length === 0);
+    if (isEmpty && getNegativeCacheTtl(MODE) <= 0) return;
 
     if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
     const key = crypto.createHash('md5').update(`${CACHE_VERSION}-${MODE}-${QUERY}-${EVENT_ID}`).digest('hex');
@@ -67,6 +77,11 @@ function setCache(result) {
       result
     }));
   } catch (e) {}
+}
+
+function getNegativeCacheTtl(mode) {
+  const value = NEGATIVE_CACHE_TTL_BY_MODE[mode];
+  return Number.isFinite(value) ? value : 10 * 60 * 1000;
 }
 
 async function scrapeHltv() {
@@ -314,7 +329,10 @@ async function scrapeHltv() {
 
         if (!shouldKeepEvent({ title: cleanTitle, href, dates: finalDates || rawDates, status: pageStatus }, QUERY, today)) continue;
 
-        const formattedDates = finalDates && finalDates !== "Date TBD" ? formatHltvDate(finalDates, today) : formatHltvDate(rawDates, today);
+        const titleYear = extractYear(`${cleanTitle} ${href}`);
+        const formattedDates = finalDates && finalDates !== "Date TBD"
+          ? formatHltvDate(finalDates, today, titleYear)
+          : formatHltvDate(rawDates, today, titleYear);
 
         if (!events.some(e => e.id === id)) {
           events.push({ 
@@ -347,22 +365,27 @@ async function scrapeHltv() {
           .some((el) => (el.textContent || '').replace(/\s+/g, ' ').trim().length > 20);
       }, { timeout: 15000 });
 
-      const events = await page.evaluate(() => {
+      const events = await page.evaluate((futureWindowDays) => {
         const results = [];
         const today = new Date();
         today.setHours(0, 0, 0, 0); // Day-aligned bounds
 
-        const nextWeek = new Date();
-        nextWeek.setDate(today.getDate() + 14); // 14 days horizon, matching Liquipedia logic
-        nextWeek.setHours(23, 59, 59, 999);
+        const futureLimit = new Date(today);
+        futureLimit.setDate(today.getDate() + futureWindowDays);
+        futureLimit.setHours(23, 59, 59, 999);
 
-        const parseDate = (dStr) => {
+        const extractYear = (value) => {
+          const match = String(value || '').match(/\b(19\d{2}|20\d{2})\b/);
+          return match ? Number(match[1]) : null;
+        };
+
+        const parseDate = (dStr, fallbackYear = today.getFullYear()) => {
           try {
             const match = dStr.match(/(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2}(?:st|nd|rd|th)?/i);
             if (!match) return null;
             const parts = match[0].trim().replace(/(st|nd|rd|th)/gi, '');
             const yearMatch = dStr.match(/\b(19\d{2}|20\d{2})\b/);
-            const year = yearMatch ? yearMatch[1] : new Date().getFullYear();
+            const year = yearMatch ? Number(yearMatch[1]) : fallbackYear;
             const date = new Date(`${parts} ${year}`);
             return isNaN(date.getTime()) ? null : date;
           } catch(e) { return null; }
@@ -413,9 +436,9 @@ async function scrapeHltv() {
              const dates = datesEl?.textContent?.trim() || "";
              const stars = el.querySelectorAll('.stars i.fa-star, .stars .fa-star, .star, [class*="star"]').length;
              
-             const startDate = parseDate(dates);
-             // Filter: only if starts within 14 days
-             if (startDate && startDate <= nextWeek && startDate >= today) {
+             const titleYear = extractYear(`${title} ${href}`);
+             const startDate = parseDate(dates, titleYear || today.getFullYear());
+             if (startDate && startDate <= futureLimit && startDate >= today) {
                seenIds.add(id);
                results.push({
                  title: title.replace(/\s+/g, ' ').trim(),
@@ -429,7 +452,7 @@ async function scrapeHltv() {
           }
         });
         return results;
-      });
+      }, HLTV_EVENTS_FUTURE_WINDOW_DAYS);
       const finalResult = { ok: true, events };
       setCache(finalResult);
       console.log(JSON.stringify(finalResult));
@@ -672,14 +695,14 @@ function normalizeClosedBrowserError(message) {
   return message;
 }
 
-function parseHltvDate(dateStr, today) {
+function parseHltvDate(dateStr, today, fallbackYearOverride = null) {
   if (!dateStr) return null;
   const d = dateStr.replace(/\s+/g, ' ').trim();
   if (/^(date|date tbd|tbd)$/i.test(d)) return null;
   if (/^(live|ongoing)$/i.test(d)) return { start: today, end: today };
 
   const years = Array.from(d.matchAll(/\b(19\d{2}|20\d{2})\b/g)).map((match) => Number(match[1]));
-  const fallbackYear = years[years.length - 1] || today.getFullYear();
+  const fallbackYear = years[years.length - 1] || fallbackYearOverride || today.getFullYear();
 
   const parsePart = (part, fallbackMonth = "") => {
     const clean = part.replace(/,/g, '').replace(/(\d{1,2})(st|nd|rd|th)/gi, '$1').trim();
@@ -760,14 +783,28 @@ function shouldKeepEvent({ title, href, dates, status }, query, today) {
   if (isPastEventDate(dates, today)) return false;
 
   const year = extractYear(`${title} ${href}`);
+  const parsedDate = parseHltvDate(dates, today, year);
+  if (!queryHasExplicitYear(query) && parsedDate?.start) {
+    const todayStart = new Date(today);
+    todayStart.setHours(0, 0, 0, 0);
+    const futureLimit = new Date(todayStart);
+    futureLimit.setDate(todayStart.getDate() + HLTV_SEARCH_FUTURE_WINDOW_DAYS);
+    futureLimit.setHours(23, 59, 59, 999);
+    if (parsedDate.start > futureLimit) return false;
+  }
+
   if (year && year < today.getFullYear()) return false;
-  if (!parseHltvDate(dates, today) && !isKnownCurrentStatus(status) && !year) return false;
+  if (!parsedDate && !isKnownCurrentStatus(status) && !year) return false;
 
   return true;
 }
 
-function formatHltvDate(dates, today) {
-  const parsed = parseHltvDate(dates, today);
+function queryHasExplicitYear(query) {
+  return /\b(?:19\d{2}|20\d{2})\b/.test(String(query || ""));
+}
+
+function formatHltvDate(dates, today, fallbackYear = null) {
+  const parsed = parseHltvDate(dates, today, fallbackYear);
   if (!parsed) return dates;
 
   const formatDate = (date) => {

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { SettingsPasswordGate } from "@/components/settings/SettingsPasswordGate";
 import LiquipediaGlobalSettings from "@/components/settings/LiquipediaGlobalSettings";
+import TBvolleyGlobalSettings from "@/components/settings/TBvolleyGlobalSettings";
 import { AdminTeamImporter } from "@/components/admin/AdminTeamImporter";
 import SystemHealthDashboard from "@/components/settings/SystemHealthDashboard";
 import ParserSandbox from "@/components/settings/ParserSandbox";
@@ -13,6 +14,7 @@ import { Sliders, Database, Network, Terminal, Activity, ChevronDown } from "luc
 export default function SettingsPage() {
   const [openPanels, setOpenPanels] = useState<Record<string, boolean>>({
     global: false,
+    tbvolley: false,
     importer: false,
     proxy: false,
     sandbox: false,
@@ -30,7 +32,7 @@ export default function SettingsPage() {
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.3em] text-indigo-600">Engine Configuration</p>
           <h1 className="mt-4 text-5xl font-black tracking-tighter text-slate-950">
-            Настройки <span className="text-slate-400">Системы.</span>
+            Настройки <span className="text-slate-400">TData.</span>
           </h1>
           <p className="mt-6 text-xl font-bold leading-relaxed text-slate-700 max-w-2xl">
             Центральный пульт управления API-коннекторами, прокси-серверами, базами данных и отладкой парсинга.
@@ -40,7 +42,7 @@ export default function SettingsPage() {
         {/* Accordion Panels Container */}
         <div className="space-y-4">
           
-          {/* 1. Глобальные Параметры API */}
+          {/* 1. TCyber */}
           <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-soft transition-all duration-300">
             <button
               onClick={() => togglePanel("global")}
@@ -51,13 +53,13 @@ export default function SettingsPage() {
                   <Sliders className="h-5 w-5" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-black text-slate-950 tracking-tight">Параметры API и Заливки</h2>
-                  <p className="mt-0.5 text-xs font-bold text-slate-500">Сетевые таймауты, лимиты, endpoints Liquipedia и Admin API</p>
+                  <h2 className="text-xl font-black text-slate-950 tracking-tight">TCyber</h2>
+                  <p className="mt-0.5 text-xs font-bold text-slate-500">Liquipedia endpoints, сетевые лимиты и Admin API для cyber-направления</p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
                 <span className="rounded-full bg-indigo-50 border border-indigo-100 px-3 py-1 text-[9px] font-black uppercase tracking-widest text-indigo-600">
-                  Конфигурация
+                  API
                 </span>
                 <ChevronDown className={`h-5 w-5 text-slate-400 transition-transform duration-300 ${openPanels.global ? "rotate-180 text-indigo-600" : ""}`} />
               </div>
@@ -73,7 +75,40 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* 2. Импортер Команд в Базу */}
+          {/* 2. TBvolley */}
+          <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-soft transition-all duration-300">
+            <button
+              onClick={() => togglePanel("tbvolley")}
+              className="flex w-full items-center justify-between p-6 text-left hover:bg-slate-50/50 transition-colors"
+            >
+              <div className="flex items-center gap-4">
+                <div className={`flex h-12 w-12 items-center justify-center rounded-2xl transition-all ${openPanels.tbvolley ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/10" : "bg-slate-100 text-slate-400"}`}>
+                  <Sliders className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-black text-slate-950 tracking-tight">TBvolley</h2>
+                  <p className="mt-0.5 text-xs font-bold text-slate-500">Volleyball World, beach.volley.ru, German Beach Tour и Admin API пляжного волейбола</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="rounded-full bg-indigo-50 border border-indigo-100 px-3 py-1 text-[9px] font-black uppercase tracking-widest text-indigo-600">
+                  API
+                </span>
+                <ChevronDown className={`h-5 w-5 text-slate-400 transition-transform duration-300 ${openPanels.tbvolley ? "rotate-180 text-indigo-600" : ""}`} />
+              </div>
+            </button>
+            <div className={`transition-all duration-300 ease-in-out ${openPanels.tbvolley ? "max-h-[3200px] border-t border-slate-100 opacity-100" : "max-h-0 opacity-0 overflow-hidden"}`}>
+              {openPanels.tbvolley && (
+                <div className="p-6 bg-white">
+                  <ClientErrorBoundary title="Параметры TBvolley недоступны">
+                    <TBvolleyGlobalSettings />
+                  </ClientErrorBoundary>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 3. Импортер Команд в Базу */}
           <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-soft transition-all duration-300">
             <button
               onClick={() => togglePanel("importer")}
@@ -106,7 +141,7 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* 3. Менеджер Прокси-Пула */}
+          {/* 4. Менеджер Прокси-Пула */}
           <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-soft transition-all duration-300">
             <button
               onClick={() => togglePanel("proxy")}
@@ -139,7 +174,7 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* 4. Песочница Парсинга Wikitext */}
+          {/* 5. Песочница Парсинга Wikitext */}
           <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-soft transition-all duration-300">
             <button
               onClick={() => togglePanel("sandbox")}
@@ -172,7 +207,7 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* 5. Панель Диагностики и Телеметрии */}
+          {/* 6. Панель Диагностики и Телеметрии */}
           <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-soft transition-all duration-300">
             <button
               onClick={() => togglePanel("health")}

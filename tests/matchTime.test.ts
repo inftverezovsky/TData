@@ -55,6 +55,13 @@ test("resolveExactMatchDate trusts normalized date text before raw source text",
   })?.toISOString(), "2026-05-29T10:00:00.000Z");
 });
 
+test("resolveExactMatchDate prefers stored exact date over localized display text", () => {
+  assert.equal(resolveExactMatchDate({
+    matchDate: new Date("2026-06-04T14:00:00.000Z"),
+    matchDateTime: "04.06.2026 17:00:00",
+  })?.toISOString(), "2026-06-04T14:00:00.000Z");
+});
+
 test("resolveExactMatchDate prefers source timestamps over text timezone parsing", () => {
   assert.equal(resolveExactMatchDate({
     matchDate: null,

@@ -27,6 +27,24 @@ export type VlrEvent = {
 
 const VLR_ORIGIN = "https://www.vlr.gg";
 
+export function buildVlrEventMatchesUrl(eventUrlOrId: string, baseUrl = VLR_ORIGIN) {
+  const raw = String(eventUrlOrId || "").trim();
+  const id = extractVlrEventId(raw) || (/^\d+$/.test(raw) ? raw : "");
+  if (!id) return null;
+
+  let slug = "";
+  try {
+    const url = new URL(raw, baseUrl);
+    const parts = url.pathname.split("/").filter(Boolean);
+    const eventIndex = parts.indexOf("event");
+    if (eventIndex >= 0 && parts[eventIndex + 1] === id) {
+      slug = parts.slice(eventIndex + 2).join("/");
+    }
+  } catch {}
+
+  return absoluteVlrUrl(`/event/matches/${[id, slug].filter(Boolean).join("/")}`, baseUrl);
+}
+
 export function parseVlrMatchesHtml(html: string, baseUrl = VLR_ORIGIN): VlrMatch[] {
   const $ = cheerio.load(html);
   const matches: VlrMatch[] = [];

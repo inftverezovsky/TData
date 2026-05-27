@@ -17,6 +17,8 @@ export default function LoadTournamentButton({
   force = false,
   source,
   targetTab,
+  targetBasePath,
+  extraPayload,
   size = "md"
 }: {
   pageId?: number | null;
@@ -27,6 +29,8 @@ export default function LoadTournamentButton({
   force?: boolean;
   source?: TournamentSource;
   targetTab?: string;
+  targetBasePath?: string;
+  extraPayload?: Record<string, unknown>;
   size?: "sm" | "md";
 }) {
   const router = useRouter();
@@ -34,7 +38,9 @@ export default function LoadTournamentButton({
   const [error, setError] = useState<string | null>(null);
 
   function buildTournamentUrl(tournamentId: string) {
-    const baseUrl = `/${disciplineSlug}/tournament/${tournamentId}`;
+    const baseUrl = targetBasePath
+      ? `${targetBasePath.replace(/\/$/, "")}/${tournamentId}`
+      : `/${disciplineSlug}/tournament/${tournamentId}`;
     return targetTab ? `${baseUrl}?tab=${encodeURIComponent(targetTab)}` : baseUrl;
   }
 
@@ -55,7 +61,7 @@ export default function LoadTournamentButton({
       const response = await fetch(`/api/${disciplineSlug}/import-tournament`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pageId, title, pageUrl, force, source: resolvedSource }),
+        body: JSON.stringify({ pageId, title, pageUrl, force, source: resolvedSource, ...(extraPayload || {}) }),
         signal: controller.signal
       });
       clearTimeout(timeoutId);

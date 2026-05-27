@@ -67,8 +67,8 @@ export default function LiquipediaGlobalSettings() {
                </svg>
              </div>
              <div>
-               <h2 className="text-2xl font-black text-slate-900 tracking-tight">Параметры Liquipedia</h2>
-               <p className="text-xs font-bold text-slate-500 mt-0.5">Конфигурация API и сетевых задержек</p>
+               <h2 className="text-2xl font-black text-slate-900 tracking-tight">TCyber: Liquipedia</h2>
+               <p className="text-xs font-bold text-slate-500 mt-0.5">Конфигурация источников API и сетевых задержек</p>
              </div>
           </div>
 
@@ -171,8 +171,8 @@ export default function LiquipediaGlobalSettings() {
                </svg>
              </div>
              <div>
-               <h2 className="text-2xl font-black text-slate-900 tracking-tight">Параметры Заливки</h2>
-               <p className="text-xs font-bold text-slate-500 mt-0.5">Глобальные параметры отправки данных во внешний API</p>
+               <h2 className="text-2xl font-black text-slate-900 tracking-tight">TCyber: Заливка</h2>
+               <p className="text-xs font-bold text-slate-500 mt-0.5">Параметры отправки данных TCyber во внешний API</p>
              </div>
           </div>
 
@@ -209,17 +209,17 @@ export default function LiquipediaGlobalSettings() {
             <div className="h-px bg-slate-100 mb-8" />
 
             <dl className="grid gap-6">
-              <SettingsRow 
-                label="Universal Admin API URL" 
+              <SettingsRow
+                label="TCyber Admin API URL"
                 name="admin_api_url"
-                value={settings.admin_api_url} 
+                value={settings.admin_api_url}
                 isEditing={isEditing}
                 onChange={(val) => setSettings({ ...settings, admin_api_url: val })}
               />
-              <SettingsRow 
-                label="Universal Admin Sport ID" 
+              <SettingsRow
+                label="TCyber Admin Sport ID"
                 name="admin_sport_id"
-                value={settings.admin_sport_id} 
+                value={settings.admin_sport_id}
                 isEditing={isEditing}
                 onChange={(val) => setSettings({ ...settings, admin_sport_id: val })}
               />

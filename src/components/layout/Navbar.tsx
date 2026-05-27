@@ -10,17 +10,121 @@ const navItems = [
   { href: "/leagueoflegends", label: "League of Legends" },
   { href: "/valorant", label: "Valorant" },
   { href: "/manual-import", label: "Ручной импорт" },
-  { href: "/history", label: "История" },
-  { href: "/settings", label: "API" }
+  { href: "/history", label: "История" }
 ];
+
+const tbvolleyNavItems = [
+  { href: "/tbvolley/volleyballworld", label: "VolleyballWorld" },
+  { href: "/tbvolley/beachvolleyru", label: "beach.volley.ru" },
+  { href: "/tbvolley/germanbeachtour", label: "German Beach Tour" }
+];
+
+function isActivePath(pathname: string, href: string) {
+  return pathname === href || (href !== "/" && pathname.startsWith(href));
+}
+
+function isTcyberPath(pathname: string) {
+  return navItems.some((item) => isActivePath(pathname, item.href));
+}
+
+function isTbvolleyPath(pathname: string) {
+  return isActivePath(pathname, "/tbvolley");
+}
+
+export function PlatformTabs() {
+  const pathname = usePathname();
+  const isTcyberActive = isTcyberPath(pathname);
+  const isTbvolleyActive = isTbvolleyPath(pathname);
+  const isSettingsActive = isActivePath(pathname, "/settings");
+
+  return (
+    <nav aria-label="Платформы TData" className="flex min-w-0 items-center gap-1 overflow-x-auto">
+      <Link
+        href="/"
+        className={`relative shrink-0 rounded-lg px-3 py-2 text-sm font-bold transition-all duration-200 active:scale-[0.95] will-change-transform ${
+          isTcyberActive
+            ? "bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100 shadow-sm"
+            : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+        }`}
+      >
+        <span className="relative z-10">TCyber</span>
+        {isTcyberActive && (
+          <span className="absolute inset-x-3 bottom-1 h-0.5 rounded-full bg-indigo-600 animate-slide-in" />
+        )}
+      </Link>
+      <Link
+        href="/tbvolley/volleyballworld"
+        className={`relative shrink-0 rounded-lg px-3 py-2 text-sm font-bold transition-all duration-200 active:scale-[0.95] will-change-transform ${
+          isTbvolleyActive
+            ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100 shadow-sm"
+            : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+        }`}
+      >
+        <span className="relative z-10">TBvolley</span>
+        {isTbvolleyActive && (
+          <span className="absolute inset-x-3 bottom-1 h-0.5 rounded-full bg-emerald-600 animate-slide-in" />
+        )}
+      </Link>
+      <Link
+        href="/settings"
+        className={`relative shrink-0 rounded-lg px-3 py-2 text-sm font-bold transition-all duration-200 active:scale-[0.95] will-change-transform ${
+          isSettingsActive
+            ? "bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100 shadow-sm"
+            : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+        }`}
+      >
+        <span className="relative z-10">API</span>
+        {isSettingsActive && (
+          <span className="absolute inset-x-3 bottom-1 h-0.5 rounded-full bg-indigo-600 animate-slide-in" />
+        )}
+      </Link>
+    </nav>
+  );
+}
 
 export default function Navbar() {
   const pathname = usePathname();
 
+  if (isTbvolleyPath(pathname)) {
+    return (
+      <nav
+        aria-label="Навигация TBvolley"
+        className="flex min-w-0 items-center gap-1 overflow-x-auto border-t border-slate-200/70 py-2"
+      >
+        {tbvolleyNavItems.map((item) => {
+          const isActive = isActivePath(pathname, item.href);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`relative shrink-0 rounded-lg px-3 py-2 text-sm font-bold transition-all duration-200 active:scale-[0.95] will-change-transform ${
+                isActive
+                  ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100 shadow-sm"
+                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+              }`}
+            >
+              <span className="relative z-10">{item.label}</span>
+              {isActive && (
+                <span className="absolute inset-x-3 bottom-1 h-0.5 rounded-full bg-emerald-600 animate-slide-in" />
+              )}
+            </Link>
+          );
+        })}
+      </nav>
+    );
+  }
+
+  if (!isTcyberPath(pathname)) {
+    return null;
+  }
+
   return (
-    <nav aria-label="Основная навигация" className="flex min-w-0 items-center gap-1 overflow-x-auto">
+    <nav
+      aria-label="Навигация TCyber"
+      className="flex min-w-0 items-center gap-1 overflow-x-auto border-t border-slate-200/70 py-2"
+    >
       {navItems.map((item) => {
-        const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
+        const isActive = isActivePath(pathname, item.href);
         return (
           <Link
             key={item.href}

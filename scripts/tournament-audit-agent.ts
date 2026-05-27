@@ -19,7 +19,7 @@ import { expandScheduleAnnouncementsForDiscipline, isDisplayableScheduleMatch, i
 import { detectTournamentSource, type TournamentSource } from "../src/lib/utils/tournamentSource";
 import { buildEsportsParsingDiagnostics, type EsportsParsingDiagnostics } from "../src/lib/matches/parsingDiagnostics";
 
-type AuditSource = TournamentSource;
+type AuditSource = Exclude<TournamentSource, "volleyballworld" | "beachvolleyru" | "germanbeachtour">;
 type AuditSeverity = "critical" | "warning" | "info";
 
 type AuditCandidate = {
@@ -145,7 +145,7 @@ const SOURCE_DISCIPLINES: Record<AuditSource, KnownDisciplineSlug[]> = {
 
 function parseArgs(argv: string[]): AuditOptions {
   const options: AuditOptions = {
-    days: 10,
+    days: 60,
     forceEvents: false,
     forceImport: false,
     includeUnknownDates: false,
@@ -207,10 +207,10 @@ function printHelp() {
 Tournament audit agent
 
 Usage:
-  npm run audit:tournaments -- --days 10
+  npm run audit:tournaments -- --days 60
 
 Options:
-  --days N                  Upcoming window, default 10.
+  --days N                  Upcoming window, default 60.
   --force-events            Refresh source event lists.
   --force-import            Force-refresh each import. Use carefully.
   --include-unknown-dates   Also audit events whose dates cannot be parsed.
@@ -694,7 +694,9 @@ async function buildSourceExpectation(
   const error = getImportResultError(importResult);
   const parsedSourceMatches = getParsedSourceMatches(candidate, importResult, diagnostics);
   const rawCandidates = diagnostics?.rawCandidates ?? parsedSourceMatches;
-  const sourceMatchUrlsFound = diagnostics?.dltv?.matchUrlsFound ?? diagnostics?.vlr?.matchUrlsFound ?? parsedSourceMatches;
+  const sourceMatchUrlsFound = diagnostics?.dltv?.matchUrlsFound
+    ?? diagnostics?.vlr?.matchUrlsFound
+    ?? (candidate.source === "hltv" ? parsedSourceMatches : 0);
   const sourceMatchPagesFetched = diagnostics?.dltv?.matchPagesFetched ?? diagnostics?.vlr?.matchPagesFetched ?? 0;
   const sourceMatchPagesFailed = diagnostics?.dltv?.matchPagesFailed ?? diagnostics?.vlr?.matchPagesFailed ?? 0;
 

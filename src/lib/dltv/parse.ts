@@ -71,6 +71,21 @@ export function filterDltvEvents(events: DltvEvent[], query: string) {
   });
 }
 
+export function filterDltvEventsByWindow(events: DltvEvent[], now = new Date(), futureWindowDays = 60) {
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
+  const futureLimit = new Date(todayStart);
+  futureLimit.setDate(todayStart.getDate() + futureWindowDays);
+  futureLimit.setHours(23, 59, 59, 999);
+
+  return events.filter((event) => {
+    const range = parseDltvDateRange(event.dates || "");
+    if (!range) return event.status === "live" || event.status === "ongoing";
+    if (range.end && range.end < todayStart) return false;
+    return range.start <= futureLimit;
+  });
+}
+
 export function parseDltvEventPage(html: string, pageUrl: string): DltvEventPage {
   const $ = cheerio.load(html);
   const url = normalizeDltvUrl(pageUrl) || pageUrl;
@@ -305,6 +320,14 @@ function parseCentralScore($: cheerio.CheerioAPI) {
   return parseScoreFromTitle(cleanText($(".score__scores").first().text()))
     || parseScoreFromTitle(cleanText($(".score").first().text()))
     || parseScoreFromTitle(cleanText($(".match__page-title").first().text()));
+}
+
+function parseDltvDateRange(value: string) {
+  const match = cleanText(value).match(DATE_RANGE_RE);
+  if (!match) return null;
+  const start = parseDltvDate(match[1]);
+  const end = parseDltvDate(match[2]) || start;
+  return start ? { start, end } : null;
 }
 
 function parseDltvDate(value: string) {

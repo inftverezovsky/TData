@@ -1,11 +1,11 @@
-export function parseHltvDate(dateStr: string, today = new Date()) {
+export function parseHltvDate(dateStr: string, today = new Date(), fallbackYearOverride?: number | null) {
   if (!dateStr) return null;
   const d = dateStr.replace(/\s+/g, " ").trim();
   if (/^(date|date tbd|tbd)$/i.test(d)) return null;
   if (/^(live|ongoing)$/i.test(d)) return { start: today, end: today };
 
   const years = Array.from(d.matchAll(/\b(19\d{2}|20\d{2})\b/g)).map((match) => Number(match[1]));
-  const fallbackYear = years[years.length - 1] || today.getFullYear();
+  const fallbackYear = years[years.length - 1] || fallbackYearOverride || today.getFullYear();
 
   const parsePart = (part: string, fallbackMonth = "") => {
     const clean = part.replace(/,/g, "").replace(/(\d{1,2})(st|nd|rd|th)/gi, "$1").trim();
@@ -85,6 +85,7 @@ export function shouldKeepHltvEvent(input: {
   status?: string | null;
   query?: string;
   today?: Date;
+  futureWindowDays?: number;
 }) {
   const today = input.today || new Date();
   if (!isRelevantToQuery(input.title, input.href, input.query || "")) return false;
@@ -92,13 +93,27 @@ export function shouldKeepHltvEvent(input: {
   if (isPastEventDate(input.dates || "", today)) return false;
 
   const year = extractYear(`${input.title} ${input.href}`);
+  const parsed = parseHltvDate(input.dates || "", today, year);
+  if (!queryHasExplicitYear(input.query || "") && parsed?.start) {
+    const todayStart = new Date(today);
+    todayStart.setHours(0, 0, 0, 0);
+    const futureLimit = new Date(todayStart);
+    futureLimit.setDate(todayStart.getDate() + (input.futureWindowDays ?? 60));
+    futureLimit.setHours(23, 59, 59, 999);
+    if (parsed.start > futureLimit) return false;
+  }
+
   if (year && year < today.getFullYear()) return false;
 
   const status = String(input.status || "").toLowerCase();
   const knownCurrentStatus = status === "ongoing" || status === "upcoming";
-  if (!parseHltvDate(input.dates || "", today) && !knownCurrentStatus && !year) return false;
+  if (!parsed && !knownCurrentStatus && !year) return false;
 
   return true;
+}
+
+function queryHasExplicitYear(query: string) {
+  return /\b(?:19\d{2}|20\d{2})\b/.test(query);
 }
 
 function isRelevantToQuery(title: string, href: string, query: string) {

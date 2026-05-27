@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db/db";
 import { queueIdentitySync } from "@/lib/sync/identitySync";
 import { parseAdminTeamImportRows } from "@/lib/adminTeams/importSpreadsheet";
 import { runAutoMappingForDiscipline } from "@/lib/teams/mapping";
-import { resolveManualImportDisciplineSlug } from "@/lib/manualImport/config";
+import { normalizeManualImportDisciplineId, resolveManualImportDisciplineSlug } from "@/lib/manualImport/config";
 
 const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
 const REMOTE_FETCH_TIMEOUT_MS = 15000;
@@ -19,7 +19,7 @@ export async function POST(request: Request) {
       disciplineSlug: formData.get("disciplineSlug"),
     });
     if (!disciplineSlug) {
-      return NextResponse.json({ error: "Укажите ID дисциплины перед импортом команд." }, { status: 400 });
+      return NextResponse.json({ error: "Укажите дисциплину или Sport ID перед импортом команд." }, { status: 400 });
     }
 
     if (!file && !url) {
@@ -130,6 +130,8 @@ export async function POST(request: Request) {
       importedCount: records.length,
       skippedCount,
       detectedLayout: layout,
+      targetKey: disciplineSlug,
+      targetType: normalizeManualImportDisciplineId(disciplineSlug) ? "id" : "discipline",
       mappingResult,
       identitySync,
     });
@@ -160,7 +162,21 @@ export function toGoogleSheetsExportUrl(rawUrl: string) {
 }
 
 export function resolveAdminTeamsImportDisciplineSlug(input: { disciplineId?: unknown; disciplineSlug?: unknown }) {
-  return resolveManualImportDisciplineSlug(input) || null;
+  const knownOrId = resolveManualImportDisciplineSlug(input);
+  if (knownOrId) return knownOrId;
+
+  return normalizeAdminTeamsImportScopeSlug(input.disciplineSlug) || null;
+}
+
+export function normalizeAdminTeamsImportScopeSlug(value: unknown) {
+  const slug = typeof value === "string" || typeof value === "number"
+    ? String(value).trim().toLowerCase().replace(/\s+/g, "-")
+    : "";
+
+  if (!slug) return "";
+  if (normalizeManualImportDisciplineId(slug)) return slug;
+  if (!/^[\p{L}\p{N}][\p{L}\p{N}_-]{1,63}$/u.test(slug)) return "";
+  return slug;
 }
 
 function looksLikeHtml(buffer: Buffer, contentType: string | null) {

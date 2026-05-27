@@ -69,7 +69,7 @@ async function handleSearchRequest(config: {
     const cacheSince = new Date(Date.now() - getSearchCacheTtlMs());
     const staleSince = new Date(Date.now() - 24 * 60 * 60 * 1000);
     let staleRequest: Awaited<ReturnType<typeof findCachedSearchRequest>> = null;
-    const futureWindowDays = config.disciplineSlug === "leagueoflegends" ? 180 : 30;
+    const futureWindowDays = config.disciplineSlug === "leagueoflegends" ? 180 : 60;
 
     if (!force) {
       const cachedRequest = await findCachedSearchRequest(discipline.id, query, cacheSince);

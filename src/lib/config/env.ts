@@ -57,6 +57,12 @@ export function getSkipParsedHtml() {
   return raw === "1" || raw.toLowerCase() === "true";
 }
 
+export function shouldFetchParsedHtmlForDiscipline(disciplineSlug: string, skipParsedHtml = getSkipParsedHtml()) {
+  const slug = disciplineSlug.trim().toLowerCase();
+  if (slug === "leagueoflegends" || slug === "valorant") return true;
+  return !skipParsedHtml;
+}
+
 function numberFromEnv(key: string, fallback: number) {
   const raw = process.env[key];
   if (!raw) return fallback;

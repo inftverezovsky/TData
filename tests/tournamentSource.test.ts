@@ -21,6 +21,21 @@ test("detectTournamentSource detects Fandom LoL URLs", () => {
   assert.equal(detectTournamentSource("https://lol.fandom.com/wiki/Esports_World_Cup_2026"), "fandom");
 });
 
+test("detectTournamentSource detects VolleyballWorld URLs", () => {
+  assert.equal(detectTournamentSource("https://en.volleyballworld.com/global-schedule#fromDate=2026-05-27&yeardiscipline=beach"), "volleyballworld");
+  assert.equal(detectTournamentSource("https://www.volleyballworld.com/beachvolleyball/competitions/beach-pro-tour-2026/events/elite16-ostrava-cze/schedule/"), "volleyballworld");
+});
+
+test("detectTournamentSource detects beach.volley.ru URLs", () => {
+  assert.equal(detectTournamentSource("https://beach.volley.ru/calendar/01K9CBPGKV0CWX0442H8T704M7/allgames?sex=1"), "beachvolleyru");
+  assert.equal(detectTournamentSource("https://beach.volley.ru/games/01KRH2192B2KYF0Y8VZ3AR0CKJ"), "beachvolleyru");
+});
+
+test("detectTournamentSource detects German Beach Tour URLs", () => {
+  assert.equal(detectTournamentSource("https://beach.volleyball-verband.de/public/tur.php"), "germanbeachtour");
+  assert.equal(detectTournamentSource("https://beach.volleyball-verband.de/public/tur-show.php?id=14684"), "germanbeachtour");
+});
+
 test("detectTournamentSource defaults to Liquipedia", () => {
   assert.equal(detectTournamentSource("https://liquipedia.net/counterstrike/PGL/2026/Astana"), "liquipedia");
   assert.equal(detectTournamentSource(null), "liquipedia");
@@ -31,11 +46,14 @@ test("getTournamentSourceLabel returns user-facing labels", () => {
   assert.equal(getTournamentSourceLabel("vlr"), "Источник: VLR");
   assert.equal(getTournamentSourceLabel("dltv"), "Источник: DLTV");
   assert.equal(getTournamentSourceLabel("fandom"), "Источник: Fandom");
+  assert.equal(getTournamentSourceLabel("volleyballworld"), "Источник: VolleyballWorld");
+  assert.equal(getTournamentSourceLabel("beachvolleyru"), "Источник: beach.volley.ru");
+  assert.equal(getTournamentSourceLabel("germanbeachtour"), "Источник: German Beach Tour");
   assert.equal(getTournamentSourceLabel("liquipedia"), "Источник: Liquipedia");
 });
 
-test("supportsStageAnnouncements includes all tournament sources", () => {
-  for (const source of ["liquipedia", "hltv", "vlr", "dltv", "fandom"] as const) {
+test("supportsStageAnnouncements includes placeholder-slot sources", () => {
+  for (const source of ["liquipedia", "hltv", "vlr", "dltv", "fandom", "volleyballworld", "beachvolleyru", "germanbeachtour"] as const) {
     assert.equal(supportsStageAnnouncements(source), true, source);
   }
   assert.equal(supportsStageAnnouncements(null), false);

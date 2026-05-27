@@ -6,6 +6,7 @@ import {
   extractSection,
   extractTemplatesByNamePrefix,
   parseInteger,
+  parseTeamOpponentScore,
   parseTemplate,
   parseWikiDate,
   type WikiDateParseOptions
@@ -227,6 +228,7 @@ export function normalizeValorantTournament(input: {
 function extractMatchesFromParsedHtml(html: string, pageUrl: string): NormalizedMatch[] {
   const $ = cheerio.load(html);
   const matches: NormalizedMatch[] = [];
+  const hasMatchlistMatches = $(".brkts-matchlist-match").length > 0;
 
   const extractDateFromScope = ($scope: any) => {
     const selector = [
@@ -381,6 +383,9 @@ function extractMatchesFromParsedHtml(html: string, pageUrl: string): Normalized
     const scoreB = parseInteger(scoreTexts[1]);
     const stage = $match.find(".match-info-stage").first().text().trim() || null;
     const tournamentName = $match.find(".match-info-tournament-name a").first().text().trim() || null;
+    if (hasMatchlistMatches && $match.hasClass("match-info--vertical") && isDateOnlyScheduleHeading(stage) && !tournamentName) {
+      return;
+    }
     const formatText = $match.find(".match-bm-lbl, .brkts-popup-header-dev-match-type, [data-bestof], [data-matchtype]").first().text().trim() || null;
     const rawText = $.html(matchEl)?.slice(0, 2500) || null;
 
@@ -471,8 +476,10 @@ function extractMatchesFromWikitext(wikitext: string): NormalizedMatch[] {
       matchDateTime: dateText,
       teamAName,
       teamBName,
-      scoreA: parseInteger(params.score1 ?? params.games1),
-      scoreB: parseInteger(params.score2 ?? params.games2),
+      scoreA: parseInteger(params.score1 ?? params.games1)
+        ?? parseTeamOpponentScore(params.team1 ?? params.opponent1 ?? params.p1),
+      scoreB: parseInteger(params.score2 ?? params.games2)
+        ?? parseTeamOpponentScore(params.team2 ?? params.opponent2 ?? params.p2),
       format: getBestOfLabel(formatText) || getBestOfLabel(template),
       status: firstClean(params.status, params.finished, params.walkover),
       rawText: template.slice(0, 2500)
@@ -660,6 +667,12 @@ function parseTimestampDate(value: string | null | undefined) {
   const ms = raw > 9_999_999_999 ? raw : raw * 1000;
   const date = new Date(ms);
   return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function isDateOnlyScheduleHeading(value: string | null | undefined) {
+  return /^(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:,\s*(?:19|20)\d{2})?$/i.test(
+    String(value || "").trim()
+  );
 }
 
 function scoreMatchCompleteness(match: NormalizedMatch) {

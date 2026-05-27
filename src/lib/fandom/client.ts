@@ -33,6 +33,7 @@ export class FandomRequestError extends Error {
 }
 
 const DEFAULT_LIMIT = 10;
+const FANDOM_EVENTS_FUTURE_WINDOW_DAYS = Number(process.env.FANDOM_EVENTS_FUTURE_WINDOW_DAYS || 60);
 
 export async function searchFandomTournamentPages(
   query: string,
@@ -99,13 +100,14 @@ export async function fetchFandomParsedPage(input: {
 export async function fetchFandomTournamentCargoEvents(apiUrl = getFandomLolApiUrl()) {
   const now = new Date();
   const today = now.toISOString().slice(0, 10);
+  const futureLimit = new Date(now.getTime() + FANDOM_EVENTS_FUTURE_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const json = await fandomApiRequest(apiUrl, {
     action: "cargoquery",
     tables: "Tournaments",
     fields: "Name,OverviewPage,DateStart,Date,Region,TournamentLevel",
-    where: `DateStart >= '${today}'`,
+    where: `DateStart >= '${today}' AND DateStart <= '${futureLimit}'`,
     order_by: "DateStart ASC",
-    limit: "20",
+    limit: "50",
     format: "json",
   });
 

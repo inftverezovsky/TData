@@ -1,4 +1,5 @@
 import { getBestOfLabel } from "@/lib/matches/format";
+import { formatMoscowDate } from "@/lib/matches/scheduleOffset";
 import { hasExactMatchTime, resolveDisplayMatchDate } from "@/lib/matches/time";
 import { isPlaceholderTeam, isTbdPlaceholderTeam } from "@/lib/teams/teams";
 import { supportsStageAnnouncements, type TournamentSource } from "@/lib/utils/tournamentSource";
@@ -41,6 +42,7 @@ export type StageSlotAnnouncementResolution = {
 
 const TBD_ANNOUNCEMENT_SELECTION_SEPARATOR = "::";
 type ScheduleViewOptions = { disciplineSlug?: string | null; source?: TournamentSource | null };
+type ScheduleUpcomingWindow = { fromDate: string; toDate: string };
 
 export function isSchedulePlaceholderMatch(match: ScheduleViewMatch) {
   return Boolean(
@@ -86,6 +88,28 @@ export function isDisplayableScheduleMatch(match: ScheduleViewMatch) {
   if (teamA.placeholder && teamB.placeholder) return false;
 
   return teamA.real || teamB.real;
+}
+
+export function resolveScheduleUpcomingWindow(now = new Date()): ScheduleUpcomingWindow {
+  const fromDate = formatMoscowDate(now);
+  const from = parseIsoDate(fromDate);
+  const to = new Date(from.getTime());
+  to.setUTCMonth(to.getUTCMonth() + 1);
+
+  return {
+    fromDate,
+    toDate: formatIsoDate(to),
+  };
+}
+
+export function isScheduleMatchInUpcomingWindow(
+  match: ScheduleViewMatch,
+  window: ScheduleUpcomingWindow = resolveScheduleUpcomingWindow(),
+) {
+  const displayDate = resolveDisplayMatchDate(match);
+  if (!displayDate) return false;
+  const dateKey = formatMoscowDate(displayDate);
+  return dateKey >= window.fromDate && dateKey <= window.toDate;
 }
 
 export function isUploadableScheduleEntry(match: ScheduleViewMatch, options: ScheduleViewOptions = {}) {
@@ -311,7 +335,14 @@ function normalizeStageSlotLabel(value: string | null | undefined) {
 
   const known = [
     /\bGroup\s+[A-Z0-9]+\s+(?:Winners?'?|Winner'?s?|Elimination|Decider|Opening)(?:\s+Match)?\b/i,
+    /\bSwiss(?:\s+Stage)?\s*[:\-]?\s*Round\s+\d+(?:\s*\([^)]+\))?\b/i,
+    /\bRound\s+\d+\s+(?:High|Low|Mid)?\s*Matches?\b/i,
+    /\bPlayoffs?\s*[:\-]?\s*(?:Upper|Lower)\s+(?:Round\s+\d+|Finals?)\b/i,
     /\bSwiss\s+Round\s+\d+(?:\s*#\d+)?\b/i,
+    /\b(?:Winner|Loser)\s+Runde\s+\d+\b/i,
+    /\b(?:Achtel|Viertel|Halb)?finale(?:\s+(?:Winner|Loser))?\b/i,
+    /\bkleines\s+Finale\b/i,
+    /\bQualifikation\b/i,
     /\bGroup\s+Stage\b/i,
     /\bRound\s+Robin\b/i,
     /\bRegular\s+Season\b/i,
@@ -362,9 +393,18 @@ function hasStageSlotLabelHint(value: string) {
 
 function normalizeKnownStageName(value: string) {
   const text = value.replace(/\s+/g, " ").trim();
+  if (/\bswiss\b/i.test(text)) return "Group Stage";
+  if (/^round\s+\d+\s+(?:high|low|mid)?\s*matches?/i.test(text)) return "Group Stage";
+  if (/\bplayoffs?\b/i.test(text) && /\b(?:upper|lower)\s+(?:round\s+\d+|finals?)\b/i.test(text)) return "Playoffs";
   if (/round robin/i.test(text)) return "Group Stage";
   if (/regular\s+season/i.test(text)) return "Regular Season";
   if (/\bgroup\s+[a-z0-9]+\s+(?:winners?'?|winner'?s?|elimination|decider|opening)(?:\s+match)?\b/i.test(text)) return "Group Stage";
+  const germanRunde = text.match(/\b(?:Winner|Loser)\s+Runde\s+\d+\b/i);
+  if (germanRunde) return titleCaseStage(germanRunde[0]);
+  const germanFinal = text.match(/\b(?:Achtel|Viertel|Halb)?finale(?:\s+(?:Winner|Loser))?\b/i);
+  if (germanFinal) return titleCaseStage(germanFinal[0]);
+  if (/\bkleines\s+finale\b/i.test(text)) return "kleines Finale";
+  if (/\bqualifikation\b/i.test(text)) return "Qualifikation";
   const playInDay = text.match(/play[-\s]?in\s+day\s+\d+/i);
   if (playInDay) return titleCaseStage(playInDay[0]).replace(/^Play In\b/, "Play-In");
   if (/play[-\s]?in/i.test(text)) return "Play-In";
@@ -434,4 +474,13 @@ function titleCaseStage(value: string) {
 function getBestOfSortValue(label: string) {
   const match = label.match(/^BO(\d+)$/i);
   return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+}
+
+function parseIsoDate(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+function formatIsoDate(date: Date) {
+  return date.toISOString().slice(0, 10);
 }

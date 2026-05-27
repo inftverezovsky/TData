@@ -64,7 +64,7 @@ export default function UpcomingTournamentsWidget({ disciplineSlug }: { discipli
       <div className="p-6 border-b border-slate-100 flex items-center justify-between">
         <div>
           <h2 className="text-[10px] font-black uppercase tracking-[0.22em] text-slate-950">Актуальные Турниры</h2>
-          <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest">Текущие и ближайшие (до 7 дней)</p>
+          <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest">Текущие и ближайшие (до 60 дней)</p>
         </div>
         <button
           onClick={() => fetchTournaments(true)}

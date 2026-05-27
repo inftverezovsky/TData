@@ -62,3 +62,52 @@ test("shouldKeepHltvEvent filters finished and old events", () => {
     today,
   }), false);
 });
+
+test("shouldKeepHltvEvent uses a 60 day default future window", () => {
+  assert.equal(shouldKeepHltvEvent({
+    title: "European Pro League 2026",
+    href: "/events/9000/european-pro-league-2026",
+    dates: "2026-07-08",
+    status: "upcoming",
+    query: "European Pro League",
+    today,
+  }), true);
+
+  assert.equal(shouldKeepHltvEvent({
+    title: "European Pro League 2026",
+    href: "/events/9001/european-pro-league-2026",
+    dates: "2026-07-25",
+    status: "upcoming",
+    query: "European Pro League",
+    today,
+  }), false);
+
+  assert.equal(shouldKeepHltvEvent({
+    title: "European Pro League 2026",
+    href: "/events/9001/european-pro-league-2026",
+    dates: "2026-07-25",
+    status: "upcoming",
+    query: "European Pro League 2026",
+    today,
+  }), true);
+});
+
+test("shouldKeepHltvEvent uses title year when HLTV omits year in dates", () => {
+  assert.equal(shouldKeepHltvEvent({
+    title: "FiReMAJOR Buenos Aires 2027",
+    href: "/events/8297/firemajor-buenos-aires-2027",
+    dates: "May 31st - Jun 20th",
+    status: "upcoming",
+    query: "Major",
+    today,
+  }), false);
+
+  assert.equal(shouldKeepHltvEvent({
+    title: "FiReMAJOR Buenos Aires 2027",
+    href: "/events/8297/firemajor-buenos-aires-2027",
+    dates: "May 31st - Jun 20th",
+    status: "upcoming",
+    query: "Major 2027",
+    today,
+  }), true);
+});

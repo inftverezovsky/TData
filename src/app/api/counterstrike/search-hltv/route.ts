@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { runHltvScript } from "@/lib/hltv/scraper";
+import { filterHltvEventsByQuery } from "@/lib/hltv/searchFallback";
 import { emptyValidIfNoItems } from "@/lib/proxy/parserErrors";
 import { getHltvSearchErrorMessage, normalizeHltvErrorClass } from "@/lib/hltv/userFacingErrors";
 
@@ -17,15 +18,26 @@ export async function GET(request: Request) {
     }
 
     const data = await runHltvScript('search', query, { noCache: force });
-    const results = Array.isArray(data.events) ? data.events : [];
+    let results = Array.isArray(data.events) ? data.events : [];
+    let fallbackData: any = null;
+    if (results.length === 0) {
+      fallbackData = await runHltvScript("events", undefined, { noCache: force }).catch((error) => ({
+        ok: false,
+        warning: error instanceof Error ? error.message : "HLTV events fallback failed.",
+      }));
+      if (Array.isArray(fallbackData.events)) {
+        results = filterHltvEventsByQuery(fallbackData.events, query);
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       results,
-      cacheHit: !!data.cacheHit,
-      cacheLayer: data.cacheLayer || null,
-      stale: !!data.stale,
-      warning: data.warning || null,
-      errorClass: data.errorClass || emptyValidIfNoItems([results.length]),
+      cacheHit: !!data.cacheHit || !!fallbackData?.cacheHit,
+      cacheLayer: results.length > 0 && fallbackData ? `events-fallback${fallbackData.cacheLayer ? `:${fallbackData.cacheLayer}` : ""}` : data.cacheLayer || null,
+      stale: !!data.stale || !!fallbackData?.stale,
+      warning: data.warning || fallbackData?.warning || null,
+      errorClass: results.length > 0 ? null : data.errorClass || emptyValidIfNoItems([results.length]),
     });
   } catch (error: any) {
     const errorClass = normalizeHltvErrorClass(error.errorClass, error.message);
