@@ -246,6 +246,8 @@ test("all sourced TBD-vs-TBD slots render as one stage announcement", () => {
     ["leagueoflegends", "fandom"],
     ["valorant", "vlr"],
     ["beachvolleyball", "volleyballworld"],
+    ["beachvolleyball", "beachvolleyru"],
+    ["beachvolleyball", "germanbeachtour"],
   ] as const;
 
   for (const [disciplineSlug, source] of cases) {
@@ -307,6 +309,61 @@ test("VolleyballWorld winner/loser placeholders render as one stage announcement
     assert.equal(entries[0].isStageAnnouncement, true, item.expected);
     assert.equal(entries[0].singleAnnouncementTeamName, item.expected);
     assert.equal(entries[0].selectionId, buildTbdAnnouncementSelectionId(item.matchId, "stage"));
+  }
+});
+
+test("beach volleyball winner placeholders with one known team are uploadable single-team announcements", () => {
+  for (const source of ["volleyballworld", "beachvolleyru", "germanbeachtour"] as const) {
+    const matches = [
+      {
+        id: `${source}-winner-team-b-row`,
+        matchId: `${source}-winner-team-b`,
+        matchDate: new Date("2026-05-28T06:20:00.000Z"),
+        matchDateTime: "28.05.2026 09:20:00",
+        rawText: "S. H. Kan/C. H. Lee vs Winner of match 2",
+        scoreA: null,
+        scoreB: null,
+        format: "BO3",
+        stage: "Main Draw",
+        round: "Round 1",
+        teamAName: "S. H. Kan/C. H. Lee",
+        teamBName: "Winner of match 2",
+        hasPlaceholderTeams: true,
+      },
+      {
+        id: `${source}-winner-team-a-row`,
+        matchId: `${source}-winner-team-a`,
+        matchDate: new Date("2026-05-28T08:00:00.000Z"),
+        matchDateTime: "28.05.2026 11:00:00",
+        rawText: "Winner of match 7 vs LI Xiaokai /MAO Yuan",
+        scoreA: null,
+        scoreB: null,
+        format: "BO3",
+        stage: "Main Draw",
+        round: "Round 1",
+        teamAName: "Winner of match 7",
+        teamBName: "LI Xiaokai /MAO Yuan",
+        hasPlaceholderTeams: true,
+      },
+    ];
+
+    assert.equal(isUploadReadyScheduleMatch(matches[0]), false, source);
+    assert.equal(isAnnouncementScheduleMatch(matches[0], { disciplineSlug: "beachvolleyball", source }), true, source);
+    assert.equal(isUploadableScheduleEntry(matches[0], { disciplineSlug: "beachvolleyball", source }), true, source);
+    assert.deepEqual(getUploadableTbdAnnouncementSides(matches[0], { disciplineSlug: "beachvolleyball", source }), ["teamB"], source);
+
+    const entries = expandScheduleAnnouncementsForDiscipline(matches, "beachvolleyball", source);
+
+    assert.equal(entries.length, 2, source);
+    assert.deepEqual(entries.map((entry) => entry.singleAnnouncementSide), ["teamB", "teamA"], source);
+    assert.deepEqual(entries.map((entry) => entry.singleAnnouncementTeamName), ["Winner of match 2", "Winner of match 7"], source);
+    assert.deepEqual(entries.map((entry) => entry.selectionId), [
+      buildTbdAnnouncementSelectionId(`${source}-winner-team-b`, "teamB"),
+      buildTbdAnnouncementSelectionId(`${source}-winner-team-a`, "teamA"),
+    ], source);
+    assert.equal(entries.every((entry) => entry.isSingleTeamAnnouncement), true, source);
+    assert.equal(entries.some((entry) => entry.isStageAnnouncement), false, source);
+    assert.equal(entries.every((entry) => isUploadableScheduleEntry(entry, { disciplineSlug: "beachvolleyball", source })), true, source);
   }
 });
 

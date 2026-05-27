@@ -1,10 +1,14 @@
 import { NextResponse } from 'next/server';
+import { requireAdmin } from '@/lib/auth/adminAuth';
 import { phpSerialize } from '@/lib/adminUpload/phpSerialize';
 import { resolveAdminSettings } from '@/lib/adminUpload/resolveAdminSettings';
 import { sendFixtPayload } from '@/lib/adminUpload/sendFixtPayload';
 import { prisma } from '@/lib/db/db';
 
 export async function POST(request: Request) {
+  const unauthorized = await requireAdmin(request);
+  if (unauthorized) return unauthorized;
+
   try {
     const { payload } = await request.json();
     

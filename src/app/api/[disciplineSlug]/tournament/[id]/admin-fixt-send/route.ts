@@ -1,6 +1,7 @@
 import { createHash } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { NextResponse } from 'next/server';
+import { requireAdmin } from '@/lib/auth/adminAuth';
 import { prisma } from '@/lib/db/db';
 import { buildFixtPayload } from '@/lib/adminUpload/buildFixtPayload';
 import { phpSerialize } from '@/lib/adminUpload/phpSerialize';
@@ -11,6 +12,9 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string; disciplineSlug: string }> }
 ) {
+  const unauthorized = await requireAdmin(request);
+  if (unauthorized) return unauthorized;
+
   const { disciplineSlug: routeDisciplineSlug, id } = await params;
   try {
     const body = await request.json();

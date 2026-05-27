@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/auth/adminAuth";
 import { parseManualMatchesWithAi } from "@/lib/manualImport/aiParser";
 import { getManualImportDiscipline } from "@/lib/manualImport/config";
 import { mapManualMatches } from "@/lib/manualImport/buildManualFixtPayload";
@@ -8,6 +9,9 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 export async function POST(request: Request) {
+  const unauthorized = await requireAdmin(request);
+  if (unauthorized) return unauthorized;
+
   try {
     const totalStartedAt = Date.now();
     const { disciplineSlug, disciplineId, text, ocrText, imageDataUrl, imageBuffer, imageMime, mode, fast } = await readManualImportParseRequest(request);

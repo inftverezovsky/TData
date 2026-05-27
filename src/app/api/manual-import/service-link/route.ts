@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/auth/adminAuth";
 import { resolvePublicOrigin } from "@/lib/http/publicOrigin";
 import { putManualImportJson } from "@/lib/manualImport/cache";
 import { buildManualFixtPayload } from "@/lib/manualImport/buildManualFixtPayload";
@@ -7,6 +8,9 @@ import { getManualImportDiscipline, resolveManualImportDisciplineSlug } from "@/
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  const unauthorized = await requireAdmin(request);
+  if (unauthorized) return unauthorized;
+
   try {
     const body = await request.json().catch(() => ({}));
     const shapkaId = typeof body.shapkaId === "string" || typeof body.shapkaId === "number" ? String(body.shapkaId).trim() : "";

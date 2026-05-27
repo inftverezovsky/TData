@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/auth/adminAuth";
 import { mapManualMatches } from "@/lib/manualImport/buildManualFixtPayload";
 import { getManualImportDiscipline, resolveManualImportDisciplineSlug } from "@/lib/manualImport/config";
 import { normalizeAdminSportId, saveManualImportTeamMappings } from "@/lib/manualImport/teamMappings";
@@ -6,6 +7,9 @@ import { normalizeAdminSportId, saveManualImportTeamMappings } from "@/lib/manua
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  const unauthorized = await requireAdmin(request);
+  if (unauthorized) return unauthorized;
+
   try {
     const body = await request.json().catch(() => ({}));
     const disciplineId = typeof body.disciplineId === "string" || typeof body.disciplineId === "number" ? String(body.disciplineId).trim() : "";

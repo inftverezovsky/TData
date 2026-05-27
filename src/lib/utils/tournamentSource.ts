@@ -11,6 +11,12 @@ const STAGE_ANNOUNCEMENT_SOURCES = new Set<TournamentSource>([
   "germanbeachtour",
 ]);
 
+const BEACH_VOLLEYBALL_SOURCES = new Set<TournamentSource>([
+  "volleyballworld",
+  "beachvolleyru",
+  "germanbeachtour",
+]);
+
 export function detectTournamentSource(pageUrl?: string | null): TournamentSource {
   if (!pageUrl) return "liquipedia";
 
@@ -48,4 +54,8 @@ export function getTournamentSourceLabel(source: TournamentSource) {
 
 export function supportsStageAnnouncements(source?: TournamentSource | null) {
   return Boolean(source && STAGE_ANNOUNCEMENT_SOURCES.has(source));
+}
+
+export function isBeachVolleyballTournamentSource(source?: TournamentSource | null) {
+  return Boolean(source && BEACH_VOLLEYBALL_SOURCES.has(source));
 }

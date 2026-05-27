@@ -2,7 +2,12 @@ import { getBestOfLabel } from "@/lib/matches/format";
 import { formatMoscowDate } from "@/lib/matches/scheduleOffset";
 import { hasExactMatchTime, resolveDisplayMatchDate } from "@/lib/matches/time";
 import { isPlaceholderTeam, isTbdPlaceholderTeam } from "@/lib/teams/teams";
-import { supportsStageAnnouncements, type TournamentSource } from "@/lib/utils/tournamentSource";
+import {
+  isBeachVolleyballTournamentSource,
+  supportsStageAnnouncements,
+  type TournamentSource,
+} from "@/lib/utils/tournamentSource";
+import { isBeachVolleyballScopeSlug } from "@/lib/tbvolley/config";
 import { cleanLiquipediaBracketLabel, isLikelyLiquipediaLayoutNoise } from "@/lib/liquipedia/bracketLabels";
 
 export type TbdAnnouncementSide = "teamA" | "teamB" | "stage";
@@ -120,6 +125,7 @@ export function isUploadableScheduleEntry(match: ScheduleViewMatch, options: Sch
 
   const teamA = getScheduleTeamState(match.teamAName);
   const teamB = getScheduleTeamState(match.teamBName);
+  if (getUploadableTbdAnnouncementSides(match, options).length > 0) return true;
 
   return (
     (!teamA.placeholder || teamA.tbd) &&
@@ -170,6 +176,9 @@ export function getUploadableTbdAnnouncementSides(match: ScheduleViewMatch, opti
 
   const teamA = getScheduleTeamState(match.teamAName);
   const teamB = getScheduleTeamState(match.teamBName);
+  const mappablePlaceholderSides = getUploadableMappedPlaceholderAnnouncementSides(teamA, teamB, options);
+  if (mappablePlaceholderSides.length > 0) return mappablePlaceholderSides;
+
   if (!(teamA.tbd && teamB.tbd)) return [];
 
   const sides: TbdAnnouncementSide[] = [];
@@ -265,6 +274,25 @@ function getScheduleTeamState(name: string | null | undefined) {
     real: Boolean(name && !placeholder),
     unsupportedPlaceholder: placeholder && !tbd,
   };
+}
+
+function getUploadableMappedPlaceholderAnnouncementSides(
+  teamA: ReturnType<typeof getScheduleTeamState>,
+  teamB: ReturnType<typeof getScheduleTeamState>,
+  options: ScheduleViewOptions,
+) {
+  if (!supportsMappedPlaceholderAnnouncements(options)) return [];
+  if (teamA.placeholder && teamB.placeholder) return [];
+
+  const sides: TbdAnnouncementSide[] = [];
+  if (teamA.unsupportedPlaceholder) sides.push("teamA");
+  if (teamB.unsupportedPlaceholder) sides.push("teamB");
+  return sides;
+}
+
+function supportsMappedPlaceholderAnnouncements(options: ScheduleViewOptions) {
+  return isBeachVolleyballTournamentSource(options.source)
+    || isBeachVolleyballScopeSlug(options.disciplineSlug);
 }
 
 function isNamedPlaceholderSide(name: string | null | undefined) {

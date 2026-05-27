@@ -171,6 +171,49 @@ test("collectTournamentTeamNames exposes sourced stage announcements instead of 
   }
 });
 
+test("collectTournamentTeamNames exposes beach placeholder announcements for manual mapping", () => {
+  for (const source of ["volleyballworld", "beachvolleyru", "germanbeachtour"] as const) {
+    const names = collectTournamentTeamNames({
+      disciplineSlug: "beachvolleyball",
+      source,
+      matches: [
+        {
+          teamAName: "S. H. Kan/C. H. Lee",
+          teamBName: "Winner of match 2",
+          matchDate: new Date("2026-05-28T06:20:00.000Z"),
+          matchDateTime: "28.05.2026 09:20:00",
+          hasPlaceholderTeams: true,
+        },
+        {
+          teamAName: "Winner of match 7",
+          teamBName: "LI Xiaokai /MAO Yuan",
+          matchDate: new Date("2026-05-28T08:00:00.000Z"),
+          matchDateTime: "28.05.2026 11:00:00",
+          hasPlaceholderTeams: true,
+        },
+        {
+          teamAName: "Winner of match 39",
+          teamBName: "Winner of match 40",
+          round: "Quarter-finals",
+          rawText: "Quarter-finals Winner of match 39 vs Winner of match 40",
+          matchDate: new Date("2026-05-31T13:00:00.000Z"),
+          matchDateTime: "31.05.2026 16:00:00",
+          hasPlaceholderTeams: true,
+        },
+      ],
+      participants: [],
+    });
+
+    assert.equal(names.includes("Winner of match 2"), true, source);
+    assert.equal(names.includes("Winner of match 7"), true, source);
+    assert.equal(names.includes("S. H. Kan/C. H. Lee"), true, source);
+    assert.equal(names.includes("LI Xiaokai /MAO Yuan"), true, source);
+    assert.equal(names.includes("Quarterfinals"), true, source);
+    assert.equal(names.includes("Winner of match 39"), false, source);
+    assert.equal(names.includes("Winner of match 40"), false, source);
+  }
+});
+
 test("collectTournamentTeamNames hides sourced stage announcements without exact time", () => {
   const names = collectTournamentTeamNames({
     disciplineSlug: "counterstrike",
