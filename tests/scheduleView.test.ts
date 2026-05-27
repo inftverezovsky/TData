@@ -312,7 +312,7 @@ test("VolleyballWorld winner/loser placeholders render as one stage announcement
   }
 });
 
-test("beach volleyball winner placeholders with one known team are uploadable single-team announcements", () => {
+test("beach volleyball winner placeholders with one known team render as stage announcements", () => {
   for (const source of ["volleyballworld", "beachvolleyru", "germanbeachtour"] as const) {
     const matches = [
       {
@@ -325,7 +325,7 @@ test("beach volleyball winner placeholders with one known team are uploadable si
         scoreB: null,
         format: "BO3",
         stage: "Main Draw",
-        round: "Round 1",
+        round: "Quarter-finals",
         teamAName: "S. H. Kan/C. H. Lee",
         teamBName: "Winner of match 2",
         hasPlaceholderTeams: true,
@@ -340,7 +340,7 @@ test("beach volleyball winner placeholders with one known team are uploadable si
         scoreB: null,
         format: "BO3",
         stage: "Main Draw",
-        round: "Round 1",
+        round: "Semi-finals",
         teamAName: "Winner of match 7",
         teamBName: "LI Xiaokai /MAO Yuan",
         hasPlaceholderTeams: true,
@@ -350,21 +350,44 @@ test("beach volleyball winner placeholders with one known team are uploadable si
     assert.equal(isUploadReadyScheduleMatch(matches[0]), false, source);
     assert.equal(isAnnouncementScheduleMatch(matches[0], { disciplineSlug: "beachvolleyball", source }), true, source);
     assert.equal(isUploadableScheduleEntry(matches[0], { disciplineSlug: "beachvolleyball", source }), true, source);
-    assert.deepEqual(getUploadableTbdAnnouncementSides(matches[0], { disciplineSlug: "beachvolleyball", source }), ["teamB"], source);
+    assert.deepEqual(getUploadableTbdAnnouncementSides(matches[0], { disciplineSlug: "beachvolleyball", source }), ["stage"], source);
 
     const entries = expandScheduleAnnouncementsForDiscipline(matches, "beachvolleyball", source);
 
     assert.equal(entries.length, 2, source);
-    assert.deepEqual(entries.map((entry) => entry.singleAnnouncementSide), ["teamB", "teamA"], source);
-    assert.deepEqual(entries.map((entry) => entry.singleAnnouncementTeamName), ["Winner of match 2", "Winner of match 7"], source);
+    assert.deepEqual(entries.map((entry) => entry.singleAnnouncementSide), ["stage", "stage"], source);
+    assert.deepEqual(entries.map((entry) => entry.singleAnnouncementTeamName), ["Quarterfinals", "Semifinals"], source);
     assert.deepEqual(entries.map((entry) => entry.selectionId), [
-      buildTbdAnnouncementSelectionId(`${source}-winner-team-b`, "teamB"),
-      buildTbdAnnouncementSelectionId(`${source}-winner-team-a`, "teamA"),
+      buildTbdAnnouncementSelectionId(`${source}-winner-team-b`, "stage"),
+      buildTbdAnnouncementSelectionId(`${source}-winner-team-a`, "stage"),
     ], source);
     assert.equal(entries.every((entry) => entry.isSingleTeamAnnouncement), true, source);
-    assert.equal(entries.some((entry) => entry.isStageAnnouncement), false, source);
+    assert.equal(entries.every((entry) => entry.isStageAnnouncement), true, source);
     assert.equal(entries.every((entry) => isUploadableScheduleEntry(entry, { disciplineSlug: "beachvolleyball", source })), true, source);
   }
+});
+
+test("beach volleyball single winner placeholder falls back to stage label without explicit round", () => {
+  const entries = expandScheduleAnnouncementsForDiscipline([{
+    id: "volleyballworld-winner-fallback-row",
+    matchId: "volleyballworld-winner-fallback",
+    matchDate: new Date("2026-05-28T06:20:00.000Z"),
+    matchDateTime: "28.05.2026 09:20:00",
+    rawText: "S. H. Kan/C. H. Lee vs Winner of match 2",
+    scoreA: null,
+    scoreB: null,
+    format: "BO3",
+    stage: null,
+    round: null,
+    teamAName: "S. H. Kan/C. H. Lee",
+    teamBName: "Winner of match 2",
+    hasPlaceholderTeams: true,
+  }], "beachvolleyball", "volleyballworld");
+
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].isStageAnnouncement, true);
+  assert.equal(entries[0].singleAnnouncementTeamName, "Playoffs");
+  assert.equal(entries[0].selectionId, buildTbdAnnouncementSelectionId("volleyballworld-winner-fallback", "stage"));
 });
 
 test("HLTV group placeholder rows render as one common stage announcement", () => {

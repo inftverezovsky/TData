@@ -171,7 +171,7 @@ test("collectTournamentTeamNames exposes sourced stage announcements instead of 
   }
 });
 
-test("collectTournamentTeamNames exposes beach placeholder announcements for manual mapping", () => {
+test("collectTournamentTeamNames exposes beach placeholder stages instead of winner placeholders", () => {
   for (const source of ["volleyballworld", "beachvolleyru", "germanbeachtour"] as const) {
     const names = collectTournamentTeamNames({
       disciplineSlug: "beachvolleyball",
@@ -180,6 +180,7 @@ test("collectTournamentTeamNames exposes beach placeholder announcements for man
         {
           teamAName: "S. H. Kan/C. H. Lee",
           teamBName: "Winner of match 2",
+          round: "Quarter-finals",
           matchDate: new Date("2026-05-28T06:20:00.000Z"),
           matchDateTime: "28.05.2026 09:20:00",
           hasPlaceholderTeams: true,
@@ -187,6 +188,7 @@ test("collectTournamentTeamNames exposes beach placeholder announcements for man
         {
           teamAName: "Winner of match 7",
           teamBName: "LI Xiaokai /MAO Yuan",
+          round: "Semi-finals",
           matchDate: new Date("2026-05-28T08:00:00.000Z"),
           matchDateTime: "28.05.2026 11:00:00",
           hasPlaceholderTeams: true,
@@ -204,11 +206,12 @@ test("collectTournamentTeamNames exposes beach placeholder announcements for man
       participants: [],
     });
 
-    assert.equal(names.includes("Winner of match 2"), true, source);
-    assert.equal(names.includes("Winner of match 7"), true, source);
+    assert.equal(names.includes("Winner of match 2"), false, source);
+    assert.equal(names.includes("Winner of match 7"), false, source);
     assert.equal(names.includes("S. H. Kan/C. H. Lee"), true, source);
     assert.equal(names.includes("LI Xiaokai /MAO Yuan"), true, source);
     assert.equal(names.includes("Quarterfinals"), true, source);
+    assert.equal(names.includes("Semifinals"), true, source);
     assert.equal(names.includes("Winner of match 39"), false, source);
     assert.equal(names.includes("Winner of match 40"), false, source);
   }

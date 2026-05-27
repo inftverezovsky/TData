@@ -40,9 +40,9 @@ test("settings password gate rejects bad password and unlocks with configured pa
   await page.getByRole("button", { name: /разблокировать/i }).click();
 
   await expect(page.getByRole("heading", { name: /настройки/i })).toBeVisible();
-  await page.getByRole("button", { name: /параметры api и заливки/i }).click();
-  await expect(page.getByRole("heading", { name: /параметры liquipedia/i })).toBeVisible();
-  await expect(page.getByRole("heading", { name: /параметры заливки/i })).toBeVisible();
+  await page.getByRole("button", { name: /tcyber/i }).click();
+  await expect(page.getByRole("heading", { name: /tcyber: liquipedia/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /tcyber: заливка/i })).toBeVisible();
 
   await page.getByRole("button", { name: /менеджер прокси-пула/i }).click();
   await expect(page.getByText(/пул пуст/i)).toBeVisible();

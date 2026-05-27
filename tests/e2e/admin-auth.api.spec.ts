@@ -18,6 +18,14 @@ test("admin auth protects settings endpoints and creates a usable session cookie
     () => request.get("/api/admin-settings/identity-sync"),
     () => request.post("/api/admin-settings/identity-sync"),
     () => request.get("/api/cron/check-proxies"),
+    () => request.post("/api/counterstrike/import-tournament", { data: { title: "" } }),
+    () => request.post("/api/dota2/search-tournament", { data: { query: "" } }),
+    () => request.post("/api/counterstrike/tournament/example/admin-mapping", {
+      data: { sourceTournamentName: "Example", adminShapkaId: "12345" },
+    }),
+    () => request.post("/api/counterstrike/tournament/example/admin-fixt-preview", {
+      data: { selectedMatchIds: [] },
+    }),
   ];
 
   for (const makeRequest of protectedRequests) {
@@ -28,31 +36,11 @@ test("admin auth protects settings endpoints and creates a usable session cookie
   const publicSuggestValidation = await request.get("/api/admin-teams/suggest?q=test");
   expect(publicSuggestValidation.status()).toBe(400);
 
-  const publicImportValidation = await request.post("/api/counterstrike/import-tournament", {
-    data: { title: "" },
-  });
-  expect(publicImportValidation.status()).toBe(400);
-
-  const publicLiquipediaSearchValidation = await request.post("/api/dota2/search-tournament", {
-    data: { query: "" },
-  });
-  expect(publicLiquipediaSearchValidation.status()).toBe(400);
-
   const publicHltvSearchValidation = await request.get("/api/counterstrike/search-hltv?force=true");
   expect(publicHltvSearchValidation.status()).toBe(400);
 
   const publicTeamMapping = await request.get("/api/team-mapping?discipline=counterstrike");
   expect(publicTeamMapping.status()).not.toBe(401);
-
-  const publicShapkaSave = await request.post("/api/counterstrike/tournament/example/admin-mapping", {
-    data: { sourceTournamentName: "Example", adminShapkaId: "12345" },
-  });
-  expect(publicShapkaSave.status()).not.toBe(401);
-
-  const publicPreview = await request.post("/api/counterstrike/tournament/example/admin-fixt-preview", {
-    data: { selectedMatchIds: [] },
-  });
-  expect(publicPreview.status()).not.toBe(401);
 
   const badLogin = await request.post("/api/admin-auth/login", {
     data: { password: "wrong-password" },

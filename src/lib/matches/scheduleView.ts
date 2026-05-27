@@ -176,8 +176,6 @@ export function getUploadableTbdAnnouncementSides(match: ScheduleViewMatch, opti
 
   const teamA = getScheduleTeamState(match.teamAName);
   const teamB = getScheduleTeamState(match.teamBName);
-  const mappablePlaceholderSides = getUploadableMappedPlaceholderAnnouncementSides(teamA, teamB, options);
-  if (mappablePlaceholderSides.length > 0) return mappablePlaceholderSides;
 
   if (!(teamA.tbd && teamB.tbd)) return [];
 
@@ -276,21 +274,7 @@ function getScheduleTeamState(name: string | null | undefined) {
   };
 }
 
-function getUploadableMappedPlaceholderAnnouncementSides(
-  teamA: ReturnType<typeof getScheduleTeamState>,
-  teamB: ReturnType<typeof getScheduleTeamState>,
-  options: ScheduleViewOptions,
-) {
-  if (!supportsMappedPlaceholderAnnouncements(options)) return [];
-  if (teamA.placeholder && teamB.placeholder) return [];
-
-  const sides: TbdAnnouncementSide[] = [];
-  if (teamA.unsupportedPlaceholder) sides.push("teamA");
-  if (teamB.unsupportedPlaceholder) sides.push("teamB");
-  return sides;
-}
-
-function supportsMappedPlaceholderAnnouncements(options: ScheduleViewOptions) {
+function supportsSinglePlaceholderStageAnnouncements(options: ScheduleViewOptions) {
   return isBeachVolleyballTournamentSource(options.source)
     || isBeachVolleyballScopeSlug(options.disciplineSlug);
 }
@@ -306,7 +290,17 @@ export function resolveStageSlotAnnouncement(
 ): StageSlotAnnouncementResolution | null {
   if (!supportsStageAnnouncements(options.source)) return null;
 
-  if (!isNamedPlaceholderSide(match.teamAName) || !isNamedPlaceholderSide(match.teamBName)) return null;
+  const teamA = getScheduleTeamState(match.teamAName);
+  const teamB = getScheduleTeamState(match.teamBName);
+  const isPlaceholderPair = isNamedPlaceholderSide(match.teamAName) && isNamedPlaceholderSide(match.teamBName);
+  const isBeachSingleUnsupportedPlaceholder =
+    supportsSinglePlaceholderStageAnnouncements(options)
+    && (
+      (teamA.unsupportedPlaceholder && teamB.real)
+      || (teamB.unsupportedPlaceholder && teamA.real)
+    );
+
+  if (!isPlaceholderPair && !isBeachSingleUnsupportedPlaceholder) return null;
 
   const explicitLabel = getExplicitStageSlotAnnouncementLabel(match);
   if (explicitLabel) {
