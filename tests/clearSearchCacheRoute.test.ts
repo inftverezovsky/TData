@@ -5,23 +5,15 @@ import test from "node:test";
 import { POST } from "../src/app/api/settings/clear-search-cache/route";
 import { createAdminSessionResponse } from "../src/lib/auth/adminAuth";
 
-test("clear search cache endpoint requires admin session and clears scoped cache with a valid session", async () => {
+test("clear search cache endpoint clears scoped cache without requiring an admin session", async () => {
   const cacheDir = path.join(process.cwd(), "cache", "hltv", "authless-route-test");
   const cacheFile = path.join(cacheDir, "one.json");
   fs.mkdirSync(cacheDir, { recursive: true });
   fs.writeFileSync(cacheFile, "{}");
 
-  const unauthorized = await POST(new Request("http://localhost/api/settings/clear-search-cache", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ source: "hltv", disciplineSlug: "authless-route-test" }),
-  }));
-  assert.equal(unauthorized.status, 401);
-
-  const cookie = await getAdminSessionCookie();
   const response = await POST(new Request("http://localhost/api/settings/clear-search-cache", {
     method: "POST",
-    headers: { "content-type": "application/json", cookie },
+    headers: { "content-type": "application/json" },
     body: JSON.stringify({ source: "hltv", disciplineSlug: "authless-route-test" }),
   }));
   const data = await response.json();

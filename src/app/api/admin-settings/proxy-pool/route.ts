@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth/adminAuth";
 import {
   deleteProxyPoolByAction,
   deleteProxyPoolById,
@@ -10,8 +9,7 @@ import {
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
+  // API remains callable directly; password gate is UI-only for settings visibility.
 
   return NextResponse.json(
     { proxies: await listProxyPool() },
@@ -20,8 +18,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
+  // API remains callable directly; password gate is UI-only for settings visibility.
 
   try {
     const { urls } = await request.json();
@@ -43,8 +40,7 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
+  // API remains callable directly; password gate is UI-only for settings visibility.
 
   const { searchParams } = new URL(request.url);
   const id = searchParams.get("id");

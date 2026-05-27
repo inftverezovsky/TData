@@ -7,20 +7,22 @@ const API_ROOT = path.join(process.cwd(), "src", "app", "api");
 const MUTATING_ROUTE_PATTERN = /export\s+async\s+function\s+(POST|PUT|PATCH|DELETE)\b/;
 const ADMIN_GUARD_PATTERN = /\brequireAdmin\s*\(/;
 
-const ALLOWED_UNGUARDED_MUTATING_ROUTES = new Set([
+const ALLOWED_GUARDED_MUTATING_ROUTES = new Set([
   "admin-auth/login/route.ts",
   "admin-auth/logout/route.ts",
+  "admin-settings/identity-sync/route.ts",
+  "counterstrike/hltv/matches/manual/route.ts",
 ]);
 
-test("mutating API routes require an admin session", () => {
-  const missingGuards = collectRouteFiles(API_ROOT)
+test("mutating API routes stay callable without the UI password gate", () => {
+  const guardedRoutes = collectRouteFiles(API_ROOT)
     .filter((filePath) => MUTATING_ROUTE_PATTERN.test(fs.readFileSync(filePath, "utf8")))
-    .filter((filePath) => !ALLOWED_UNGUARDED_MUTATING_ROUTES.has(toApiRelativePath(filePath)))
-    .filter((filePath) => !ADMIN_GUARD_PATTERN.test(fs.readFileSync(filePath, "utf8")))
+    .filter((filePath) => !ALLOWED_GUARDED_MUTATING_ROUTES.has(toApiRelativePath(filePath)))
+    .filter((filePath) => ADMIN_GUARD_PATTERN.test(fs.readFileSync(filePath, "utf8")))
     .map(toApiRelativePath)
     .sort();
 
-  assert.deepEqual(missingGuards, []);
+  assert.deepEqual(guardedRoutes, []);
 });
 
 function collectRouteFiles(directory: string): string[] {

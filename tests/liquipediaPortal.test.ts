@@ -14,7 +14,7 @@ test("League of Legends portal parser reads tournaments-list items from main pag
           <div class="tournaments-list-item__badges">
             <div class="tournament-badge__text">S-Tier</div>
           </div>
-          <div class="tournaments-list-item__date">May 23 – May 24, 2026</div>
+          <div class="tournaments-list-item__date">June 23 – June 24, 2026</div>
         </div>
       </div>
     </div>

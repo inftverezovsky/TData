@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth/adminAuth";
 import { phpSerialize } from "@/lib/adminUpload/phpSerialize";
 import { resolveAdminSettings } from "@/lib/adminUpload/resolveAdminSettings";
 import { sendFixtPayload } from "@/lib/adminUpload/sendFixtPayload";
@@ -10,8 +9,7 @@ import { getManualImportDiscipline, MANUAL_IMPORT_TOURNAMENT_ID, resolveManualIm
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
+  // API remains callable directly; password gate is UI-only for settings visibility.
 
   try {
     const body = await request.json().catch(() => ({}));

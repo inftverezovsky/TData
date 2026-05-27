@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { readSheet } from "read-excel-file/node";
-import { requireAdmin } from "@/lib/auth/adminAuth";
 import { prisma } from "@/lib/db/db";
 import { queueIdentitySync } from "@/lib/sync/identitySync";
 import { parseAdminTeamImportRows } from "@/lib/adminTeams/importSpreadsheet";
@@ -11,8 +10,7 @@ const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
 const REMOTE_FETCH_TIMEOUT_MS = 15000;
 
 export async function POST(request: Request) {
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
+  // API remains callable directly; password gate is UI-only for settings visibility.
 
   try {
     const formData = await request.formData();

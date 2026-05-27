@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth/adminAuth";
 import { prisma } from "@/lib/db/db";
 import { queueIdentitySync } from "@/lib/sync/identitySync";
 import { normalizeTeamName } from "@/lib/teams/teams";
@@ -37,8 +36,7 @@ export async function GET(request: Request) {
 
 // POST — создать или обновить маппинг
 export async function POST(request: Request) {
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
+  // API remains callable directly; password gate is UI-only for settings visibility.
 
   const body = await request.json();
   const { liquipediaName, disciplineSlug, alias, platformId, canonicalName, status, logoUrl, isManual, isLockedFromAutoMapping, mappings } = body as any;
@@ -122,8 +120,7 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
+  // API remains callable directly; password gate is UI-only for settings visibility.
 
   const { searchParams } = new URL(request.url);
   const name = searchParams.get("name");

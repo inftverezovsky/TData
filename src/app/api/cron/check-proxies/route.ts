@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/db";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import { SocksProxyAgent } from "socks-proxy-agent";
-import { requireAdmin } from "@/lib/auth/adminAuth";
 
 // Force Next.js to not cache this route
 export const dynamic = "force-dynamic";
@@ -20,8 +19,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
   } else {
-    const unauthorized = await requireAdmin(request);
-    if (unauthorized) return unauthorized;
+    // API remains callable directly; password gate is UI-only for settings visibility.
   }
 
   try {

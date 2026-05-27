@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth/adminAuth";
 import { prisma } from "@/lib/db/db";
 import { getOrCreateDiscipline } from "@/lib/config/disciplines";
 import { makeLiquipediaPageUrl } from "@/lib/liquipedia/client";
@@ -37,8 +36,7 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ disciplineSlug: string }> }
 ) {
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
+  // API remains callable directly; password gate is UI-only for settings visibility.
 
   const { disciplineSlug } = await params;
   const slug = disciplineSlug.trim().toLowerCase();

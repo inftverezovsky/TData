@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
 import { getNormalizer, hasNormalizer } from "@/lib/normalizers/registry";
-import { requireAdmin } from "@/lib/auth/adminAuth";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
+  // API remains callable directly; password gate is UI-only for settings visibility.
 
   try {
     const { disciplineSlug, wikitext } = await request.json();

@@ -1,13 +1,11 @@
 import { NextResponse } from "next/server";
 import { clearCacheFiles, isValidCacheDisciplineSlug, type CacheSource } from "@/lib/cache/cacheMaintenance";
-import { requireAdmin } from "@/lib/auth/adminAuth";
 
 const CACHE_SOURCES = new Set<CacheSource>(["hltv", "vlr", "dltv", "fandom", "liquipedia", "all"]);
 
 export async function POST(request: Request) {
   try {
-    const unauthorized = await requireAdmin(request);
-    if (unauthorized) return unauthorized;
+    // API remains callable directly; password gate is UI-only for settings visibility.
 
     const body = await request.json().catch(() => ({}));
     const source = typeof body.source === "string" && CACHE_SOURCES.has(body.source as CacheSource)
