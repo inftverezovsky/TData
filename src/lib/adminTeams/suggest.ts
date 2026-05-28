@@ -1,4 +1,5 @@
 import {
+  getPlatformTeamSearchNames,
   levenshteinDistance,
   normalizeFuzzyName,
   scorePlatformTeamCandidate,
@@ -10,6 +11,9 @@ export type AdminTeamSuggestionMatchType = "exact" | "starts_with" | "contains" 
 export type AdminTeamSuggestion = {
   platformId: string;
   platformName: string;
+  platformNameRu?: string | null;
+  platformNameEn?: string | null;
+  matchedName?: string | null;
   score: number;
   matchType: AdminTeamSuggestionMatchType;
 };
@@ -33,9 +37,8 @@ export function buildAdminTeamSuggestions(
     if (!platformId || !platformName || seenPlatformIds.has(platformId)) continue;
     seenPlatformIds.add(platformId);
 
-    const normalizedPlatformName = normalizeFuzzyName(platformName);
-    const normalizedStoredName = normalizeFuzzyName(team.normalizedName || "");
-    const searchableNames = [normalizedPlatformName, normalizedStoredName].filter(Boolean);
+    const rawSearchableNames = getPlatformTeamSearchNames(team);
+    const searchableNames = rawSearchableNames.map((name) => normalizeFuzzyName(name)).filter(Boolean);
 
     const exact = searchableNames.some((name) => name === normalizedQuery);
     const startsWith = !exact && searchableNames.some((name) => name.startsWith(normalizedQuery));
@@ -63,7 +66,15 @@ export function buildAdminTeamSuggestions(
     }
 
     if (!matchType) continue;
-    suggestions.push({ platformId, platformName, score, matchType });
+    suggestions.push({
+      platformId,
+      platformName,
+      platformNameRu: team.platformNameRu,
+      platformNameEn: team.platformNameEn,
+      matchedName: findMatchedDisplayName(normalizedQuery, rawSearchableNames),
+      score,
+      matchType,
+    });
   }
 
   return suggestions
@@ -75,6 +86,29 @@ export function buildAdminTeamSuggestions(
       return a.platformName.localeCompare(b.platformName, "ru");
     })
     .slice(0, Math.max(1, Math.min(20, Math.trunc(limit) || 8)));
+}
+
+function findMatchedDisplayName(query: string, names: string[]) {
+  const normalizedQuery = normalizeFuzzyName(query);
+  let best: { name: string; score: number } | null = null;
+
+  for (const name of names) {
+    const score = getBroadCandidateScore(normalizedQuery, [name]);
+    const directScore = getNameMatchScoreForDisplay(normalizedQuery, name);
+    const finalScore = Math.max(score, directScore);
+    if (!best || finalScore > best.score) best = { name, score: finalScore };
+  }
+
+  return best?.name || null;
+}
+
+function getNameMatchScoreForDisplay(query: string, name: string) {
+  const normalizedName = normalizeFuzzyName(name);
+  if (!query || !normalizedName) return 0;
+  if (normalizedName === query) return 1;
+  if (normalizedName.startsWith(query)) return 0.95;
+  if (normalizedName.includes(query)) return 0.85;
+  return 0;
 }
 
 function getBroadCandidateScore(query: string, names: string[]) {

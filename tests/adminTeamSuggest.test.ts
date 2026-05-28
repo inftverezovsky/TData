@@ -9,6 +9,15 @@ const adminTeams = [
   { platformId: "4", platformName: "Лев Волин", normalizedName: "лев волин" },
   { platformId: "5", platformName: "武汉大学Crychic", normalizedName: "武汉大学crychic" },
   { platformId: "6", platformName: "Panda Gaming", normalizedName: "panda gaming" },
+  {
+    platformId: "7",
+    platformName: "Абдулазиз Аль Абдулла",
+    platformNameRu: "Абдулазиз Аль Абдулла",
+    platformNameEn: "Abdulaziz Al Abdulla",
+    normalizedName: "абдулазиз аль абдулла",
+    normalizedNameRu: "абдулазиз аль абдулла",
+    normalizedNameEn: "abdulaziz al abdulla",
+  },
 ];
 
 test("admin team suggestions rank exact matches before prefix and fuzzy matches", () => {
@@ -25,6 +34,16 @@ test("admin team suggestions support cyrillic and chinese names", () => {
 
   assert.equal(cyrillic[0].platformId, "4");
   assert.equal(chinese[0].platformId, "5");
+});
+
+test("admin team suggestions search bilingual admin names", () => {
+  const english = buildAdminTeamSuggestions(adminTeams, "Abdulaziz Al", 5);
+  const russian = buildAdminTeamSuggestions(adminTeams, "Абдулазиз Аль", 5);
+
+  assert.equal(english[0].platformId, "7");
+  assert.equal(english[0].matchedName, "Abdulaziz Al Abdulla");
+  assert.equal(russian[0].platformId, "7");
+  assert.equal(russian[0].matchedName, "Абдулазиз Аль Абдулла");
 });
 
 test("admin team suggestions return only candidates from the provided discipline set", () => {

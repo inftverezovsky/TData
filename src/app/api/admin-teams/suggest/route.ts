@@ -21,7 +21,15 @@ export async function GET(request: Request) {
 
   const adminTeams = await prisma.adminTeam.findMany({
     where: { disciplineSlug },
-    select: { platformId: true, platformName: true, normalizedName: true },
+    select: {
+      platformId: true,
+      platformName: true,
+      platformNameRu: true,
+      platformNameEn: true,
+      normalizedName: true,
+      normalizedNameRu: true,
+      normalizedNameEn: true,
+    },
     orderBy: { platformName: "asc" },
   });
 

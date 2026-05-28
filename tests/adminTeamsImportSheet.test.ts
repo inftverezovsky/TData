@@ -4,6 +4,7 @@ import {
   inferAdminTeamImportLayout,
   normalizeImportedAdminTeamId,
   normalizeImportedAdminTeamName,
+  parseAdminTeamImportRows,
 } from "../src/lib/adminTeams/importSpreadsheet";
 
 test("inferAdminTeamImportLayout recognizes headerless team sheets", () => {
@@ -18,6 +19,8 @@ test("inferAdminTeamImportLayout recognizes headerless team sheets", () => {
   assert.equal(layout?.dataStartRow, 0);
   assert.equal(layout?.idCol, 0);
   assert.equal(layout?.nameCol, 1);
+  assert.equal(layout?.nameRuCol, 1);
+  assert.equal(layout?.nameEnCol, 2);
   assert.equal(layout?.source, "data");
 });
 
@@ -33,6 +36,21 @@ test("inferAdminTeamImportLayout recognizes explicit headers", () => {
   assert.equal(layout?.idCol, 0);
   assert.equal(layout?.nameCol, 1);
   assert.equal(layout?.source, "header");
+});
+
+test("parseAdminTeamImportRows keeps Russian and English admin names", () => {
+  const result = parseAdminTeamImportRows([
+    ["849 245,00", "Абдулазиз Аль Абдулла", "Abdulaziz Al Abdulla"],
+    ["920455", "Абдулазиз Бу Шулайби/Алсувайлем С.", "Abdulaziz Bu Shulaybi/Salem Alsuwailem"],
+  ]);
+
+  assert.equal(result.records.length, 2);
+  assert.equal(result.records[0].platformId, "849245");
+  assert.equal(result.records[0].platformName, "Абдулазиз Аль Абдулла");
+  assert.equal(result.records[0].platformNameRu, "Абдулазиз Аль Абдулла");
+  assert.equal(result.records[0].platformNameEn, "Abdulaziz Al Abdulla");
+  assert.equal(result.records[0].normalizedNameRu, "абдулазиз аль абдулла");
+  assert.equal(result.records[0].normalizedNameEn, "abdulaziz al abdulla");
 });
 
 test("normalizeImportedAdminTeamId strips spreadsheet formatting", () => {

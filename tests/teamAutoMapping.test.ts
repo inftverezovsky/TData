@@ -71,6 +71,48 @@ test("auto mapping accepts safe esports suffixes without collapsing academy rost
   assert.equal(preview.unmapped[0].liquipediaName, "MIBR");
 });
 
+test("auto mapping matches English admin aliases when the primary admin name is Russian", () => {
+  const preview = buildAutoMappingPreviewFromData({
+    teamNames: ["Abdulaziz Al Abdulla"],
+    mappings: [],
+    adminTeams: [
+      {
+        platformId: "849245",
+        platformName: "Абдулазиз Аль Абдулла",
+        platformNameRu: "Абдулазиз Аль Абдулла",
+        platformNameEn: "Abdulaziz Al Abdulla",
+        normalizedName: "абдулазиз аль абдулла",
+        normalizedNameRu: "абдулазиз аль абдулла",
+        normalizedNameEn: "abdulaziz al abdulla",
+      },
+    ],
+  });
+
+  assert.equal(preview.auto.length, 1);
+  assert.equal(preview.auto[0].platformId, "849245");
+});
+
+test("auto mapping matches Russian admin aliases when the primary admin name is English", () => {
+  const preview = buildAutoMappingPreviewFromData({
+    teamNames: ["Абдулазиз Аль Абдулла"],
+    mappings: [],
+    adminTeams: [
+      {
+        platformId: "849245",
+        platformName: "Abdulaziz Al Abdulla",
+        platformNameRu: "Абдулазиз Аль Абдулла",
+        platformNameEn: "Abdulaziz Al Abdulla",
+        normalizedName: "abdulaziz al abdulla",
+        normalizedNameRu: "абдулазиз аль абдулла",
+        normalizedNameEn: "abdulaziz al abdulla",
+      },
+    ],
+  });
+
+  assert.equal(preview.auto.length, 1);
+  assert.equal(preview.auto[0].platformId, "849245");
+});
+
 test("auto mapping preview reports manual locked ID conflicts instead of overwriting", () => {
   const preview = buildAutoMappingPreviewFromData({
     teamNames: ["Liquid"],

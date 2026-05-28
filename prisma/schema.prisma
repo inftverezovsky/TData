@@ -282,13 +282,19 @@ model AdminTeam {
   disciplineSlug  String
   platformId      String
   platformName    String
+  platformNameRu  String?
+  platformNameEn  String?
   normalizedName  String
+  normalizedNameRu String?
+  normalizedNameEn String?
   sourceFileName  String
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   @@index([disciplineSlug])
   @@index([normalizedName])
+  @@index([normalizedNameRu])
+  @@index([normalizedNameEn])
 }
 
 model TeamMapping {

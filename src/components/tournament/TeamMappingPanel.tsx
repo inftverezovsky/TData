@@ -53,6 +53,9 @@ type AutoMappingPreview = {
 type AdminTeamSuggestion = {
   platformId: string;
   platformName: string;
+  platformNameRu?: string | null;
+  platformNameEn?: string | null;
+  matchedName?: string | null;
   score: number;
   matchType: "exact" | "starts_with" | "contains" | "fuzzy";
 };
@@ -429,7 +432,7 @@ export default function TeamMappingPanel({
             <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-black uppercase tracking-[0.15em] text-slate-400">
               <tr>
                 <th className="py-4 px-6">Команда TCyber</th>
-                <th className="py-4 px-6">Название в админе</th>
+                <th className="min-w-[360px] py-4 px-6">Название в админе</th>
                 <th className="py-4 px-6">ID платформы</th>
                 <th className="py-4 px-6">Статус / способ</th>
                 <th className="py-4 px-6 text-right">Действия</th>
@@ -448,7 +451,7 @@ export default function TeamMappingPanel({
                     <td className="py-4 px-6">
                       <span className="font-bold text-slate-900 group-hover:text-slate-600 transition-colors">{name}</span>
                     </td>
-                    <td className="py-4 px-6">
+                    <td className="min-w-[360px] py-4 px-6">
                       <div className="flex items-center gap-2">
                         <AdminTeamNameCombobox
                           value={adminNameValue}
@@ -600,7 +603,7 @@ function AdminTeamNameCombobox({
   }, [canSearch, disabled, disciplineSlug, open, value]);
 
   return (
-    <div className="relative min-w-0 flex-1">
+    <div className="relative min-w-[320px] flex-1 xl:min-w-[420px]">
       <input
         type="text"
         value={value}
@@ -623,7 +626,11 @@ function AdminTeamNameCombobox({
         }`}
       />
       {open && !disabled && (canSearch || loading || error) && (
-        <div id={listId} role="listbox" className="absolute left-0 right-0 top-full z-30 mt-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl shadow-slate-900/10">
+        <div
+          id={listId}
+          role="listbox"
+          className="absolute left-0 top-full z-50 mt-1 w-[max(100%,28rem)] max-w-[min(42rem,calc(100vw-3rem))] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl shadow-slate-900/10"
+        >
           {loading ? (
             <div className="px-3 py-2 text-xs font-bold text-slate-400">Ищу в справочнике...</div>
           ) : error ? (
@@ -645,10 +652,17 @@ function AdminTeamNameCombobox({
                     onSelect(item);
                     setOpen(false);
                   }}
-                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-xs transition hover:bg-indigo-50"
+                  className="flex w-full items-start justify-between gap-3 px-3 py-2.5 text-left text-xs transition hover:bg-indigo-50"
                 >
                   <span className="min-w-0">
-                    <span className="block truncate font-black text-slate-900">{item.platformName}</span>
+                    <span className="block whitespace-normal break-words font-black leading-snug text-slate-900">
+                      {item.matchedName || item.platformName}
+                    </span>
+                    {formatSuggestionAlternateName(item) && (
+                      <span className="mt-1 block whitespace-normal break-words text-[11px] font-bold leading-snug text-slate-500">
+                        {formatSuggestionAlternateName(item)}
+                      </span>
+                    )}
                     <span className="mt-0.5 block text-[10px] font-bold uppercase tracking-widest text-slate-400">
                       ID платформы {item.platformId}
                     </span>
@@ -843,6 +857,14 @@ function formatSuggestionMatchType(matchType: AdminTeamSuggestion["matchType"]) 
     default:
       return "найдено";
   }
+}
+
+function formatSuggestionAlternateName(item: AdminTeamSuggestion) {
+  const matched = item.matchedName?.trim();
+  const names = [item.platformNameRu, item.platformNameEn, item.platformName]
+    .map((name) => String(name || "").trim())
+    .filter((name) => name && name !== matched);
+  return Array.from(new Set(names))[0] || "";
 }
 
 function formatMatchMethod(method: string | null | undefined) {

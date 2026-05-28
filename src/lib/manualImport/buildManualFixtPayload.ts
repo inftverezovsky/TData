@@ -111,7 +111,15 @@ export async function mapManualMatches(
   const manualMappingMap = await loadManualImportTeamMappingLookup(normalizedDisciplineSlug, adminSportId);
   const adminTeams = await prisma.adminTeam.findMany({
     where: { disciplineSlug: normalizedDisciplineSlug },
-    select: { platformId: true, platformName: true, normalizedName: true },
+    select: {
+      platformId: true,
+      platformName: true,
+      platformNameRu: true,
+      platformNameEn: true,
+      normalizedName: true,
+      normalizedNameRu: true,
+      normalizedNameEn: true,
+    },
   });
 
   return Promise.all(rawMatches.map(async (match, index) => {

@@ -3,7 +3,11 @@ import { prisma } from "@/lib/db/db";
 export type PlatformTeamCandidate = {
   platformId: string;
   platformName: string;
+  platformNameRu?: string | null;
+  platformNameEn?: string | null;
   normalizedName?: string | null;
+  normalizedNameRu?: string | null;
+  normalizedNameEn?: string | null;
 };
 
 /**
@@ -141,11 +145,33 @@ export function getFuzzyNameVariants(value: string | null | undefined) {
 
 export function scorePlatformTeamCandidate(
   noisyTeamName: string,
-  candidate: Pick<PlatformTeamCandidate, "platformName" | "normalizedName">
+  candidate: Pick<
+    PlatformTeamCandidate,
+    "platformName" | "platformNameRu" | "platformNameEn" | "normalizedName" | "normalizedNameRu" | "normalizedNameEn"
+  >
 ) {
-  return Math.max(
-    getNameMatchScore(noisyTeamName, candidate.platformName),
-    getNameMatchScore(noisyTeamName, candidate.normalizedName || "")
+  return Math.max(...getPlatformTeamSearchNames(candidate).map((name) => getNameMatchScore(noisyTeamName, name)));
+}
+
+export function getPlatformTeamSearchNames(
+  candidate: Pick<
+    PlatformTeamCandidate,
+    "platformName" | "platformNameRu" | "platformNameEn" | "normalizedName" | "normalizedNameRu" | "normalizedNameEn"
+  >
+) {
+  return Array.from(
+    new Set(
+      [
+        candidate.platformName,
+        candidate.platformNameRu,
+        candidate.platformNameEn,
+        candidate.normalizedName,
+        candidate.normalizedNameRu,
+        candidate.normalizedNameEn,
+      ]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+    )
   );
 }
 
@@ -190,7 +216,15 @@ export async function findClosestPlatformTeam(
   // 1. Fetch candidates from the database
   const candidates = await prisma.adminTeam.findMany({
     where: { disciplineSlug: slug },
-    select: { platformId: true, platformName: true, normalizedName: true }
+    select: {
+      platformId: true,
+      platformName: true,
+      platformNameRu: true,
+      platformNameEn: true,
+      normalizedName: true,
+      normalizedNameRu: true,
+      normalizedNameEn: true,
+    }
   });
 
   if (candidates.length === 0) return null;

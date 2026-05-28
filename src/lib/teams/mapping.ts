@@ -12,7 +12,11 @@ const AUTO_MAP_MIN_GAP = 5;
 export type AutoMappingAdminTeam = {
   platformId: string;
   platformName: string;
+  platformNameRu?: string | null;
+  platformNameEn?: string | null;
   normalizedName?: string | null;
+  normalizedNameRu?: string | null;
+  normalizedNameEn?: string | null;
 };
 
 export type AutoMappingSourceMapping = {
@@ -130,7 +134,15 @@ export async function buildAutoMappingPreviewForDiscipline(
   const [adminTeams, mappings] = await Promise.all([
     prisma.adminTeam.findMany({
       where: { disciplineSlug: slug },
-      select: { platformId: true, platformName: true, normalizedName: true },
+      select: {
+        platformId: true,
+        platformName: true,
+        platformNameRu: true,
+        platformNameEn: true,
+        normalizedName: true,
+        normalizedNameRu: true,
+        normalizedNameEn: true,
+      },
     }),
     prisma.teamMapping.findMany({
       where: {

@@ -35,11 +35,45 @@ const HEADER_NAME_CANDIDATES = [
   "фио",
 ];
 
+const HEADER_RU_NAME_CANDIDATES = [
+  "russian name",
+  "name ru",
+  "ru name",
+  "ru",
+  "rus",
+  "russian",
+  "название на русском",
+  "русское название",
+  "название ru",
+  "имя на русском",
+  "русское имя",
+  "русский",
+  "рус",
+];
+
+const HEADER_EN_NAME_CANDIDATES = [
+  "english name",
+  "name en",
+  "en name",
+  "en",
+  "eng",
+  "english",
+  "название на английском",
+  "английское название",
+  "название en",
+  "имя на английском",
+  "английское имя",
+  "английский",
+  "англ",
+];
+
 export type AdminTeamImportLayout = {
   headerRowIndex: number;
   dataStartRow: number;
   idCol: number;
   nameCol: number;
+  nameRuCol?: number | null;
+  nameEnCol?: number | null;
   source: "header" | "data";
 };
 
@@ -54,7 +88,10 @@ export function inferAdminTeamImportLayout(rows: unknown[][]): AdminTeamImportLa
   if (headerRowIndex !== -1) {
     const headerRow = normalizedRows[headerRowIndex];
     const idCol = findHeaderColumn(headerRow, HEADER_ID_CANDIDATES);
-    const nameCol = findHeaderColumn(headerRow, HEADER_NAME_CANDIDATES);
+    const nameRuCol = findHeaderColumn(headerRow, HEADER_RU_NAME_CANDIDATES);
+    const nameEnCol = findHeaderColumn(headerRow, HEADER_EN_NAME_CANDIDATES);
+    const genericNameCol = findHeaderColumn(headerRow, HEADER_NAME_CANDIDATES);
+    const nameCol = nameRuCol !== -1 ? nameRuCol : nameEnCol !== -1 ? nameEnCol : genericNameCol;
 
     if (idCol !== -1 && nameCol !== -1) {
       return {
@@ -62,6 +99,8 @@ export function inferAdminTeamImportLayout(rows: unknown[][]): AdminTeamImportLa
         dataStartRow: headerRowIndex + 1,
         idCol,
         nameCol,
+        nameRuCol: nameRuCol !== -1 ? nameRuCol : null,
+        nameEnCol: nameEnCol !== -1 ? nameEnCol : null,
         source: "header",
       };
     }
@@ -90,7 +129,15 @@ export function inferAdminTeamImportLayout(rows: unknown[][]): AdminTeamImportLa
 
 export function parseAdminTeamImportRows(rows: unknown[][]) {
   const layout = inferAdminTeamImportLayout(rows);
-  const records: Array<{ platformId: string; platformName: string; normalizedName: string }> = [];
+  const records: Array<{
+    platformId: string;
+    platformName: string;
+    platformNameRu: string | null;
+    platformNameEn: string | null;
+    normalizedName: string;
+    normalizedNameRu: string | null;
+    normalizedNameEn: string | null;
+  }> = [];
   let skippedCount = 0;
 
   if (!layout) {
@@ -102,17 +149,31 @@ export function parseAdminTeamImportRows(rows: unknown[][]) {
     if (!row || !rowHasValues(row)) continue;
 
     const platformId = normalizeImportedAdminTeamId(row[layout.idCol]);
-    const platformName = normalizeImportedAdminTeamName(row[layout.nameCol]);
+    const nameRu = normalizeImportedAdminTeamName(
+      layout.nameRuCol != null ? row[layout.nameRuCol] : guessLanguageName(row, layout, "ru")
+    );
+    const nameEn = normalizeImportedAdminTeamName(
+      layout.nameEnCol != null ? row[layout.nameEnCol] : guessLanguageName(row, layout, "en")
+    );
+    const primaryName = normalizeImportedAdminTeamName(row[layout.nameCol]);
+    const platformName = nameRu || nameEn || primaryName;
 
     if (!platformId || !platformName) {
       skippedCount++;
       continue;
     }
 
+    const platformNameRu = nameRu || (hasCyrillic(platformName) ? platformName : null);
+    const platformNameEn = nameEn || (hasLatin(platformName) && !hasCyrillic(platformName) ? platformName : null);
+
     records.push({
       platformId,
       platformName,
+      platformNameRu,
+      platformNameEn,
       normalizedName: normalizeImportedTeamName(platformName),
+      normalizedNameRu: platformNameRu ? normalizeImportedTeamName(platformNameRu) : null,
+      normalizedNameEn: platformNameEn ? normalizeImportedTeamName(platformNameEn) : null,
     });
   }
 
@@ -186,7 +247,44 @@ function inferColumnsFromData(rows: unknown[][]) {
   return {
     idCol,
     nameCol: nameCandidates[0].index,
+    ...inferLanguageNameColumns(nameCandidates.map((candidate) => candidate.index), sampleRows),
   };
+}
+
+function inferLanguageNameColumns(nameColumns: number[], rows: unknown[][]) {
+  let nameRuCol: number | null = null;
+  let nameEnCol: number | null = null;
+
+  for (const col of nameColumns) {
+    const values = rows.map((row) => normalizeImportedText(row[col])).filter(Boolean);
+    if (values.length === 0) continue;
+
+    const cyrillicHits = values.filter(hasCyrillic).length;
+    const latinHits = values.filter((value) => hasLatin(value) && !hasCyrillic(value)).length;
+
+    if (nameRuCol == null && cyrillicHits > 0) {
+      nameRuCol = col;
+      continue;
+    }
+
+    if (nameEnCol == null && latinHits > 0 && latinHits >= cyrillicHits) {
+      nameEnCol = col;
+    }
+  }
+
+  return { nameRuCol, nameEnCol };
+}
+
+function guessLanguageName(row: unknown[], layout: AdminTeamImportLayout, language: "ru" | "en") {
+  const usedColumns = new Set([layout.idCol, layout.nameCol]);
+  if (layout.nameRuCol != null) usedColumns.add(layout.nameRuCol);
+  if (layout.nameEnCol != null) usedColumns.add(layout.nameEnCol);
+
+  const candidates = row
+    .map((cell, index) => ({ index, value: normalizeImportedAdminTeamName(cell) }))
+    .filter((candidate) => !usedColumns.has(candidate.index) && scoreNameCell(candidate.value) > 0);
+
+  return candidates.find((candidate) => language === "ru" ? hasCyrillic(candidate.value) : hasLatin(candidate.value) && !hasCyrillic(candidate.value))?.value || "";
 }
 
 function findHeaderRowIndex(rows: unknown[][]) {
@@ -248,6 +346,14 @@ function normalizeImportedText(value: unknown) {
     .replace(/\u00A0/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function hasCyrillic(value: string) {
+  return /[А-Яа-яЁё]/.test(value);
+}
+
+function hasLatin(value: string) {
+  return /[A-Za-z]/.test(value);
 }
 
 function normalizeImportedTeamName(name: string): string {
