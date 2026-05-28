@@ -536,8 +536,10 @@ function parseDateRange(value: string): [string | null, string | null] {
 
 function isBeachVolleyRuTournamentInUpcomingWindow(tournament: BeachVolleyRuTournament, window: BeachVolleyRuUpcomingWindow) {
   if (!tournament.startDate) return false;
-  if (tournament.status !== "upcoming") return false;
-  return tournament.startDate >= window.fromDate && tournament.startDate <= window.toDate;
+  if (tournament.status === "finished") return false;
+
+  const endDate = tournament.endDate || tournament.startDate;
+  return tournament.startDate <= window.toDate && endDate >= window.fromDate;
 }
 
 function dateMatchToIso(match: RegExpMatchArray) {

@@ -52,7 +52,7 @@ test("BeachVolleyRu calendar parser keeps Russia Cup and Championship events", (
   assert.equal(tournaments[1].kind, "championship");
 });
 
-test("BeachVolleyRu search window keeps only upcoming tournaments in the nearest month", () => {
+test("BeachVolleyRu search window keeps upcoming and ongoing tournaments in the nearest month", () => {
   const html = `
     <div class="vl-table">
       <a class="vl-table-line vl-table-mobile-card--type2" href="calendar/01FINISHED/results">
@@ -62,6 +62,15 @@ test("BeachVolleyRu search window keeps only upcoming tournaments in the nearest
         <div class="vl-table-line__item">Волгоград</div>
         <div class="vl-table-line__item">Статус:Проведён</div>
         <div class="vl-table-line__item">Этап: Этап Кубка России</div>
+        <div class="vl-table-line__item"></div>
+      </a>
+      <a class="vl-table-line vl-table-mobile-card--type2 vl-table-line--now" href="calendar/01ONGOING/allgames">
+        <div class="vl-table-line__item">2026</div>
+        <div class="vl-table-line__item">26.05.2026 – 31.05.2026</div>
+        <div class="vl-table-line__item">Чемпионат России</div>
+        <div class="vl-table-line__item">Тула</div>
+        <div class="vl-table-line__item">Статус:Идёт</div>
+        <div class="vl-table-line__item">Этап: Этап Чемпионата России</div>
         <div class="vl-table-line__item"></div>
       </a>
       <a class="vl-table-line vl-table-mobile-card--type2" href="calendar/01SOON/regulations">
@@ -91,7 +100,7 @@ test("BeachVolleyRu search window keeps only upcoming tournaments in the nearest
 
   const tournaments = parseBeachVolleyRuCalendar(html, { gender: "men", kind: "all" });
   const filtered = filterBeachVolleyRuUpcomingTournaments(tournaments, window);
-  assert.deepEqual(filtered.map((tournament) => tournament.eventId), ["01SOON"]);
+  assert.deepEqual(filtered.map((tournament) => tournament.eventId), ["01ONGOING", "01SOON"]);
 });
 
 test("BeachVolleyRu match parser extracts teams, sets, and Moscow time", () => {
