@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  buildScheduleCourtGroups,
   buildScheduleFormatGroups,
   buildTbdAnnouncementSelectionId,
   expandScheduleAnnouncements,
@@ -199,6 +200,42 @@ test("format groups work for announcement rows", () => {
   assert.deepEqual(groups.map((group) => group.matches.length), [1, 1]);
 });
 
+test("court groups sort numbered beach volleyball courts naturally", () => {
+  const groups = buildScheduleCourtGroups([
+    {
+      id: "beach-court-2-a",
+      court: "Court 2",
+      matchDateTime: "May 24, 2026",
+      teamAName: "Alpha",
+      teamBName: "Beta",
+    },
+    {
+      id: "beach-no-court",
+      court: null,
+      matchDateTime: "May 24, 2026",
+      teamAName: "Gamma",
+      teamBName: "Delta",
+    },
+    {
+      id: "beach-court-1",
+      court: "Court 1",
+      matchDateTime: "May 24, 2026",
+      teamAName: "Echo",
+      teamBName: "Foxtrot",
+    },
+    {
+      id: "beach-court-2-b",
+      court: "Court 2",
+      matchDateTime: "May 24, 2026",
+      teamAName: "Golf",
+      teamBName: "Hotel",
+    },
+  ]);
+
+  assert.deepEqual(groups.map((group) => group.court), ["Court 1", "Court 2", "Без корта"]);
+  assert.deepEqual(groups.map((group) => group.matches.length), [1, 2, 1]);
+});
+
 test("DLTV exact-time TBD rows expand into uploadable announcements", () => {
   const entries = expandScheduleAnnouncements([
     {
@@ -297,7 +334,7 @@ test("VolleyballWorld winner/loser placeholders render as one stage announcement
       rawText: `${item.round} ${item.teamAName} vs ${item.teamBName}`,
       scoreA: null,
       scoreB: null,
-      format: "BO3",
+      format: null,
       stage: "Main Draw",
       round: item.round,
       teamAName: item.teamAName,
@@ -323,7 +360,7 @@ test("beach volleyball winner placeholders with one known team render as stage a
         rawText: "S. H. Kan/C. H. Lee vs Winner of match 2",
         scoreA: null,
         scoreB: null,
-        format: "BO3",
+        format: null,
         stage: "Main Draw",
         round: "Quarter-finals",
         teamAName: "S. H. Kan/C. H. Lee",
@@ -338,7 +375,7 @@ test("beach volleyball winner placeholders with one known team render as stage a
         rawText: "Winner of match 7 vs LI Xiaokai /MAO Yuan",
         scoreA: null,
         scoreB: null,
-        format: "BO3",
+        format: null,
         stage: "Main Draw",
         round: "Semi-finals",
         teamAName: "Winner of match 7",
@@ -376,7 +413,7 @@ test("beach volleyball single winner placeholder falls back to stage label witho
     rawText: "S. H. Kan/C. H. Lee vs Winner of match 2",
     scoreA: null,
     scoreB: null,
-    format: "BO3",
+    format: null,
     stage: null,
     round: null,
     teamAName: "S. H. Kan/C. H. Lee",
@@ -933,7 +970,7 @@ test("German Beach Tour TBD slots render as stage announcements", () => {
       rawText: "Hauptfeld | Achtelfinale Winner | TBD vs TBD",
       scoreA: null,
       scoreB: null,
-      format: "BO3",
+      format: null,
       teamAName: "TBD",
       teamBName: "TBD",
       stage: "Hauptfeld",

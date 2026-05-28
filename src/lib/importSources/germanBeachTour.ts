@@ -39,7 +39,7 @@ type PersistableGermanBeachTourMatch = {
   hasPlaceholderTeams: boolean;
   matchDate: Date;
   matchDateTime: string | null;
-  format: string;
+  format: string | null;
   stage: string | null;
   round: string | null;
   court: string | null;
@@ -221,7 +221,7 @@ async function saveGermanBeachTourTournamentMatches(params: {
         hasPlaceholderTeams,
         matchDate,
         matchDateTime: match.startTimeMoscow || null,
-        format: "BO3",
+        format: null,
         stage: match.stage || null,
         round: match.round || null,
         court: match.court || null,

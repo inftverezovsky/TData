@@ -3,8 +3,10 @@
 import { useCallback, useMemo, useEffect, useState } from "react";
 import { applyDisciplineScheduleLead } from "@/lib/matches/scheduleOffset";
 import {
+  buildScheduleCourtGroups,
   buildScheduleFormatGroups,
   expandScheduleAnnouncementsForDiscipline,
+  getScheduleMatchCourtLabel,
   getScheduleMatchBestOfLabel,
   isDisplayableScheduleMatch,
   isScheduleMatchInUpcomingWindow,
@@ -16,6 +18,8 @@ import { resolveDisplayMatchDate, resolveExactMatchDate } from "@/lib/matches/ti
 import { normalizeTeamName } from "@/lib/teams/teams";
 import { getTeamAliasKey } from "@/lib/teams/canonicalize";
 import type { TournamentSource } from "@/lib/utils/tournamentSource";
+import { isBeachVolleyballTournamentSource } from "@/lib/utils/tournamentSource";
+import { isBeachVolleyballScopeSlug } from "@/lib/tbvolley/config";
 import { Clock, LayoutGrid, CheckCircle2, TimerReset } from "lucide-react";
 
 type Match = {
@@ -32,6 +36,7 @@ type Match = {
   stage: string | null;
   round: string | null;
   format?: string | null;
+  court?: string | null;
   status: string | null;
   syncedAt: Date | string | null;
   rawText: string | null;
@@ -99,8 +104,9 @@ export default function MatchList({
   mutate?: () => void;
 }) {
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>("matches");
-  const [groupByFormat, setGroupByFormat] = useState(false);
+  const [groupByPrimary, setGroupByPrimary] = useState(false);
   const [hideUploaded, setHideUploaded] = useState(false);
+  const usesCourtGrouping = isBeachVolleyballScopeSlug(disciplineSlug) || isBeachVolleyballTournamentSource(source);
 
   useEffect(() => {
     const handleSuccess = () => {
@@ -158,7 +164,13 @@ export default function MatchList({
     [displayMatches, isDisplayEntrySelectable]
   );
   const allSelected = selectableMatches.length > 0 && selectableMatches.every(m => selectedIds.has(getSelectionId(m)));
-  const groupedMatches = useMemo(() => buildScheduleFormatGroups(displayMatches), [displayMatches]);
+  const groupedMatches = useMemo(() => {
+    if (usesCourtGrouping) {
+      return buildScheduleCourtGroups(displayMatches).map((group) => ({ label: group.court, matches: group.matches }));
+    }
+
+    return buildScheduleFormatGroups(displayMatches).map((group) => ({ label: group.format, matches: group.matches }));
+  }, [displayMatches, usesCourtGrouping]);
   const activeBaseCount = scheduleMode === "announcements" ? baseAnnouncements.length : baseMatches.length;
 
   useEffect(() => {
@@ -254,6 +266,7 @@ export default function MatchList({
     const isSelected = selectedIds.has(selectionId);
     const isSelectable = !isUploaded && isDisplayEntrySelectable(match);
     const bestOfLabel = getScheduleMatchBestOfLabel(match);
+    const courtLabel = getScheduleMatchCourtLabel(match);
 
     return (
       <div
@@ -295,7 +308,7 @@ export default function MatchList({
               </span>
             )}
             <span className="inline-flex w-fit items-center rounded-md border border-slate-200 bg-slate-50 px-2 py-0 text-[8px] font-black uppercase tracking-widest text-slate-700">
-              {bestOfLabel}
+              {usesCourtGrouping ? courtLabel : bestOfLabel}
             </span>
             {isAnnouncement && (
               <span className="inline-flex w-fit items-center rounded-md border border-sky-200 bg-sky-50 px-2 py-0 text-[8px] font-black uppercase tracking-widest text-sky-700">
@@ -442,17 +455,17 @@ export default function MatchList({
           <div className="flex flex-wrap items-center justify-end gap-3">
             <label className="flex cursor-pointer items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500 transition-colors hover:border-indigo-200 hover:text-indigo-600">
               <span className={`h-4 w-4 rounded border transition-all flex items-center justify-center ${
-                groupByFormat ? "bg-indigo-600 border-indigo-600" : "bg-white border-slate-200"
+                groupByPrimary ? "bg-indigo-600 border-indigo-600" : "bg-white border-slate-200"
               }`}>
-                {groupByFormat && <CheckCircle2 className="h-3 w-3 text-white" />}
+                {groupByPrimary && <CheckCircle2 className="h-3 w-3 text-white" />}
               </span>
               <input
                 type="checkbox"
-                checked={groupByFormat}
-                onChange={(event) => setGroupByFormat(event.target.checked)}
+                checked={groupByPrimary}
+                onChange={(event) => setGroupByPrimary(event.target.checked)}
                 className="sr-only"
               />
-              Группировка по формату
+              {usesCourtGrouping ? "Группировка по кортам" : "Группировка по формату"}
             </label>
             {(scheduleMode === "matches" || selectableMatches.length > 0) && (
               <>
@@ -510,7 +523,7 @@ export default function MatchList({
               </button>
             )}
           </div>
-        ) : groupByFormat ? (
+        ) : groupByPrimary ? (
           <div className="grid gap-5">
             {groupedMatches.map((group) => {
               const groupSelected = isGroupSelected(group.matches);
@@ -519,10 +532,10 @@ export default function MatchList({
               ).length;
 
               return (
-                <section key={group.format} className="grid gap-2">
+                <section key={group.label} className="grid gap-2">
                   <div className="flex flex-wrap items-center gap-3 px-1">
                     <div className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-slate-800">
-                      {group.format}
+                      {group.label}
                     </div>
                     <div className="h-px min-w-8 flex-1 bg-slate-100" />
                     {groupSelectableCount > 0 && (

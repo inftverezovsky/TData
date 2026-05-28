@@ -16,6 +16,7 @@ export type ScheduleViewMatch = {
   id?: string;
   matchId?: string;
   format?: string | null;
+  court?: string | null;
   rawText?: string | null;
   matchDate?: Date | string | number | null;
   matchDateTime?: string | null;
@@ -241,6 +242,11 @@ export function getScheduleMatchBestOfLabel(match: ScheduleViewMatch) {
   return getBestOfLabel(match.format) || getBestOfLabel(match.rawText) || "BO?";
 }
 
+export function getScheduleMatchCourtLabel(match: ScheduleViewMatch) {
+  const court = String(match.court || "").replace(/\s+/g, " ").trim();
+  return court || "Без корта";
+}
+
 export function buildScheduleFormatGroups<T extends ScheduleViewMatch>(matches: T[]) {
   const groups = new Map<string, T[]>();
 
@@ -257,6 +263,24 @@ export function buildScheduleFormatGroups<T extends ScheduleViewMatch>(matches: 
       return formatDiff || a.localeCompare(b);
     })
     .map(([format, groupMatches]) => ({ format, matches: groupMatches }));
+}
+
+export function buildScheduleCourtGroups<T extends ScheduleViewMatch>(matches: T[]) {
+  const groups = new Map<string, T[]>();
+
+  for (const match of matches) {
+    const label = getScheduleMatchCourtLabel(match);
+    const group = groups.get(label) || [];
+    group.push(match);
+    groups.set(label, group);
+  }
+
+  return Array.from(groups.entries())
+    .sort(([a], [b]) => {
+      const courtDiff = getCourtSortValue(a) - getCourtSortValue(b);
+      return courtDiff || a.localeCompare(b);
+    })
+    .map(([court, groupMatches]) => ({ court, matches: groupMatches }));
 }
 
 function hasScore(match: ScheduleViewMatch) {
@@ -496,6 +520,11 @@ function titleCaseStage(value: string) {
 function getBestOfSortValue(label: string) {
   const match = label.match(/^BO(\d+)$/i);
   return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+}
+
+function getCourtSortValue(label: string) {
+  const match = label.match(/\d+/);
+  return match ? Number(match[0]) : Number.MAX_SAFE_INTEGER;
 }
 
 function parseIsoDate(value: string) {
