@@ -2,12 +2,12 @@ import { prisma } from "@/lib/db/db";
 import { isKnownStageAnnouncementLabel } from "@/lib/matches/scheduleView";
 import { buildTeamMappingLookup, findTeamMapping } from "@/lib/teams/mappingLookup";
 import { isPlaceholderTeam, normalizeTeamName } from "@/lib/teams/teams";
-import { scorePlatformTeamCandidate } from "@/lib/teams/fuzzyMatch";
+import { scorePlatformTeamCandidateDetailed } from "@/lib/teams/fuzzyMatch";
 import { MappingStatus } from "@prisma/client";
 
-const AUTO_MAP_MIN_SCORE = 92;
-const AUTO_MAP_SUGGESTED_MIN_SCORE = 82;
-const AUTO_MAP_MIN_GAP = 5;
+const AUTO_MAP_MIN_SCORE = 85;
+const AUTO_MAP_SUGGESTED_MIN_SCORE = 75;
+const MANUAL_CONFLICT_MIN_SCORE = 92;
 
 export type AutoMappingAdminTeam = {
   platformId: string;
@@ -36,6 +36,7 @@ export type AutoMappingPreviewItem = {
   normalizedName: string;
   platformId?: string | null;
   adminName?: string | null;
+  matchedName?: string | null;
   score?: number | null;
   secondPlatformId?: string | null;
   secondAdminName?: string | null;
@@ -257,9 +258,10 @@ export function buildAutoMappingPreviewFromData({
     }
 
     const scoreGap = decision.bestScore - decision.secondBestScore;
-    if (decision.bestScore >= AUTO_MAP_MIN_SCORE && scoreGap >= AUTO_MAP_MIN_GAP) {
+    const requiredGap = getRequiredAutoMapGap(decision.bestScore);
+    if (decision.bestScore >= AUTO_MAP_MIN_SCORE && scoreGap >= requiredGap) {
       preview.auto.push(item);
-    } else if (scoreGap >= AUTO_MAP_MIN_GAP) {
+    } else if (scoreGap >= 5) {
       preview.suggested.push({
         ...item,
         reason: "medium_confidence",
@@ -418,7 +420,7 @@ function getLockedMappingConflict(
 
   if (
     decision.bestAdminTeam &&
-    decision.bestScore >= AUTO_MAP_MIN_SCORE &&
+    decision.bestScore >= MANUAL_CONFLICT_MIN_SCORE &&
     decision.bestAdminTeam.platformId !== existingMapping.platformId
   ) {
     return {
@@ -438,17 +440,27 @@ function getTeamAutoMappingDecision(
 ) {
   const liqName = mapping.liquipediaNormalizedName || normalizeTeamName(mapping.liquipediaName);
   if (!liqName) {
-    return { bestScore: 0, secondBestScore: 0, bestAdminTeam: null, secondAdminTeam: null };
+    return {
+      bestScore: 0,
+      secondBestScore: 0,
+      bestAdminTeam: null,
+      secondAdminTeam: null,
+      bestMatch: null,
+      secondMatch: null,
+    };
   }
 
   const candidates = adminTeams
-    .map((admin) => ({
-      admin,
-      score: Math.max(
-        scorePlatformTeamCandidate(mapping.liquipediaName, admin),
-        scorePlatformTeamCandidate(liqName, admin)
-      ) * 100,
-    }))
+    .map((admin) => {
+      const rawMatch = scorePlatformTeamCandidateDetailed(mapping.liquipediaName, admin);
+      const normalizedMatch = scorePlatformTeamCandidateDetailed(liqName, admin);
+      const bestMatch = rawMatch.score >= normalizedMatch.score ? rawMatch : normalizedMatch;
+      return {
+        admin,
+        score: bestMatch.score * 100,
+        match: bestMatch,
+      };
+    })
     .sort((a, b) => b.score - a.score);
 
   const best = candidates[0] ?? null;
@@ -461,6 +473,8 @@ function getTeamAutoMappingDecision(
     secondBestScore: secondDistinct?.score ?? 0,
     bestAdminTeam: best?.admin ?? null,
     secondAdminTeam: secondDistinct?.admin ?? null,
+    bestMatch: best?.match ?? null,
+    secondMatch: secondDistinct?.match ?? null,
   };
 }
 
@@ -475,14 +489,21 @@ function toPreviewItem(
     normalizedName,
     platformId: decision.bestAdminTeam?.platformId || null,
     adminName: decision.bestAdminTeam?.platformName || null,
+    matchedName: decision.bestMatch?.matchedName || null,
     score: decision.bestScore,
     secondPlatformId: decision.secondAdminTeam?.platformId || null,
     secondAdminName: decision.secondAdminTeam?.platformName || null,
     secondScore: decision.secondBestScore,
     existingPlatformId: existingMapping?.platformId || null,
     existingAdminName: existingMapping?.canonicalName || null,
-    matchMethod: "token_fuzzy",
+    matchMethod: decision.bestMatch?.matchMethod || "token_fuzzy",
   };
+}
+
+function getRequiredAutoMapGap(score: number) {
+  if (score >= 95) return 3;
+  if (score >= 90) return 5;
+  return 10;
 }
 
 function normalizeInputTeamNames(teamNames: string[]) {

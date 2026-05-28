@@ -46,6 +46,18 @@ test("admin team suggestions search bilingual admin names", () => {
   assert.equal(russian[0].matchedName, "Абдулазиз Аль Абдулла");
 });
 
+test("admin team suggestions use shared transliteration fuzzy matching", () => {
+  const suggestions = buildAdminTeamSuggestions(
+    [{ platformId: "8", platformName: "Abdulaziz Al Abdulla", normalizedName: "abdulaziz al abdulla" }],
+    "Абдулазиз Аль Абдулла",
+    5
+  );
+
+  assert.equal(suggestions[0].platformId, "8");
+  assert.equal(suggestions[0].matchType, "fuzzy");
+  assert.equal(suggestions[0].matchedName, "Abdulaziz Al Abdulla");
+});
+
 test("admin team suggestions return only candidates from the provided discipline set", () => {
   const dotaTeams = [{ platformId: "10", platformName: "Team Spirit", normalizedName: "team spirit" }];
   const counterStrikeTeams = [{ platformId: "20", platformName: "Spirit Academy", normalizedName: "spirit academy" }];

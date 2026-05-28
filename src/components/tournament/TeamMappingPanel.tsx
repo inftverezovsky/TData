@@ -31,11 +31,13 @@ type AutoMappingPreviewItem = {
   liquipediaName: string;
   platformId?: string | null;
   adminName?: string | null;
+  matchedName?: string | null;
   score?: number | null;
   secondAdminName?: string | null;
   secondScore?: number | null;
   existingPlatformId?: string | null;
   reason?: string | null;
+  matchMethod?: string | null;
 };
 
 type AutoMappingPreview = {
@@ -871,6 +873,16 @@ function formatMatchMethod(method: string | null | undefined) {
   switch (method) {
     case "exact":
       return "точное совпадение";
+    case "alias_exact":
+      return "точное совпадение по алиасу";
+    case "pair_exact":
+      return "точное совпадение пары";
+    case "pair_fuzzy":
+      return "похожая пара";
+    case "initials_fuzzy":
+      return "совпадение по инициалам";
+    case "translit_fuzzy":
+      return "совпадение через транслитерацию";
     case "normalized_exact":
       return "точное совпадение после нормализации";
     case "token_fuzzy":

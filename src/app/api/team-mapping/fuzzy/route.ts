@@ -26,11 +26,13 @@ export async function POST(request: Request) {
 
     const results = await Promise.all(
       teamNames.map(async (rawName) => {
-        const bestMatch = await findClosestPlatformTeam(disciplineSlug, rawName);
+        const bestMatch = await findClosestPlatformTeam(disciplineSlug, rawName, 0.85, { minScoreGap: 0.1 });
         return {
           rawName,
           suggestedPlatformId: bestMatch?.platformId ?? null,
           suggestedPlatformName: bestMatch?.platformName ?? null,
+          matchedName: bestMatch?.matchedName ?? null,
+          matchMethod: bestMatch?.matchMethod ?? null,
           score: bestMatch?.score ?? 0,
         };
       })

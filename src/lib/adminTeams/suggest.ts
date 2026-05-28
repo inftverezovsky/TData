@@ -2,7 +2,7 @@ import {
   getPlatformTeamSearchNames,
   levenshteinDistance,
   normalizeFuzzyName,
-  scorePlatformTeamCandidate,
+  scorePlatformTeamCandidateDetailed,
   type PlatformTeamCandidate,
 } from "@/lib/teams/fuzzyMatch";
 
@@ -43,10 +43,8 @@ export function buildAdminTeamSuggestions(
     const exact = searchableNames.some((name) => name === normalizedQuery);
     const startsWith = !exact && searchableNames.some((name) => name.startsWith(normalizedQuery));
     const contains = !exact && !startsWith && searchableNames.some((name) => name.includes(normalizedQuery));
-    const fuzzyScore = Math.max(
-      scorePlatformTeamCandidate(normalizedQuery, team),
-      getBroadCandidateScore(normalizedQuery, searchableNames)
-    );
+    const detailedScore = scorePlatformTeamCandidateDetailed(query, team);
+    const fuzzyScore = Math.max(detailedScore.score, getBroadCandidateScore(normalizedQuery, searchableNames));
 
     let matchType: AdminTeamSuggestionMatchType | null = null;
     let score = 0;
@@ -71,7 +69,7 @@ export function buildAdminTeamSuggestions(
       platformName,
       platformNameRu: team.platformNameRu,
       platformNameEn: team.platformNameEn,
-      matchedName: findMatchedDisplayName(normalizedQuery, rawSearchableNames),
+      matchedName: findMatchedDisplayName(normalizedQuery, rawSearchableNames) || detailedScore.matchedName,
       score,
       matchType,
     });

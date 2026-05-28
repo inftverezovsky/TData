@@ -11,6 +11,7 @@ import { buildTeamMappingLookup, findTeamMapping } from "../src/lib/teams/mappin
 import { isPlaceholderTeam } from "../src/lib/teams/teams";
 import {
   findClosestPlatformTeamFromCandidates,
+  getNameMatchDetails,
   getNameMatchScore,
 } from "../src/lib/teams/fuzzyMatch";
 
@@ -347,6 +348,28 @@ test("fuzzy platform matching accepts swapped Russian first and last names", () 
   assert.equal(match?.platformId, "1001");
 });
 
+test("fuzzy platform matching handles transliteration, diacritics, pairs, and initials", () => {
+  assert.equal(getNameMatchDetails("Абдулазиз Аль Абдулла", "Abdulaziz Al Abdulla").matchMethod, "translit_fuzzy");
+  assert.equal(getNameMatchScore("Åhman/Hellvig", "Ahman/Hellvig"), 1);
+  assert.equal(getNameMatchDetails("Hellvig/Åhman", "Ahman/Hellvig").matchMethod, "pair_exact");
+  assert.ok(getNameMatchScore("Abraham S.", "Abraham Sellado") >= 0.9);
+
+  const match = findClosestPlatformTeamFromCandidates(
+    [
+      {
+        platformId: "1001",
+        platformName: "Abdulhamidova L./Mammadov N.",
+        normalizedName: "abdulhamidova l mammadov n",
+      },
+    ],
+    "Абдулхамидова Л./Маммадов Н.",
+    0.85
+  );
+
+  assert.equal(match?.platformId, "1001");
+  assert.equal(match?.matchMethod, "translit_fuzzy");
+});
+
 test("fuzzy platform matching accepts safe esports generic prefixes and suffixes", () => {
   const candidates = [
     { platformId: "1", platformName: "Team Liquid", normalizedName: "team liquid" },
@@ -377,6 +400,22 @@ test("fuzzy platform matching does not collapse qualifier rosters into main team
       [{ platformId: "2", platformName: "Team One", normalizedName: "team one" }],
       "One",
       0.9
+    ),
+    null
+  );
+  assert.equal(
+    findClosestPlatformTeamFromCandidates(
+      [{ platformId: "3", platformName: "Falcons Women", normalizedName: "falcons women" }],
+      "Falcons",
+      0.85
+    ),
+    null
+  );
+  assert.equal(
+    findClosestPlatformTeamFromCandidates(
+      [{ platformId: "4", platformName: "NAVI Junior", normalizedName: "navi junior" }],
+      "NAVI",
+      0.85
     ),
     null
   );

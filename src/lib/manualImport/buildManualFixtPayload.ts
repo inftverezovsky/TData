@@ -130,9 +130,13 @@ export async function mapManualMatches(
     const manualMappingA = manualMappingMap.get(normalizeTeamName(team1Name));
     const manualMappingB = manualMappingMap.get(normalizeTeamName(team2Name));
     const adminTeamA =
-      manualMappingA?.platformId || mappingA?.platformId ? null : findClosestPlatformTeamFromCandidates(adminTeams, team1Name, 0.62);
+      manualMappingA?.platformId || mappingA?.platformId
+        ? null
+        : findClosestPlatformTeamFromCandidates(adminTeams, team1Name, 0.85, { minScoreGap: 0.1 });
     const adminTeamB =
-      manualMappingB?.platformId || mappingB?.platformId ? null : findClosestPlatformTeamFromCandidates(adminTeams, team2Name, 0.62);
+      manualMappingB?.platformId || mappingB?.platformId
+        ? null
+        : findClosestPlatformTeamFromCandidates(adminTeams, team2Name, 0.85, { minScoreGap: 0.1 });
     const platformIdA = resolveManualTeamPlatformIdWithSource({
       explicitPlatformId: readString(match.team1PlatformId),
       embeddedPlatformId: readTeamPlatformId(match.team1),

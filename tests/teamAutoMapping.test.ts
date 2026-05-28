@@ -71,6 +71,37 @@ test("auto mapping accepts safe esports suffixes without collapsing academy rost
   assert.equal(preview.unmapped[0].liquipediaName, "MIBR");
 });
 
+test("auto mapping accepts 85-89 score only when candidate gap is large", () => {
+  const preview = buildAutoMappingPreviewFromData({
+    teamNames: ["Perusic"],
+    mappings: [],
+    adminTeams: [
+      { platformId: "101", platformName: "Perusik", normalizedName: "perusik" },
+      { platformId: "102", platformName: "Completely Different", normalizedName: "completely different" },
+    ],
+  });
+
+  assert.equal(preview.auto.length, 1);
+  assert.equal(preview.auto[0].platformId, "101");
+  assert.ok((preview.auto[0].score ?? 0) >= 85);
+  assert.ok((preview.auto[0].score ?? 0) < 90);
+});
+
+test("auto mapping keeps 85+ candidates ambiguous when the gap is too small", () => {
+  const preview = buildAutoMappingPreviewFromData({
+    teamNames: ["Perusic"],
+    mappings: [],
+    adminTeams: [
+      { platformId: "101", platformName: "Perusik", normalizedName: "perusik" },
+      { platformId: "102", platformName: "Perusig", normalizedName: "perusig" },
+    ],
+  });
+
+  assert.equal(preview.auto.length, 0);
+  assert.equal(preview.ambiguous.length, 1);
+  assert.equal(preview.ambiguous[0].reason, "candidate_gap_too_small");
+});
+
 test("auto mapping matches English admin aliases when the primary admin name is Russian", () => {
   const preview = buildAutoMappingPreviewFromData({
     teamNames: ["Abdulaziz Al Abdulla"],
@@ -113,6 +144,24 @@ test("auto mapping matches Russian admin aliases when the primary admin name is 
   assert.equal(preview.auto[0].platformId, "849245");
 });
 
+test("auto mapping transliterates Cyrillic source names to English admin names", () => {
+  const preview = buildAutoMappingPreviewFromData({
+    teamNames: ["Абдулазиз Аль Абдулла"],
+    mappings: [],
+    adminTeams: [
+      {
+        platformId: "849245",
+        platformName: "Abdulaziz Al Abdulla",
+        normalizedName: "abdulaziz al abdulla",
+      },
+    ],
+  });
+
+  assert.equal(preview.auto.length, 1);
+  assert.equal(preview.auto[0].platformId, "849245");
+  assert.equal(preview.auto[0].matchMethod, "translit_fuzzy");
+});
+
 test("auto mapping preview reports manual locked ID conflicts instead of overwriting", () => {
   const preview = buildAutoMappingPreviewFromData({
     teamNames: ["Liquid"],
@@ -134,6 +183,27 @@ test("auto mapping preview reports manual locked ID conflicts instead of overwri
   assert.equal(preview.conflicts.length, 1);
   assert.equal(preview.conflicts[0].existingPlatformId, "111111");
   assert.equal(preview.conflicts[0].platformId, "211608");
+});
+
+test("auto mapping reports manual locked ID conflicts only for strong matches", () => {
+  const preview = buildAutoMappingPreviewFromData({
+    teamNames: ["Perusic"],
+    mappings: [
+      {
+        liquipediaName: "Perusic",
+        liquipediaNormalizedName: "perusic",
+        platformId: "111111",
+        canonicalName: "Manual Perusic",
+        status: "manual_mapped",
+        isManual: true,
+        isLockedFromAutoMapping: true,
+      },
+    ],
+    adminTeams: [{ platformId: "222222", platformName: "Perusik", normalizedName: "perusik" }],
+  });
+
+  assert.equal(preview.conflicts.length, 0);
+  assert.equal(preview.alreadyMappedCount, 1);
 });
 
 test("invalid auto mapping names include parser artifacts and pure numbers", () => {
