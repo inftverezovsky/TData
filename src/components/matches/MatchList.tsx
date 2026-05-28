@@ -108,13 +108,12 @@ export default function MatchList({
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>("all");
   const [groupByPrimary, setGroupByPrimary] = useState(false);
   const [hideUploaded, setHideUploaded] = useState(false);
-  const [draftAdminHeaderId, setDraftAdminHeaderId] = useState("");
+  const [draftAdminHeaderIdByGroup, setDraftAdminHeaderIdByGroup] = useState<Record<string, string>>({});
   const [draftCourtByGroup, setDraftCourtByGroup] = useState<Record<string, string>>({});
   const [draftFormatByGroup, setDraftFormatByGroup] = useState<Record<string, string>>({});
   const usesCourtGrouping = isBeachVolleyballScopeSlug(disciplineSlug) || isBeachVolleyballTournamentSource(source);
   const showCourtAdminDraftFields = usesCourtGrouping && groupByPrimary;
   const showFormatAdminDraftFields = !usesCourtGrouping && groupByPrimary;
-  const showAdminDraftFields = showCourtAdminDraftFields || showFormatAdminDraftFields;
 
   useEffect(() => {
     const handleSuccess = () => {
@@ -559,18 +558,6 @@ export default function MatchList({
                     Выбрать все
                   </button>
                 )}
-                {showAdminDraftFields && (
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    value={draftAdminHeaderId}
-                    onChange={(event) => setDraftAdminHeaderId(event.target.value.replace(/\D/g, ""))}
-                    aria-label="ID шапки турнира для админки"
-                    placeholder="ID шапки"
-                    className="h-8 w-28 rounded-lg border border-slate-200 bg-white px-2.5 text-[10px] font-bold text-slate-700 outline-none transition-colors placeholder:text-slate-300 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
-                  />
-                )}
               </>
             )}
           </div>
@@ -654,6 +641,24 @@ export default function MatchList({
                         </span>
                         Выбрать все
                       </button>
+                    )}
+                    {showCourtAdminDraftFields && (
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        value={draftAdminHeaderIdByGroup[group.label] ?? ""}
+                        onChange={(event) => {
+                          const value = event.target.value.replace(/\D/g, "");
+                          setDraftAdminHeaderIdByGroup((current) => ({
+                            ...current,
+                            [group.label]: value,
+                          }));
+                        }}
+                        aria-label={`ID шапки турнира для ${group.label}`}
+                        placeholder="ID шапки"
+                        className="h-7 w-28 rounded-md border border-slate-200 bg-white px-2 text-[10px] font-bold text-slate-700 outline-none transition-colors placeholder:text-slate-300 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
+                      />
                     )}
                     <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
                       {formatGroupCountLabel(group.matches)}
