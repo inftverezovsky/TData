@@ -432,9 +432,9 @@ export default function TeamMappingPanel({
             <thead className="bg-slate-50 border-b border-slate-200 text-[10px] font-black uppercase tracking-[0.15em] text-slate-400">
               <tr>
                 <th className="py-4 px-6">Команда TCyber</th>
-                <th className="min-w-[360px] py-4 px-6">Название в админе</th>
+                <th className="min-w-[288px] py-4 px-6">Название в админе</th>
                 <th className="py-4 px-6">ID платформы</th>
-                <th className="py-4 px-6">Статус / способ</th>
+                <th className="min-w-[120px] py-4 px-6">Статус</th>
                 <th className="py-4 px-6 text-right">Действия</th>
               </tr>
             </thead>
@@ -451,7 +451,7 @@ export default function TeamMappingPanel({
                     <td className="py-4 px-6">
                       <span className="font-bold text-slate-900 group-hover:text-slate-600 transition-colors">{name}</span>
                     </td>
-                    <td className="min-w-[360px] py-4 px-6">
+                    <td className="min-w-[288px] py-4 px-6">
                       <div className="flex items-center gap-2">
                         <AdminTeamNameCombobox
                           value={adminNameValue}
@@ -477,9 +477,9 @@ export default function TeamMappingPanel({
                         }`}
                       />
                     </td>
-                    <td className="py-4 px-6">
-                      <div className="flex flex-col gap-1">
-                        <span className={`inline-flex w-max items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-tighter
+                    <td className="min-w-[120px] py-4 px-6">
+                      <div className="flex min-w-[96px] flex-col items-start gap-1">
+                        <span className={`inline-flex w-max whitespace-nowrap items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-tighter
                           ${entry.status === 'auto_mapped' ? 'bg-slate-50 border border-slate-200 text-slate-600' :
                             entry.status === 'manual_mapped' ? 'bg-emerald-50 text-emerald-600' :
                             entry.status === 'manual_unmapped' ? 'bg-rose-50 text-rose-600' :
@@ -489,8 +489,8 @@ export default function TeamMappingPanel({
                           {formatMappingStatus(entry.status)}
                         </span>
                         {entry.confidenceScore != null && (
-                          <span className="text-[9px] font-bold text-slate-400">
-                            {entry.confidenceScore.toFixed(1)}% · {formatMatchMethod(entry.matchMethod)}
+                          <span className="whitespace-nowrap text-[10px] font-bold leading-none text-slate-400">
+                            {entry.confidenceScore.toFixed(1)}%
                           </span>
                         )}
                       </div>
@@ -603,7 +603,7 @@ function AdminTeamNameCombobox({
   }, [canSearch, disabled, disciplineSlug, open, value]);
 
   return (
-    <div className="relative min-w-[320px] flex-1 xl:min-w-[420px]">
+    <div className="relative min-w-[256px] flex-1 xl:min-w-[336px]">
       <input
         type="text"
         value={value}
@@ -829,7 +829,7 @@ function formatMappingStatus(status: string | null | undefined) {
     case "auto_mapped":
       return "Авто";
     case "manual_mapped":
-      return "Ручной";
+      return "Ручное";
     case "manual_unmapped":
       return "Очищено";
     case "ambiguous":
