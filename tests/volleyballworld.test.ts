@@ -116,6 +116,36 @@ test("Volleyball World normalizer collapses seed placeholders into one TBD name"
   assert.equal(schedule.matches[0].teamB.flagUrl, null);
 });
 
+test("Volleyball World normalizer collapses draw placeholders into TBD", () => {
+  const schedule = normalizeVolleyballWorldSchedule(
+    {
+      allTeams: [
+        { no: 21, code: "DRAW", country: "Draw", name: "Draw" },
+      ],
+      matches: [
+        {
+          matchNo: 4001,
+          tournamentNo: 91,
+          competitionSlug: "challenge-test-2026",
+          competitionShortName: "Challenge Test",
+          discipline: "beach",
+          gender: "Men",
+          matchDateUtc: "2026-05-30T00:00:00",
+          matchStatus: 0,
+          phase: { name: "Main Draw" },
+          teamANo: 21,
+          teamBNo: 21,
+        },
+      ],
+    },
+    { gender: "men", fromDate: "2026-05-27", toDate: "2026-06-03" },
+  );
+
+  assert.equal(schedule.matches[0].teamA.name, "TBD");
+  assert.equal(schedule.matches[0].teamB.name, "TBD");
+  assert.equal(schedule.matches[0].teamA.flagUrl, null);
+});
+
 test("Volleyball World gender and date helpers normalize user input", () => {
   assert.equal(normalizeVolleyballWorldGender("Women"), "women");
   assert.equal(normalizeVolleyballWorldGender("женщины"), "women");

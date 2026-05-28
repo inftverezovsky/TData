@@ -131,6 +131,14 @@ test("resolveUploadPolicyPlaceholderDecision identifies unsupported placeholders
     teamBIsUploadableTbd: false,
   });
 
+  assert.deepEqual(resolveUploadPolicyPlaceholderDecision("Draw", "Draw"), {
+    hasUnsupportedPlaceholder: true,
+    teamAIsPlaceholder: true,
+    teamBIsPlaceholder: true,
+    teamAIsUploadableTbd: false,
+    teamBIsUploadableTbd: false,
+  });
+
   assert.deepEqual(resolveUploadPolicyPlaceholderDecision("Team Liquid", "Natus Vincere"), {
     hasUnsupportedPlaceholder: false,
     teamAIsPlaceholder: false,

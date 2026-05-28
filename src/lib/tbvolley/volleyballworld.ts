@@ -434,6 +434,10 @@ function isVolleyballWorldPlaceholderTeam(name: string) {
   return (
     normalized === "tbd" ||
     normalized === "team -1" ||
+    normalized === "draw" ||
+    normalized === "main draw" ||
+    normalized === "qualification draw" ||
+    normalized === "qualifying draw" ||
     /^seed(?:\s*#?\s*\d+)?$/.test(normalized) ||
     /^qualification\s+seed(?:\s*#?\s*\d+)?$/.test(normalized)
   );

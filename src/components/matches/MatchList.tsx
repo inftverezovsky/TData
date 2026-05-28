@@ -47,7 +47,9 @@ type Match = {
 
 type DisplayMatch = ScheduleAnnouncementEntry<Match>;
 type MappingInfo = { alias: string | null; platformId: string | null; logoUrl?: string | null; countryCode?: string | null };
-type ScheduleMode = "matches" | "announcements";
+type ScheduleEntryVariant = "matches" | "announcements";
+type ScheduleMode = "all" | ScheduleEntryVariant;
+type DisplayScheduleEntry = DisplayMatch & { scheduleEntryVariant: ScheduleEntryVariant };
 
 const moscowDateFormatter = new Intl.DateTimeFormat("ru-RU", {
   timeZone: "Europe/Moscow",
@@ -103,10 +105,16 @@ export default function MatchList({
   setSelectedIds: (ids: Set<string>) => void;
   mutate?: () => void;
 }) {
-  const [scheduleMode, setScheduleMode] = useState<ScheduleMode>("matches");
+  const [scheduleMode, setScheduleMode] = useState<ScheduleMode>("all");
   const [groupByPrimary, setGroupByPrimary] = useState(false);
   const [hideUploaded, setHideUploaded] = useState(false);
+  const [draftAdminHeaderId, setDraftAdminHeaderId] = useState("");
+  const [draftCourtByGroup, setDraftCourtByGroup] = useState<Record<string, string>>({});
+  const [draftFormatByGroup, setDraftFormatByGroup] = useState<Record<string, string>>({});
   const usesCourtGrouping = isBeachVolleyballScopeSlug(disciplineSlug) || isBeachVolleyballTournamentSource(source);
+  const showCourtAdminDraftFields = usesCourtGrouping && groupByPrimary;
+  const showFormatAdminDraftFields = !usesCourtGrouping && groupByPrimary;
+  const showAdminDraftFields = showCourtAdminDraftFields || showFormatAdminDraftFields;
 
   useEffect(() => {
     const handleSuccess = () => {
@@ -143,17 +151,36 @@ export default function MatchList({
       });
   }, [disciplineSlug, matches, source]);
 
-  const displayMatches = useMemo(() => {
-    if (scheduleMode === "announcements") return baseAnnouncements;
-
-    return hideUploaded
-      ? baseMatches.filter((match) => !match.syncedAt)
-      : baseMatches;
-  }, [baseAnnouncements, baseMatches, hideUploaded, scheduleMode]);
-
   const getSelectionId = useCallback((match: DisplayMatch) => {
     return match.selectionId || match.matchId || "unknown";
   }, []);
+
+  const displayMatches = useMemo<DisplayScheduleEntry[]>(() => {
+    const visibleMatches = hideUploaded
+      ? baseMatches.filter((match) => !match.syncedAt)
+      : baseMatches;
+    const matchEntries = visibleMatches.map((match) => ({
+      ...match,
+      scheduleEntryVariant: "matches" as const,
+    }));
+    const announcementEntries = baseAnnouncements.map((match) => ({
+      ...match,
+      scheduleEntryVariant: "announcements" as const,
+    }));
+
+    if (scheduleMode === "matches") return matchEntries;
+    if (scheduleMode === "announcements") return announcementEntries;
+
+    return [...matchEntries, ...announcementEntries].sort((a, b) => {
+      const tsA = getMatchTimestamp(a) || Infinity;
+      const tsB = getMatchTimestamp(b) || Infinity;
+      if (tsA !== tsB) return tsA - tsB;
+      if (a.scheduleEntryVariant !== b.scheduleEntryVariant) {
+        return a.scheduleEntryVariant === "matches" ? -1 : 1;
+      }
+      return getSelectionId(a).localeCompare(getSelectionId(b));
+    });
+  }, [baseAnnouncements, baseMatches, getSelectionId, hideUploaded, scheduleMode]);
 
   const isDisplayEntrySelectable = useCallback((match: DisplayMatch) => {
     return isUploadableScheduleEntry(match, { disciplineSlug, source });
@@ -171,7 +198,11 @@ export default function MatchList({
 
     return buildScheduleFormatGroups(displayMatches).map((group) => ({ label: group.format, matches: group.matches }));
   }, [displayMatches, usesCourtGrouping]);
-  const activeBaseCount = scheduleMode === "announcements" ? baseAnnouncements.length : baseMatches.length;
+  const showsMatches = scheduleMode !== "announcements";
+  const showsAnnouncements = scheduleMode !== "matches";
+  const activeBaseCount =
+    (showsMatches ? baseMatches.length : 0) +
+    (showsAnnouncements ? baseAnnouncements.length : 0);
 
   useEffect(() => {
     const visibleSelectableIds = new Set(selectableMatches.map((match) => getSelectionId(match)));
@@ -192,7 +223,7 @@ export default function MatchList({
   }
 
   function toggleHideUploaded(checked: boolean) {
-    if (scheduleMode !== "matches") return;
+    if (!showsMatches) return;
 
     setHideUploaded(checked);
 
@@ -211,6 +242,15 @@ export default function MatchList({
       if (newIds.delete(id)) changed = true;
     }
     if (changed) setSelectedIds(newIds);
+  }
+
+  function toggleScheduleFilter(filter: ScheduleEntryVariant) {
+    if (scheduleMode === "all") {
+      setScheduleMode(filter === "matches" ? "announcements" : "matches");
+      return;
+    }
+
+    setScheduleMode(scheduleMode === filter ? (filter === "matches" ? "announcements" : "matches") : "all");
   }
 
   function isGroupSelected(groupMatches: DisplayMatch[]) {
@@ -257,7 +297,7 @@ export default function MatchList({
     return match.matchDateTime?.trim() || "без точного времени";
   }
 
-  function MatchCard({ match, variant }: { match: DisplayMatch; variant: ScheduleMode }) {
+  function MatchCard({ match, variant }: { match: DisplayMatch; variant: ScheduleEntryVariant }) {
     const isPlaceholder = isMatchPlaceholder(match);
     const isUploaded = Boolean(match.syncedAt);
     const isAnnouncement = variant === "announcements";
@@ -419,15 +459,35 @@ export default function MatchList({
     );
   }
 
+  function getEmptyStateText() {
+    if (scheduleMode === "announcements") return "Анонсов нет.";
+    if (hideUploaded && showsMatches && baseMatches.length > 0 && (scheduleMode === "matches" || baseAnnouncements.length === 0)) {
+      return "Все залитые матчи скрыты.";
+    }
+    if (scheduleMode === "matches") return "Нет предстоящих матчей.";
+    return "Нет предстоящих матчей и анонсов.";
+  }
+
+  function formatGroupCountLabel(groupMatches: DisplayScheduleEntry[]) {
+    if (scheduleMode !== "all") {
+      return `${scheduleMode === "announcements" ? "Анонсов" : "Матчей"}: ${groupMatches.length}`;
+    }
+
+    const matchesCount = groupMatches.filter((match) => match.scheduleEntryVariant === "matches").length;
+    const announcementsCount = groupMatches.length - matchesCount;
+    return `Матчей: ${matchesCount} / Анонсов: ${announcementsCount}`;
+  }
+
   return (
     <div className="mt-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 pb-3">
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => setScheduleMode("matches")}
+            aria-pressed={showsMatches}
+            onClick={() => toggleScheduleFilter("matches")}
             className={`flex items-center gap-2 rounded-xl border px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest transition-colors ${
-              scheduleMode === "matches"
+              showsMatches
                 ? "border-indigo-200 bg-indigo-50 text-indigo-700"
                 : "border-slate-200 bg-white text-slate-500 hover:border-indigo-200 hover:text-indigo-600"
             }`}
@@ -438,9 +498,10 @@ export default function MatchList({
           </button>
           <button
             type="button"
-            onClick={() => setScheduleMode("announcements")}
+            aria-pressed={showsAnnouncements}
+            onClick={() => toggleScheduleFilter("announcements")}
             className={`flex items-center gap-2 rounded-xl border px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest transition-colors ${
-              scheduleMode === "announcements"
+              showsAnnouncements
                 ? "border-sky-200 bg-sky-50 text-sky-700"
                 : "border-slate-200 bg-white text-slate-500 hover:border-sky-200 hover:text-sky-600"
             }`}
@@ -467,9 +528,9 @@ export default function MatchList({
               />
               {usesCourtGrouping ? "Группировка по кортам" : "Группировка по формату"}
             </label>
-            {(scheduleMode === "matches" || selectableMatches.length > 0) && (
+            {(showsMatches || selectableMatches.length > 0) && (
               <>
-                {scheduleMode === "matches" && (
+                {showsMatches && (
                   <label className="flex cursor-pointer items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500 transition-colors hover:border-emerald-200 hover:text-emerald-600">
                     <span className={`h-4 w-4 rounded border transition-all flex items-center justify-center ${
                       hideUploaded ? "bg-emerald-500 border-emerald-500" : "bg-white border-slate-200"
@@ -485,18 +546,31 @@ export default function MatchList({
                     Скрыть залитые
                   </label>
                 )}
-                <button
-                  onClick={toggleAll}
-                  disabled={selectableMatches.length === 0}
-                  className="flex items-center gap-2.5 text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-indigo-600 transition-colors"
-                >
-                  <div className={`h-4 w-4 rounded border transition-all flex items-center justify-center ${
-                    allSelected ? "bg-indigo-600 border-indigo-600" : "bg-white border-slate-200"
-                  }`}>
-                    {allSelected && <CheckCircle2 className="h-3 w-3 text-white" />}
-                  </div>
-                  Выбрать все
-                </button>
+                {selectableMatches.length > 0 && (
+                  <button
+                    onClick={toggleAll}
+                    className="flex items-center gap-2.5 text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-indigo-600 transition-colors"
+                  >
+                    <div className={`h-4 w-4 rounded border transition-all flex items-center justify-center ${
+                      allSelected ? "bg-indigo-600 border-indigo-600" : "bg-white border-slate-200"
+                    }`}>
+                      {allSelected && <CheckCircle2 className="h-3 w-3 text-white" />}
+                    </div>
+                    Выбрать все
+                  </button>
+                )}
+                {showAdminDraftFields && (
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    value={draftAdminHeaderId}
+                    onChange={(event) => setDraftAdminHeaderId(event.target.value.replace(/\D/g, ""))}
+                    aria-label="ID шапки турнира для админки"
+                    placeholder="ID шапки"
+                    className="h-8 w-28 rounded-lg border border-slate-200 bg-white px-2.5 text-[10px] font-bold text-slate-700 outline-none transition-colors placeholder:text-slate-300 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
+                  />
+                )}
               </>
             )}
           </div>
@@ -507,13 +581,9 @@ export default function MatchList({
           <div className="rounded-lg border-2 border-dashed border-slate-200 bg-white/70 p-12 text-center">
             <Clock className="w-12 h-12 text-slate-200 mx-auto mb-4" />
             <p className="text-sm font-medium text-slate-400">
-              {scheduleMode === "announcements"
-                ? "Анонсов нет."
-                : hideUploaded && baseMatches.length > 0
-                  ? "Все залитые матчи скрыты."
-                  : "Нет предстоящих матчей."}
+              {getEmptyStateText()}
             </p>
-            {scheduleMode === "matches" && hideUploaded && baseMatches.length > 0 && (
+            {showsMatches && hideUploaded && baseMatches.length > 0 && (
               <button
                 type="button"
                 onClick={() => setHideUploaded(false)}
@@ -537,6 +607,38 @@ export default function MatchList({
                     <div className="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-slate-800">
                       {group.label}
                     </div>
+                    {showCourtAdminDraftFields && (
+                      <input
+                        type="text"
+                        value={draftCourtByGroup[group.label] ?? ""}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setDraftCourtByGroup((current) => ({
+                            ...current,
+                            [group.label]: value,
+                          }));
+                        }}
+                        aria-label={`Фактический корт для ${group.label}`}
+                        placeholder="Факт. корт"
+                        className="h-7 w-28 rounded-md border border-slate-200 bg-white px-2 text-[10px] font-bold text-slate-700 outline-none transition-colors placeholder:text-slate-300 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
+                      />
+                    )}
+                    {showFormatAdminDraftFields && (
+                      <input
+                        type="text"
+                        value={draftFormatByGroup[group.label] ?? ""}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setDraftFormatByGroup((current) => ({
+                            ...current,
+                            [group.label]: value,
+                          }));
+                        }}
+                        aria-label={`Фактический формат для ${group.label}`}
+                        placeholder="Факт. формат"
+                        className="h-7 w-32 rounded-md border border-slate-200 bg-white px-2 text-[10px] font-bold text-slate-700 outline-none transition-colors placeholder:text-slate-300 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
+                      />
+                    )}
                     <div className="h-px min-w-8 flex-1 bg-slate-100" />
                     {groupSelectableCount > 0 && (
                       <button
@@ -554,12 +656,16 @@ export default function MatchList({
                       </button>
                     )}
                     <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                      {scheduleMode === "announcements" ? "Анонсов" : "Матчей"}: {group.matches.length}
+                      {formatGroupCountLabel(group.matches)}
                     </div>
                   </div>
                 <div className="grid gap-2">
                   {group.matches.map((match) => (
-                    <MatchCard key={getSelectionId(match)} match={match} variant={scheduleMode} />
+                    <MatchCard
+                      key={`${match.scheduleEntryVariant}:${getSelectionId(match)}`}
+                      match={match}
+                      variant={match.scheduleEntryVariant}
+                    />
                   ))}
                 </div>
               </section>
@@ -569,7 +675,11 @@ export default function MatchList({
         ) : (
           <div className="grid gap-2">
             {displayMatches.map((match) => (
-              <MatchCard key={getSelectionId(match)} match={match} variant={scheduleMode} />
+              <MatchCard
+                key={`${match.scheduleEntryVariant}:${getSelectionId(match)}`}
+                match={match}
+                variant={match.scheduleEntryVariant}
+              />
             ))}
           </div>
         )}

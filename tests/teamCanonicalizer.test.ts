@@ -22,6 +22,8 @@ test("G2 is treated as a real team, not a bracket seed", () => {
   assert.equal(isPlaceholderTeam("{{TeamOpponent"), true);
   assert.equal(isPlaceholderTeam("-->"), true);
   assert.equal(isPlaceholderTeam("→"), true);
+  assert.equal(isPlaceholderTeam("Draw"), true);
+  assert.equal(isPlaceholderTeam("Main Draw"), true);
   assert.equal(isPlaceholderTeam("Group B 2nd Place"), true);
   assert.equal(isPlaceholderTeam("Loser of Semifinal 1"), true);
 });

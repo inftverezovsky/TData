@@ -385,6 +385,7 @@ function normalizeStageSlotLabel(value: string | null | undefined) {
     /\bRound\s+\d+\s+(?:High|Low|Mid)?\s*Matches?\b/i,
     /\bPlayoffs?\s*[:\-]?\s*(?:Upper|Lower)\s+(?:Round\s+\d+|Finals?)\b/i,
     /\bSwiss\s+Round\s+\d+(?:\s*#\d+)?\b/i,
+    /\bMain\s+Draw\b/i,
     /\b(?:Winner|Loser)\s+Runde\s+\d+\b/i,
     /\b(?:Achtel|Viertel|Halb)?finale(?:\s+(?:Winner|Loser))?\b/i,
     /\bkleines\s+Finale\b/i,
@@ -424,8 +425,8 @@ function normalizeStageSlotLabel(value: string | null | undefined) {
   }
 
   const withoutTournamentPrefix = text
-    .replace(/^.+?\b(?:Group Stage|Regular\s+Season|Play[-\s]?In(?:\s+Stage|\s+Day\s+\d+)?|Bracket\s+Round\s+\d+|Stage\s+\d+|Week\s+\d+|Round\s+of\s+\d+|LCQ\s+Round\s+\d+|Upper\s+Bracket\s+(?:Round\s+\d+|Quarter[-\s]?finals?|Semi[-\s]?finals?|Finals?)|Lower\s+Bracket\s+(?:Round\s+\d+|Quarter[-\s]?finals?|Semi[-\s]?finals?|Finals?)|Winners?'?\s+Round\s+\d+|Losers?'?\s+Round\s+\d+|To\s+Playoffs?|Advance\s+to\s+Playoffs?|Playoffs?|Quarter[-\s]?finals?|Semi[-\s]?finals?|(?:Third|3rd)\s+Place(?:\s+Match)?|Consolation\s+Finals?|Winners?'?\s+Finals?|Losers?'?\s+Finals?|Grand\s+Finals?)\b/i, (match) => {
-      const stage = match.match(/\b(?:Group Stage|Regular\s+Season|Play[-\s]?In(?:\s+Stage|\s+Day\s+\d+)?|Bracket\s+Round\s+\d+|Stage\s+\d+|Week\s+\d+|Round\s+of\s+\d+|LCQ\s+Round\s+\d+|Upper\s+Bracket\s+(?:Round\s+\d+|Quarter[-\s]?finals?|Semi[-\s]?finals?|Finals?)|Lower\s+Bracket\s+(?:Round\s+\d+|Quarter[-\s]?finals?|Semi[-\s]?finals?|Finals?)|Winners?'?\s+Round\s+\d+|Losers?'?\s+Round\s+\d+|To\s+Playoffs?|Advance\s+to\s+Playoffs?|Playoffs?|Quarter[-\s]?finals?|Semi[-\s]?finals?|(?:Third|3rd)\s+Place(?:\s+Match)?|Consolation\s+Finals?|Winners?'?\s+Finals?|Losers?'?\s+Finals?|Grand\s+Finals?)\b/i);
+    .replace(/^.+?\b(?:Group Stage|Main\s+Draw|Regular\s+Season|Play[-\s]?In(?:\s+Stage|\s+Day\s+\d+)?|Bracket\s+Round\s+\d+|Stage\s+\d+|Week\s+\d+|Round\s+of\s+\d+|LCQ\s+Round\s+\d+|Upper\s+Bracket\s+(?:Round\s+\d+|Quarter[-\s]?finals?|Semi[-\s]?finals?|Finals?)|Lower\s+Bracket\s+(?:Round\s+\d+|Quarter[-\s]?finals?|Semi[-\s]?finals?|Finals?)|Winners?'?\s+Round\s+\d+|Losers?'?\s+Round\s+\d+|To\s+Playoffs?|Advance\s+to\s+Playoffs?|Playoffs?|Quarter[-\s]?finals?|Semi[-\s]?finals?|(?:Third|3rd)\s+Place(?:\s+Match)?|Consolation\s+Finals?|Winners?'?\s+Finals?|Losers?'?\s+Finals?|Grand\s+Finals?)\b/i, (match) => {
+      const stage = match.match(/\b(?:Group Stage|Main\s+Draw|Regular\s+Season|Play[-\s]?In(?:\s+Stage|\s+Day\s+\d+)?|Bracket\s+Round\s+\d+|Stage\s+\d+|Week\s+\d+|Round\s+of\s+\d+|LCQ\s+Round\s+\d+|Upper\s+Bracket\s+(?:Round\s+\d+|Quarter[-\s]?finals?|Semi[-\s]?finals?|Finals?)|Lower\s+Bracket\s+(?:Round\s+\d+|Quarter[-\s]?finals?|Semi[-\s]?finals?|Finals?)|Winners?'?\s+Round\s+\d+|Losers?'?\s+Round\s+\d+|To\s+Playoffs?|Advance\s+to\s+Playoffs?|Playoffs?|Quarter[-\s]?finals?|Semi[-\s]?finals?|(?:Third|3rd)\s+Place(?:\s+Match)?|Consolation\s+Finals?|Winners?'?\s+Finals?|Losers?'?\s+Finals?|Grand\s+Finals?)\b/i);
       return stage?.[0] || match;
     })
     .trim();
@@ -434,13 +435,14 @@ function normalizeStageSlotLabel(value: string | null | undefined) {
 }
 
 function hasStageSlotLabelHint(value: string) {
-  return /\b(?:Group Stage|Round Robin|Regular\s+Season|Play[-\s]?In(?:\s+Stage|\s+Day\s+\d+)?|Bracket\s+Round\s+\d+|Stage\s+\d+|Week\s+\d+|Round\s+of\s+\d+|Round\s+\d+|LCQ\s+Round\s+\d+|Upper\s+Bracket|Lower\s+Bracket|Winners?'?\s+Round\s+\d+|Losers?'?\s+Round\s+\d+|To\s+Playoffs?|Advance\s+to\s+Playoffs?|Playoffs?|Quarter[-\s]?finals?|Semi[-\s]?finals?|(?:Third|3rd)\s+Place(?:\s+Match)?|Consolation\s+Finals?|Winners?'?\s+Finals?|Losers?'?\s+Finals?|Grand\s+Finals?|Finals?)\b/i.test(value);
+  return /\b(?:Group Stage|Main\s+Draw|Round Robin|Regular\s+Season|Play[-\s]?In(?:\s+Stage|\s+Day\s+\d+)?|Bracket\s+Round\s+\d+|Stage\s+\d+|Week\s+\d+|Round\s+of\s+\d+|Round\s+\d+|LCQ\s+Round\s+\d+|Upper\s+Bracket|Lower\s+Bracket|Winners?'?\s+Round\s+\d+|Losers?'?\s+Round\s+\d+|To\s+Playoffs?|Advance\s+to\s+Playoffs?|Playoffs?|Quarter[-\s]?finals?|Semi[-\s]?finals?|(?:Third|3rd)\s+Place(?:\s+Match)?|Consolation\s+Finals?|Winners?'?\s+Finals?|Losers?'?\s+Finals?|Grand\s+Finals?|Finals?)\b/i.test(value);
 }
 
 function normalizeKnownStageName(value: string) {
   const text = value.replace(/\s+/g, " ").trim();
   if (/\bswiss\b/i.test(text)) return "Group Stage";
   if (/^round\s+\d+\s+(?:high|low|mid)?\s*matches?/i.test(text)) return "Group Stage";
+  if (/\bmain\s+draw\b/i.test(text)) return "Main Draw";
   if (/\bplayoffs?\b/i.test(text) && /\b(?:upper|lower)\s+(?:round\s+\d+|finals?)\b/i.test(text)) return "Playoffs";
   if (/round robin/i.test(text)) return "Group Stage";
   if (/regular\s+season/i.test(text)) return "Regular Season";
@@ -495,6 +497,7 @@ function getSourcedPlaceholderStageFallbackLabel(match: ScheduleViewMatch) {
     .join(" ");
 
   if (/\b(?:group|swiss|round\s+robin|regular)\b/i.test(text)) return "Group Stage";
+  if (/\bmain\s+draw\b/i.test(text)) return "Main Draw";
   if (/\b(?:bracket|playoffs?|finals?|winners?|losers?|decider)\b/i.test(text)) return "Playoffs";
   return "Group Stage";
 }

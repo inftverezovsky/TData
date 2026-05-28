@@ -984,3 +984,44 @@ test("German Beach Tour TBD slots render as stage announcements", () => {
   assert.equal(entries[0].singleAnnouncementSide, "stage");
   assert.equal(entries[0].singleAnnouncementTeamName, "Achtelfinale Winner");
 });
+
+test("Draw vs Draw rows render as stage announcements across stage-aware sources", () => {
+  const cases = [
+    ["counterstrike", "liquipedia"],
+    ["counterstrike", "hltv"],
+    ["dota2", "dltv"],
+    ["leagueoflegends", "fandom"],
+    ["valorant", "vlr"],
+    ["beachvolleyball", "volleyballworld"],
+    ["beachvolleyball", "beachvolleyru"],
+    ["beachvolleyball", "germanbeachtour"],
+  ] as const;
+
+  for (const [disciplineSlug, source] of cases) {
+    const match = {
+      id: `${source}-draw-row`,
+      matchId: `${source}-draw-match`,
+      matchDate: new Date("2026-05-30T00:00:00.000Z"),
+      matchDateTime: "30.05.2026 03:00:00",
+      rawText: "Main Draw | Draw vs Draw",
+      scoreA: null,
+      scoreB: null,
+      teamAName: "Draw",
+      teamBName: "Draw",
+      stage: "Main Draw",
+      round: null,
+      hasPlaceholderTeams: false,
+    };
+
+    assert.equal(isUploadReadyScheduleMatch(match), false, source);
+    assert.equal(isDisplayableScheduleMatch(match), false, source);
+    assert.equal(isAnnouncementScheduleMatch(match, { disciplineSlug, source }), true, source);
+    assert.deepEqual(getUploadableTbdAnnouncementSides(match, { disciplineSlug, source }), ["stage"], source);
+
+    const entries = expandScheduleAnnouncementsForDiscipline([match], disciplineSlug, source);
+    assert.equal(entries.length, 1, source);
+    assert.equal(entries[0].isStageAnnouncement, true, source);
+    assert.equal(entries[0].singleAnnouncementSide, "stage", source);
+    assert.equal(entries[0].singleAnnouncementTeamName, "Main Draw", source);
+  }
+});
