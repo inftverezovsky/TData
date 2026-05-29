@@ -1,6 +1,8 @@
+export const DEFAULT_ADMIN_SERVICE_URL = "https://in.upzero.net/infotdel/results_fixtures/cyber/liquiped/";
+
 export function buildAdminServiceUrl(jsonUrl: string, serviceBaseUrl: string | null | undefined) {
-  const baseUrl = String(serviceBaseUrl || "").trim();
-  if (!baseUrl) return null;
+  const configuredBaseUrl = String(serviceBaseUrl || "").trim();
+  const baseUrl = configuredBaseUrl || DEFAULT_ADMIN_SERVICE_URL;
 
   try {
     const url = new URL(baseUrl);
