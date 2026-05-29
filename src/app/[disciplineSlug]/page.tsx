@@ -14,6 +14,8 @@ import DltvTournamentsWidget from "@/components/dltv/DltvTournamentsWidget";
 import FandomTournamentsWidget from "@/components/fandom/FandomTournamentsWidget";
 import { ClientErrorBoundary } from "@/components/ui/ClientErrorBoundary";
 
+const SOURCE_GRID_CLASS = "grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_680px]";
+
 export default function DynamicDisciplinePage({
   params,
 }: {
@@ -80,7 +82,7 @@ export default function DynamicDisciplinePage({
           </button>
         </div>
 
-        <div className="grid items-start gap-8 lg:grid-cols-[1fr_340px]">
+        <div className={SOURCE_GRID_CLASS}>
           {/* Main Content Area */}
           <div className="min-w-0">
             {activeTab === "liquipedia" ? (
@@ -151,7 +153,7 @@ export default function DynamicDisciplinePage({
           </button>
         </div>
 
-        <div className="grid items-start gap-8 lg:grid-cols-[1fr_340px]">
+        <div className={SOURCE_GRID_CLASS}>
           <div className="min-w-0">
             {activeTab === "liquipedia" ? (
               <div className="animate-in fade-in slide-in-from-left-4 duration-500">
@@ -220,7 +222,7 @@ export default function DynamicDisciplinePage({
           </button>
         </div>
 
-        <div className="grid items-start gap-8 lg:grid-cols-[1fr_340px]">
+        <div className={SOURCE_GRID_CLASS}>
           <div className="min-w-0">
             {activeTab === "liquipedia" ? (
               <div className="animate-in fade-in slide-in-from-left-4 duration-500">
@@ -289,7 +291,7 @@ export default function DynamicDisciplinePage({
           </button>
         </div>
 
-        <div className="grid items-start gap-8 lg:grid-cols-[1fr_340px]">
+        <div className={SOURCE_GRID_CLASS}>
           <div className="min-w-0">
             {activeTab === "liquipedia" ? (
               <div className="animate-in fade-in slide-in-from-left-4 duration-500">

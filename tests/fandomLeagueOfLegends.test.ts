@@ -155,6 +155,54 @@ test("Fandom LoL parser extracts exact future matches from MatchSchedule cargo r
   assert.equal(normalized.leagueOfLegendsDiagnostics?.fandom?.cargoRowsUsed, 1);
 });
 
+test("Fandom LoL cargo MatchId keeps stable match IDs when row order changes", () => {
+  const target = {
+    title: {
+      MatchId: "EWC2026-M001",
+      Team1: "G2 Esports",
+      Team2: "T1",
+      Team1Score: "",
+      Team2Score: "",
+      BestOf: "3",
+      DateTime_UTC: "2026-07-15 12:00:00",
+      HasTime: "1",
+      Tab: "Knockout Stage",
+      Round: "Quarterfinals",
+    },
+  };
+  const insertedBefore = {
+    title: {
+      MatchId: "EWC2026-M000",
+      Team1: "Fnatic",
+      Team2: "Cloud9",
+      Team1Score: "",
+      Team2Score: "",
+      DateTime_UTC: "2026-07-15 10:00:00",
+      HasTime: "1",
+    },
+  };
+
+  const first = normalizeFandomLeagueOfLegendsTournament({
+    title: "Esports World Cup 2026",
+    pageUrl: "https://lol.fandom.com/wiki/Esports_World_Cup_2026",
+    wikitext: fandomInfobox,
+    parsedHtml: "",
+    cargoMatches: [target],
+  });
+  const second = normalizeFandomLeagueOfLegendsTournament({
+    title: "Esports World Cup 2026",
+    pageUrl: "https://lol.fandom.com/wiki/Esports_World_Cup_2026",
+    wikitext: fandomInfobox,
+    parsedHtml: "",
+    cargoMatches: [insertedBefore, target],
+  });
+
+  const firstId = first.matches.find((match) => match.teamAName === "G2 Esports")?.matchId;
+  const secondId = second.matches.find((match) => match.teamAName === "G2 Esports")?.matchId;
+  assert.ok(firstId);
+  assert.equal(secondId, firstId);
+});
+
 test("Fandom LoL cargo extraction skips finished rows and rows without exact time", () => {
   const matches = extractFandomCargoScheduleMatches([
     { title: { Team1: "Alpha Esports", Team2: "Bravo Esports", Team1Score: "1", Team2Score: "0", DateTime_UTC: "2026-07-15 12:00:00", HasTime: "1" } },
@@ -262,4 +310,47 @@ test("Fandom LoL parser merges cargo and HTML duplicate TBD stage slots", () => 
   assert.equal(announcements[0].isStageAnnouncement, true);
   assert.equal(announcements[0].singleAnnouncementTeamName, "Stage 2");
   assert.equal(announcements.some((entry) => /^TBD\d*$/i.test(entry.singleAnnouncementTeamName || "")), false);
+});
+
+test("Fandom LoL parser removes real-match HTML fallback covered by Cargo", () => {
+  const normalized = normalizeFandomLeagueOfLegendsTournament({
+    title: "Esports World Cup 2026",
+    pageUrl: "https://lol.fandom.com/wiki/Esports_World_Cup_2026",
+    wikitext: fandomInfobox,
+    parsedHtml: `
+      <h2>Results</h2>
+      <table>
+        <tr class="matchlist-row">
+          <td class="matchlist-team1 ml-team" data-teamhighlight="G2 Esports"></td>
+          <td class="matchlist-score"></td>
+          <td class="matchlist-score"></td>
+          <td><span class="countdowndate">15 July 2026 12:00:00 +0000</span></td>
+          <td class="matchlist-team2 ml-team" data-teamhighlight="T1"></td>
+          <td>Best of 5</td>
+        </tr>
+      </table>
+    `,
+    cargoMatches: [
+      {
+        title: {
+          MatchId: "EWC2026-M001",
+          Team1: "G2 Esports",
+          Team2: "T1",
+          Team1Score: "",
+          Team2Score: "",
+          BestOf: "3",
+          DateTime_UTC: "2026-07-15 12:00:00",
+          HasTime: "1",
+          Tab: "Swiss Stage",
+          Round: "Round 1",
+        },
+      },
+    ],
+  });
+
+  assert.equal(normalized.matches.length, 1);
+  assert.equal(normalized.matches[0].teamAName, "G2 Esports");
+  assert.equal(normalized.matches[0].teamBName, "T1");
+  assert.equal(normalized.matches[0].format, "BO3");
+  assert.equal(normalized.matches[0].stage, "Swiss Stage");
 });

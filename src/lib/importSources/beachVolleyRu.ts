@@ -144,6 +144,7 @@ export async function importBeachVolleyRuTournament(input: ImportBeachVolleyRuTo
       slug: input.slug,
       gender: beachVolleyRuTournament.gender,
       matches: beachVolleyRuTournament.matches || [],
+      force: Boolean(input.force),
     });
     const finalStatus = resolveBeachVolleyRuImportStatus(saveResult.savedCount);
 
@@ -200,6 +201,7 @@ async function saveBeachVolleyRuTournamentMatches(params: {
   slug: string;
   gender: BeachVolleyRuGender;
   matches: BeachVolleyRuMatch[];
+  force?: boolean;
 }): Promise<{ savedCount: number }> {
   const candidates = params.matches
     .filter((match) => isActiveBeachVolleyRuMatch(match))
@@ -299,10 +301,12 @@ async function saveBeachVolleyRuTournamentMatches(params: {
 
   const mappingSlug = getBeachVolleyballMappingSlug(params.gender);
   const [existingParticipants, teamMappings] = await Promise.all([
-    prisma.tournamentParticipant.findMany({
-      where: { tournamentId: params.tournamentId },
-      select: { name: true, platformId: true, logoUrl: true, rawText: true, region: true },
-    }),
+    params.force
+      ? Promise.resolve([] as Array<{ name: string; platformId: string | null; logoUrl: string | null; rawText: string | null; region: string | null }>)
+      : prisma.tournamentParticipant.findMany({
+        where: { tournamentId: params.tournamentId },
+        select: { name: true, platformId: true, logoUrl: true, rawText: true, region: true },
+      }),
     prisma.teamMapping.findMany({ where: { disciplineSlug: mappingSlug } }),
   ]);
 

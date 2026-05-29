@@ -1,8 +1,8 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { CalendarDays, ExternalLink, Loader2, MapPin, RefreshCw, Search, Trophy, UsersRound } from "lucide-react";
-import LoadTournamentButton from "@/components/ui/LoadTournamentButton";
+import TBvolleyTournamentBundleButton from "@/components/tbvolley/TBvolleyTournamentBundleButton";
 import type {
   VolleyballWorldBeachTournament,
   VolleyballWorldBeachTournamentSearch,
@@ -11,10 +11,24 @@ import type {
 
 const BEACH_VOLLEYBALL_SLUG = "beachvolleyball";
 
-const genderTabs: Array<{ value: VolleyballWorldGender; label: string }> = [
-  { value: "men", label: "Мужчины" },
-  { value: "women", label: "Женщины" },
-];
+const searchGenders: VolleyballWorldGender[] = ["men", "women"];
+
+type CombinedVolleyballWorldTournamentSearch = Omit<VolleyballWorldBeachTournamentSearch, "gender"> & {
+  gender: "all";
+};
+
+type VolleyballWorldTournamentGroup = {
+  id: string;
+  title: string;
+  pageUrl: string;
+  status: VolleyballWorldBeachTournament["status"];
+  subCompetitionType: string;
+  location: string;
+  dates: string;
+  matchCount: number;
+  firstMatchTimeMoscow: string | null;
+  items: VolleyballWorldBeachTournament[];
+};
 
 const statusLabels: Record<VolleyballWorldBeachTournament["status"], string> = {
   ongoing: "Live/идет",
@@ -27,11 +41,10 @@ const statusClasses: Record<VolleyballWorldBeachTournament["status"], string> = 
 };
 
 export default function VolleyballWorldTournamentSearch() {
-  const [gender, setGender] = useState<VolleyballWorldGender>("men");
   const [query, setQuery] = useState("");
   const [fromDate, setFromDate] = useState(() => getTodayInputValue());
   const [days, setDays] = useState("14");
-  const [data, setData] = useState<VolleyballWorldBeachTournamentSearch | null>(null);
+  const [data, setData] = useState<CombinedVolleyballWorldTournamentSearch | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,31 +53,53 @@ export default function VolleyballWorldTournamentSearch() {
     setError(null);
 
     try {
-      const params = new URLSearchParams({
-        gender,
+      const searches = await Promise.all(searchGenders.map(async (gender) => {
+        const params = new URLSearchParams({
+          gender,
+          query: query.trim(),
+          fromDate,
+          days,
+        });
+        const response = await fetch(`/api/tbvolley/volleyballworld/tournaments?${params.toString()}`, { cache: "no-store" });
+        const payload = (await response.json().catch(() => ({}))) as VolleyballWorldBeachTournamentSearch & { error?: string };
+
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload.error || "Не удалось загрузить турниры VolleyballWorld");
+        }
+
+        return payload;
+      }));
+
+      const first = searches[0];
+      const tournaments = searches
+        .flatMap((search) => search.tournaments)
+        .sort(compareVolleyballWorldTournaments);
+      const tournamentGroups = groupVolleyballWorldTournaments(tournaments);
+
+      setData({
+        ok: true,
+        source: "volleyballworld",
+        fromDate: first.fromDate,
+        toDate: first.toDate,
+        gender: "all",
         query: query.trim(),
-        fromDate,
-        days,
+        tournaments,
+        summary: {
+          total: tournamentGroups.length,
+          matches: tournaments.reduce((sum, tournament) => sum + tournament.matchCount, 0),
+        },
       });
-      const response = await fetch(`/api/tbvolley/volleyballworld/tournaments?${params.toString()}`, { cache: "no-store" });
-      const payload = (await response.json().catch(() => ({}))) as VolleyballWorldBeachTournamentSearch & { error?: string };
-
-      if (!response.ok || !payload.ok) {
-        throw new Error(payload.error || "Не удалось загрузить турниры VolleyballWorld");
-      }
-
-      setData(payload);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось загрузить турниры VolleyballWorld");
       setData(null);
     } finally {
       setLoading(false);
     }
-  }, [days, fromDate, gender, query]);
+  }, [days, fromDate, query]);
 
   useEffect(() => {
     runSearch();
-  }, [days, fromDate, gender, runSearch]);
+  }, [days, fromDate, runSearch]);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -72,36 +107,33 @@ export default function VolleyballWorldTournamentSearch() {
   }
 
   const tournaments = data?.tournaments || [];
-  const currentGenderLabel = useMemo(
-    () => genderTabs.find((tab) => tab.value === gender)?.label || "Мужчины",
-    [gender],
-  );
+  const tournamentGroups = groupVolleyballWorldTournaments(tournaments);
 
   return (
     <div className="animate-in space-y-6">
       <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-soft">
-        <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div className="space-y-6 p-6 md:p-8">
+        <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_260px]">
+          <div className="space-y-3 p-4 md:p-5">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-700">
+              <span className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-emerald-700">
                 TBvolley
               </span>
-              <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500">
+              <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-slate-500">
                 VolleyballWorld
               </span>
-              <span className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-amber-700">
+              <span className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-amber-700">
                 Beach
               </span>
             </div>
 
             <div>
-              <h1 className="text-3xl font-black tracking-tight text-slate-950 md:text-4xl">Beach Volleyball</h1>
-              <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-500">
+              <h1 className="text-2xl font-black tracking-tight text-slate-950 md:text-3xl">Beach Volleyball</h1>
+              <p className="mt-1 text-sm font-semibold leading-relaxed text-slate-500">
                 VolleyballWorld tournaments
               </p>
             </div>
 
-            <form onSubmit={onSubmit} className="grid gap-3 xl:grid-cols-[minmax(220px,1fr)_164px_140px_52px] xl:items-end">
+            <form onSubmit={onSubmit} className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_164px_140px_52px] lg:items-end">
               <label className="min-w-0 space-y-1.5">
                 <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Турнир</span>
                 <div className="relative">
@@ -110,7 +142,7 @@ export default function VolleyballWorldTournamentSearch() {
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
                     placeholder="Ostrava, Elite16, Challenge..."
-                    className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 text-sm font-bold text-slate-950 outline-none transition focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100 placeholder:text-slate-300"
+                    className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 text-sm font-bold text-slate-950 outline-none transition focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100 placeholder:text-slate-300"
                   />
                 </div>
               </label>
@@ -121,7 +153,7 @@ export default function VolleyballWorldTournamentSearch() {
                   type="date"
                   value={fromDate}
                   onChange={(event) => setFromDate(event.target.value)}
-                  className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none transition focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100"
+                  className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none transition focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100"
                 />
               </label>
 
@@ -130,7 +162,7 @@ export default function VolleyballWorldTournamentSearch() {
                 <select
                   value={days}
                   onChange={(event) => setDays(event.target.value)}
-                  className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none transition focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100"
+                  className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none transition focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100"
                 >
                   <option value="7">7 дней</option>
                   <option value="14">14 дней</option>
@@ -142,7 +174,7 @@ export default function VolleyballWorldTournamentSearch() {
               <button
                 type="submit"
                 disabled={loading}
-                className="flex h-12 w-full items-center justify-center rounded-xl bg-slate-950 text-white transition hover:bg-emerald-600 active:scale-[0.96] disabled:opacity-50"
+                className="flex h-10 w-full items-center justify-center rounded-xl bg-slate-950 text-white transition hover:bg-emerald-600 active:scale-[0.96] disabled:opacity-50"
                 title="Найти"
               >
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
@@ -150,42 +182,24 @@ export default function VolleyballWorldTournamentSearch() {
             </form>
           </div>
 
-          <aside className="border-t border-slate-200 bg-slate-950 p-6 text-white lg:border-l lg:border-t-0 md:p-8">
+          <aside className="border-t border-slate-200 bg-slate-950 p-4 text-white lg:border-l lg:border-t-0">
             <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Сводка</p>
-            <div className="mt-5 grid grid-cols-2 gap-3">
+            <div className="mt-3 grid grid-cols-2 gap-2">
               <Metric label="Турниры" value={data?.summary.total ?? 0} />
               <Metric label="Матчи" value={data?.summary.matches ?? 0} />
             </div>
-            <div className="mt-5 rounded-xl border border-white/10 bg-white/5 p-4">
+            <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3">
               <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Выборка</p>
-              <p className="mt-2 text-sm font-black text-white">{currentGenderLabel}</p>
+              <p className="mt-1 text-sm font-black text-white">Обе сетки</p>
               <p className="mt-1 text-xs font-bold text-slate-400">{data ? `${data.fromDate} — ${data.toDate}` : fromDate}</p>
             </div>
           </aside>
         </div>
       </section>
 
-      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200">
-        <div className="flex min-w-0 items-center gap-1 overflow-x-auto">
-          {genderTabs.map((tab) => {
-            const active = tab.value === gender;
-            return (
-              <button
-                key={tab.value}
-                type="button"
-                onClick={() => setGender(tab.value)}
-                className={`relative shrink-0 px-7 py-4 text-xs font-black uppercase tracking-[0.2em] transition-all active:scale-[0.96] ${
-                  active ? "text-emerald-700" : "text-slate-400 hover:bg-white/60 hover:text-slate-700"
-                }`}
-              >
-                {tab.label}
-                {active ? <span className="absolute inset-x-0 bottom-0 h-1 rounded-t-full bg-emerald-600 animate-slide-in" /> : null}
-              </button>
-            );
-          })}
-        </div>
-        <div className="pb-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
-          {loading ? "Обновление" : `Найдено: ${tournaments.length}`}
+      <div className="flex flex-wrap items-center justify-end gap-4 border-b border-slate-200 pb-3">
+        <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+          {loading ? "Обновление" : `Найдено: ${tournamentGroups.length}`}
         </div>
       </div>
 
@@ -195,18 +209,18 @@ export default function VolleyballWorldTournamentSearch() {
         </section>
       ) : loading && !data ? (
         <LoadingGrid />
-      ) : tournaments.length === 0 ? (
+      ) : tournamentGroups.length === 0 ? (
         <section className="rounded-3xl border border-slate-200 bg-white p-12 text-center shadow-soft">
           <Trophy className="mx-auto h-10 w-10 text-slate-300" />
           <h2 className="mt-4 text-sm font-black uppercase tracking-widest text-slate-500">Турниры не найдены</h2>
-          <p className="mt-2 text-xs font-bold uppercase tracking-wide text-slate-400">{currentGenderLabel}</p>
+          <p className="mt-2 text-xs font-bold uppercase tracking-wide text-slate-400">Обе сетки</p>
         </section>
       ) : (
         <div className="grid gap-4">
-          {tournaments.map((tournament) => (
+          {tournamentGroups.map((group) => (
             <TournamentCard
-              key={`${tournament.gender}-${tournament.tournamentNo || tournament.id}`}
-              tournament={tournament}
+              key={group.id}
+              group={group}
               fromDate={data?.fromDate || fromDate}
               days={days}
             />
@@ -217,12 +231,87 @@ export default function VolleyballWorldTournamentSearch() {
   );
 }
 
+function compareVolleyballWorldTournaments(left: VolleyballWorldBeachTournament, right: VolleyballWorldBeachTournament) {
+  return compareDateText(left.startDate, right.startDate)
+    || left.title.localeCompare(right.title)
+    || compareGender(left.gender, right.gender);
+}
+
+function compareDateText(left: string | null | undefined, right: string | null | undefined) {
+  return (left || "9999-12-31").localeCompare(right || "9999-12-31");
+}
+
+function compareGender(left: VolleyballWorldGender, right: VolleyballWorldGender) {
+  return searchGenders.indexOf(left) - searchGenders.indexOf(right);
+}
+
+function groupVolleyballWorldTournaments(tournaments: VolleyballWorldBeachTournament[]): VolleyballWorldTournamentGroup[] {
+  const groups = new Map<string, VolleyballWorldTournamentGroup>();
+
+  for (const tournament of tournaments) {
+    const key = [
+      normalizeGroupKey(tournament.title),
+      normalizeGroupKey(tournament.location),
+      normalizeGroupKey(tournament.subCompetitionType),
+      tournament.startDate?.slice(0, 10) || "",
+      tournament.endDate?.slice(0, 10) || "",
+    ].join("|");
+    const group = groups.get(key);
+
+    if (!group) {
+      groups.set(key, {
+        id: key,
+        title: tournament.title,
+        pageUrl: tournament.pageUrl,
+        status: tournament.status,
+        subCompetitionType: tournament.subCompetitionType,
+        location: tournament.location,
+        dates: tournament.dates,
+        matchCount: tournament.matchCount,
+        firstMatchTimeMoscow: tournament.firstMatchTimeMoscow,
+        items: [tournament],
+      });
+      continue;
+    }
+
+    group.items.push(tournament);
+    group.status = group.items.some((item) => item.status === "ongoing") ? "ongoing" : "upcoming";
+    group.matchCount = group.items.reduce((sum, item) => sum + item.matchCount, 0);
+    group.firstMatchTimeMoscow = pickFirstMatchTime(group.items);
+  }
+
+  return Array.from(groups.values())
+    .map((group) => ({ ...group, items: sortByGender(group.items) }))
+    .sort((left, right) => compareDateText(left.items[0]?.startDate, right.items[0]?.startDate) || left.title.localeCompare(right.title));
+}
+
+function normalizeGroupKey(value: string | null | undefined) {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function sortByGender<T extends { gender: VolleyballWorldGender }>(items: T[]) {
+  return [...items].sort((left, right) => compareGender(left.gender, right.gender));
+}
+
+function pickFirstMatchTime(items: VolleyballWorldBeachTournament[]) {
+  return items
+    .map((item) => ({ startDate: item.startDate, label: item.firstMatchTimeMoscow }))
+    .filter((item): item is { startDate: string; label: string } => Boolean(item.startDate && item.label))
+    .sort((left, right) => left.startDate.localeCompare(right.startDate))[0]?.label || null;
+}
+
+function formatGroupGenderLabel(items: Array<{ gender: VolleyballWorldGender }>) {
+  const genders = new Set(items.map((item) => item.gender));
+  if (genders.size > 1) return "Обе сетки";
+  return genders.has("women") ? "Женщины" : "Мужчины";
+}
+
 function TournamentCard({
-  tournament,
+  group,
   fromDate,
   days,
 }: {
-  tournament: VolleyballWorldBeachTournament;
+  group: VolleyballWorldTournamentGroup;
   fromDate: string;
   days: string;
 }) {
@@ -231,46 +320,46 @@ function TournamentCard({
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
         <div className="min-w-0">
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <span className={`rounded-lg border px-2.5 py-1 text-[9px] font-black uppercase tracking-widest ${statusClasses[tournament.status]}`}>
-              {statusLabels[tournament.status]}
+            <span className={`rounded-lg border px-2.5 py-1 text-[9px] font-black uppercase tracking-widest ${statusClasses[group.status]}`}>
+              {statusLabels[group.status]}
             </span>
             <span className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-slate-500">
-              {tournament.subCompetitionType}
+              {group.subCompetitionType}
             </span>
             <span className="rounded-lg border border-emerald-100 bg-emerald-50 px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-emerald-700">
-              {tournament.gender === "women" ? "Женщины" : "Мужчины"}
+              {formatGroupGenderLabel(group.items)}
             </span>
           </div>
 
-          <h2 className="break-words text-xl font-black leading-tight text-slate-950">{tournament.title}</h2>
+          <h2 className="break-words text-xl font-black leading-tight text-slate-950">{group.title}</h2>
 
           <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs font-bold uppercase tracking-wide text-slate-500">
-            {tournament.location ? (
+            {group.location ? (
               <span className="inline-flex items-center gap-1.5">
                 <MapPin className="h-3.5 w-3.5 text-emerald-600" />
-                {tournament.location}
+                {group.location}
               </span>
             ) : null}
-            {tournament.dates ? (
+            {group.dates ? (
               <span className="inline-flex items-center gap-1.5">
                 <CalendarDays className="h-3.5 w-3.5 text-emerald-600" />
-                {tournament.dates}
+                {group.dates}
               </span>
             ) : null}
             <span className="inline-flex items-center gap-1.5">
               <UsersRound className="h-3.5 w-3.5 text-emerald-600" />
-              Матчей: {tournament.matchCount}
+              Матчей: {group.matchCount}
             </span>
           </div>
 
-          {tournament.firstMatchTimeMoscow ? (
-            <p className="mt-3 text-xs font-bold text-slate-400">Первый матч: {tournament.firstMatchTimeMoscow}</p>
+          {group.firstMatchTimeMoscow ? (
+            <p className="mt-3 text-xs font-bold text-slate-400">Первый матч: {group.firstMatchTimeMoscow}</p>
           ) : null}
         </div>
 
         <div className="flex flex-wrap items-center gap-2 lg:justify-end">
           <a
-            href={tournament.pageUrl}
+            href={group.pageUrl}
             target="_blank"
             rel="noreferrer"
             className="flex h-11 min-w-0 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-[10px] font-black uppercase tracking-widest text-slate-900 transition-all hover:bg-slate-50 sm:px-5"
@@ -278,18 +367,20 @@ function TournamentCard({
             <ExternalLink className="h-3.5 w-3.5" />
             Source
           </a>
-          <LoadTournamentButton
-            title={tournament.title}
-            pageUrl={tournament.pageUrl}
+          <TBvolleyTournamentBundleButton
             disciplineSlug={BEACH_VOLLEYBALL_SLUG}
-            source="volleyballworld"
             targetBasePath="/tbvolley/tournament"
-            extraPayload={{
-              tournamentNo: tournament.tournamentNo,
-              gender: tournament.gender,
-              fromDate,
-              days,
-            }}
+            items={group.items.map((tournament) => ({
+              title: tournament.title,
+              pageUrl: tournament.pageUrl,
+              source: "volleyballworld",
+              extraPayload: {
+                tournamentNo: tournament.tournamentNo,
+                gender: tournament.gender,
+                fromDate,
+                days,
+              },
+            }))}
           />
         </div>
       </div>
@@ -299,8 +390,8 @@ function TournamentCard({
 
 function Metric({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-      <div className="text-2xl font-black tabular-nums text-white">{value}</div>
+    <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+      <div className="text-xl font-black tabular-nums text-white">{value}</div>
       <div className="mt-1 text-[9px] font-black uppercase tracking-widest text-slate-500">{label}</div>
     </div>
   );

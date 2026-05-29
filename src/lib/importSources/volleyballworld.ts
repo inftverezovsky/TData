@@ -144,6 +144,7 @@ export async function importVolleyballWorldTournament(input: ImportVolleyballWor
       tournamentId: tournament.id,
       slug: input.slug,
       matches: volleyballWorldTournament.matches,
+      force: Boolean(input.force),
     });
     const finalStatus = resolveVolleyballWorldImportStatus(saveResult.savedCount);
 
@@ -196,6 +197,7 @@ async function saveVolleyballWorldTournamentMatches(params: {
   tournamentId: string;
   slug: string;
   matches: VolleyballWorldBeachMatch[];
+  force?: boolean;
 }): Promise<{ savedCount: number }> {
   const candidates = params.matches
     .filter((match) => isActiveVolleyballWorldMatch(match))
@@ -280,10 +282,12 @@ async function saveVolleyballWorldTournamentMatches(params: {
   }
 
   const [existingParticipants, teamMappings] = await Promise.all([
-    prisma.tournamentParticipant.findMany({
-      where: { tournamentId: params.tournamentId },
-      select: { name: true, platformId: true, logoUrl: true, rawText: true },
-    }),
+    params.force
+      ? Promise.resolve([] as Array<{ name: string; platformId: string | null; logoUrl: string | null; rawText: string | null }>)
+      : prisma.tournamentParticipant.findMany({
+        where: { tournamentId: params.tournamentId },
+        select: { name: true, platformId: true, logoUrl: true, rawText: true },
+      }),
     prisma.teamMapping.findMany({ where: { disciplineSlug: resolveVolleyballWorldMappingSlug(params.slug, params.matches) } }),
   ]);
 

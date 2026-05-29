@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/db';
 import { buildFixtPayload } from '@/lib/adminUpload/buildFixtPayload';
+import { toAdminFixtPayloadEnvelope } from '@/lib/adminUpload/fixtPayloadFormat';
 import { phpSerialize } from '@/lib/adminUpload/phpSerialize';
 import { resolveAdminSettings } from '@/lib/adminUpload/resolveAdminSettings';
 import { sendFixtPayload } from '@/lib/adminUpload/sendFixtPayload';
@@ -48,7 +49,8 @@ export async function POST(
       }, { status: 400 });
     }
 
-    const serialized = phpSerialize(buildResult.payload);
+    const adminPayload = toAdminFixtPayloadEnvelope(buildResult.payload);
+    const serialized = phpSerialize(adminPayload);
     const payloadHash = createHash('sha256').update(serialized).digest('hex');
 
     const uploadLogData = {
@@ -61,7 +63,7 @@ export async function POST(
       requestMode: settings.requestMode,
       timezone: settings.timezone,
       dateFormat: settings.dateFormat,
-      phpArrayJson: buildResult.payload as any,
+      phpArrayJson: adminPayload as any,
       serializedFixt: serialized,
       readyMatchesCount: buildResult.readyMatchesCount,
       skippedMatchesCount: buildResult.skippedMatches.length,

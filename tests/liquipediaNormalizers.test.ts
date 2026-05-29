@@ -157,6 +157,38 @@ test("Counter-Strike normalizer extracts empty Bracket wikitext slots as dated a
   assert.ok(normalized.matches[5].rawText?.startsWith("slot=RXMTP"));
 });
 
+test("Counter-Strike normalizer keeps empty Matchlist slots with exact dates as announcements", () => {
+  const normalized = normalizeCounterStrikeTournament({
+    title: "United21/Season 50",
+    pageUrl: "https://liquipedia.net/counterstrike/United21/Season_50",
+    wikitext: `
+      ${infobox}
+      {{Matchlist|id=jt5hj67hrt|gsl=winnersfirst|title=Group B Matches
+      |{{Match
+        |opponent1={{TeamOpponent|fut turkuaz}}|opponent2={{TeamOpponent|lph gaming}}
+        |date=May 29, 2026 - 10:00 {{Abbr/CEST}}|finished=
+        |map1={{Map|map=|finished=}}
+        |map2={{Map|map=|finished=}}
+        |map3={{Map|map=|finished=}}
+        }}
+      |{{Match
+        |opponent1={{TeamOpponent|}}|opponent2={{TeamOpponent|}}
+        |date=June 2, 2026 - 10:00 {{Abbr/CEST}}|finished=
+        |map1={{Map|map=|finished=}}
+        |map2={{Map|map=|finished=}}
+        |map3={{Map|map=|finished=}}
+        }}
+      }}
+    `,
+  });
+
+  assert.equal(normalized.matches.length, 2);
+  assert.equal(normalized.matches[1].matchDate?.toISOString(), "2026-06-02T08:00:00.000Z");
+  assert.match(normalized.matches[1].teamAName || "", /^TBD\d+$/);
+  assert.match(normalized.matches[1].teamBName || "", /^TBD\d+$/);
+  assert.equal(normalized.matches[1].format, "BO3");
+});
+
 test("Counter-Strike normalizer resolves Chinese CST dates contextually", () => {
   const normalized = normalizeCounterStrikeTournament({
     title: "Perfect_World/National_League/2026/Spring/College_Division",

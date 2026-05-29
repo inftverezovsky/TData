@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getAdminFixtPayloadHead, toAdminFixtPayloadEnvelope } from '@/lib/adminUpload/fixtPayloadFormat';
 import { phpSerialize } from '@/lib/adminUpload/phpSerialize';
 import { resolveAdminSettings } from '@/lib/adminUpload/resolveAdminSettings';
 import { sendFixtPayload } from '@/lib/adminUpload/sendFixtPayload';
@@ -9,8 +10,9 @@ export async function POST(request: Request) {
 
   try {
     const { payload } = await request.json();
+    const payloadHead = getAdminFixtPayloadHead(payload);
     
-    if (!payload) {
+    if (!payloadHead) {
       return NextResponse.json({ ok: false, error: "Missing payload" }, { status: 400 });
     }
 
@@ -22,7 +24,8 @@ export async function POST(request: Request) {
     }
 
     // 2. Serialize
-    const serialized = phpSerialize(payload);
+    const adminPayload = toAdminFixtPayloadEnvelope(payload);
+    const serialized = phpSerialize(adminPayload);
 
     const existingSuccessfulSend = await prisma.adminUploadLog.findFirst({
       where: {
@@ -59,13 +62,13 @@ export async function POST(request: Request) {
         apiUrl: settings.apiUrl,
         adminSportId: settings.adminSportId,
         adminMax: settings.adminMax,
-        adminShapkaId: payload.shapka.toString(),
+        adminShapkaId: payloadHead.shapka.toString(),
         requestMode: settings.requestMode,
         timezone: settings.timezone,
         dateFormat: settings.dateFormat,
-        phpArrayJson: payload as any,
+        phpArrayJson: adminPayload as any,
         serializedFixt: serialized,
-        readyMatchesCount: payload.match.length,
+        readyMatchesCount: payloadHead.match.length,
         skippedMatchesCount: 0,
         skippedMatchesJson: [] as any,
         responseRaw: sendResult.rawResponse,

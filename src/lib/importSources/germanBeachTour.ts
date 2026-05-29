@@ -145,6 +145,7 @@ export async function importGermanBeachTourTournament(input: ImportGermanBeachTo
       slug: input.slug,
       gender: germanBeachTourTournament.gender,
       matches: germanBeachTourTournament.matches || [],
+      force: Boolean(input.force),
     });
     const finalStatus = resolveGermanBeachTourImportStatus(saveResult.savedCount);
 
@@ -201,6 +202,7 @@ async function saveGermanBeachTourTournamentMatches(params: {
   slug: string;
   gender: GermanBeachTourGender;
   matches: GermanBeachTourMatch[];
+  force?: boolean;
 }): Promise<{ savedCount: number }> {
   const candidates = params.matches
     .filter((match) => isActiveGermanBeachTourMatch(match))
@@ -302,10 +304,12 @@ async function saveGermanBeachTourTournamentMatches(params: {
 
   const mappingSlug = getBeachVolleyballMappingSlug(params.gender);
   const [existingParticipants, teamMappings] = await Promise.all([
-    prisma.tournamentParticipant.findMany({
-      where: { tournamentId: params.tournamentId },
-      select: { name: true, platformId: true, logoUrl: true, rawText: true, region: true },
-    }),
+    params.force
+      ? Promise.resolve([] as Array<{ name: string; platformId: string | null; logoUrl: string | null; rawText: string | null; region: string | null }>)
+      : prisma.tournamentParticipant.findMany({
+        where: { tournamentId: params.tournamentId },
+        select: { name: true, platformId: true, logoUrl: true, rawText: true, region: true },
+      }),
     prisma.teamMapping.findMany({ where: { disciplineSlug: mappingSlug } }),
   ]);
 

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { buildFixtPayload } from '@/lib/adminUpload/buildFixtPayload';
+import { toAdminFixtPayloadEnvelope } from '@/lib/adminUpload/fixtPayloadFormat';
 import { phpSerialize } from '@/lib/adminUpload/phpSerialize';
 
 export async function POST(
@@ -19,14 +20,16 @@ export async function POST(
     let serialized = '';
     let postBody = '';
     
-    if (buildResult.payload) {
-      serialized = phpSerialize(buildResult.payload);
+    const adminPayload = buildResult.payload ? toAdminFixtPayloadEnvelope(buildResult.payload) : null;
+
+    if (adminPayload) {
+      serialized = phpSerialize(adminPayload);
       postBody = `fixt=${serialized}`;
     }
 
     return NextResponse.json({
       ok: true,
-      phpArray: buildResult.payload,
+      phpArray: adminPayload,
       serialized,
       postBody,
       readyMatchesCount: buildResult.readyMatchesCount,

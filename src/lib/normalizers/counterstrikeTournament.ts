@@ -632,12 +632,12 @@ function buildMatchFromWikitextTemplate(
     params.p2, params.team_b, params.teamb
   );
 
-  if (!rawTeamA && !rawTeamB && !context.keepEmptyPlaceholders) return null;
+  const dateText = normalizeCounterStrikeDateText(buildTemplateDateText(params), dateOptions);
+  const dateVal = parseCounterStrikeWikiDate(dateText, dateOptions);
+  if (!rawTeamA && !rawTeamB && !context.keepEmptyPlaceholders && !dateVal) return null;
 
   const teamAName = rawTeamA ? (normalizeTeamName(rawTeamA) ?? rawTeamA) : "TBD";
   const teamBName = rawTeamB ? (normalizeTeamName(rawTeamB) ?? rawTeamB) : "TBD";
-  const dateText = normalizeCounterStrikeDateText(buildTemplateDateText(params), dateOptions);
-  const dateVal = parseCounterStrikeWikiDate(dateText, dateOptions);
   const formatText = firstClean(params.bestof, params.bo, params.format, params.matchtype, params.type);
   const rawText = [context.sourceSlot ? `slot=${context.sourceSlot}` : null, template.slice(0, 2500)]
     .filter(Boolean)

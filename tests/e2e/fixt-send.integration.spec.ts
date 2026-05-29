@@ -67,11 +67,11 @@ test.describe("FIxt upload integration", () => {
       await expect(await previewTbd.json()).toMatchObject({
         ok: true,
         readyMatchesCount: 1,
-        phpArray: {
+        phpArray: [{
           match: [
             { team1: 333, team2: "" },
           ],
-        },
+        }],
       });
 
       const previewTbdSide = await request.post(`/api/${disciplineSlug}/tournament/${tournamentId}/admin-fixt-preview`, {
@@ -84,9 +84,9 @@ test.describe("FIxt upload integration", () => {
       expect(previewTbdSideJson).toMatchObject({
         ok: true,
         readyMatchesCount: 1,
-        phpArray: {
+        phpArray: [{
           match: [{ team1: 333, team2: "" }],
-        },
+        }],
       });
       expect(previewTbdSideJson.serialized).toContain('s:5:"team2";s:0:"";');
 
@@ -98,9 +98,9 @@ test.describe("FIxt upload integration", () => {
       await expect(await previewLegacyTbdSide.json()).toMatchObject({
         ok: true,
         readyMatchesCount: 1,
-        phpArray: {
+        phpArray: [{
           match: [{ team1: 333, team2: "" }],
-        },
+        }],
       });
 
       const sendTbdSide = await request.post(`/api/${disciplineSlug}/tournament/${tournamentId}/admin-fixt-send`, {
@@ -131,14 +131,14 @@ test.describe("FIxt upload integration", () => {
       expect(previewJson).toMatchObject({
         ok: true,
         readyMatchesCount: 1,
-        phpArray: {
+        phpArray: [{
           shapka: 987,
           sport: 73,
           max: 5000,
           match: [{ team1: 111, team2: 222 }],
-        },
+        }],
       });
-      expect(previewJson.phpArray.match[0].date).toBe("10.05.2026 15:30:00");
+      expect(previewJson.phpArray[0].match[0].date).toBe("10.05.2026 15:30:00");
 
       const send = await request.post(`/api/${disciplineSlug}/tournament/${tournamentId}/admin-fixt-send`, {
         headers: { cookie },

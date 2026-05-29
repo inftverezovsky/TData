@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/db";
 import { buildFixtPayload } from "@/lib/adminUpload/buildFixtPayload";
+import { toAdminFixtPayloadEnvelope } from "@/lib/adminUpload/fixtPayloadFormat";
 import { matchesToCsv, participantsToCsv, tournamentToMarkdown } from "@/lib/exporters/tournament";
 import { dedupeTournamentMatches } from "@/lib/matches/dedupe";
 
@@ -40,9 +41,10 @@ export async function GET(
   // Admin-ready format (JSON/PHP)
   if (format === "json" || format === "php") {
     const buildResult = await buildFixtPayload(id, disciplineSlug, selectedIds);
+    const adminPayload = buildResult.payload ? toAdminFixtPayloadEnvelope(buildResult.payload) : null;
 
     if (format === "json") {
-      return NextResponse.json(buildResult.payload || {
+      return NextResponse.json(adminPayload || {
         error: "Payload not ready",
         warnings: buildResult.warnings,
         skipped: buildResult.skippedMatches.length
@@ -50,7 +52,7 @@ export async function GET(
     }
 
     const { toPhpString } = await import("@/lib/adminUpload/utils");
-    const phpString = buildResult.payload ? toPhpString(buildResult.payload) : "Error: Data not ready\n\n" + buildResult.warnings.join("\n");
+    const phpString = adminPayload ? toPhpString(adminPayload) : "Error: Data not ready\n\n" + buildResult.warnings.join("\n");
     return new Response(phpString, {
       headers: { 'Content-Type': 'text/plain; charset=utf-8' }
     });

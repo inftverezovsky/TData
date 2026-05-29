@@ -1,4 +1,5 @@
 import { buildFixtPayload } from "@/lib/adminUpload/buildFixtPayload";
+import { toAdminFixtPayloadEnvelope } from "@/lib/adminUpload/fixtPayloadFormat";
 import { toPhpString } from "@/lib/adminUpload/utils";
 import { prisma } from "@/lib/db/db";
 
@@ -22,7 +23,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ disc
     });
   }
 
-  const phpString = toPhpString(buildResult.payload);
+  const phpString = toPhpString(toAdminFixtPayloadEnvelope(buildResult.payload));
   return new Response(phpString, {
     headers: {
       "Content-Type": "text/plain; charset=utf-8",

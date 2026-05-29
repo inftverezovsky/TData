@@ -108,6 +108,23 @@ test("parseVlrMatchDetailHtml supports alternate team and time selectors", () =>
   assert.equal(detail.format, "BO3");
 });
 
+test("parseVlrMatchDetailHtml omits empty fields so detail enrichment preserves schedule data", () => {
+  const detail = parseVlrMatchDetailHtml(`
+    <main>
+      <div class="wf-card">Match page shell without loaded header data</div>
+    </main>
+  `, "https://www.vlr.gg/674862/natus-vincere-vs-tbd");
+
+  assert.equal(detail.id, "674862");
+  assert.equal(detail.url, "https://www.vlr.gg/674862/natus-vincere-vs-tbd");
+  assert.equal("team1" in detail, false);
+  assert.equal("team2" in detail, false);
+  assert.equal("utcTimestamp" in detail, false);
+  assert.equal("unix_time" in detail, false);
+  assert.equal("format" in detail, false);
+  assert.equal("status" in detail, false);
+});
+
 test("parseVlrEventMatchesHtml parses upcoming sidebar matches with TBD", () => {
   const parsed = parseVlrEventMatchesHtml(`
     <h1 class="wf-title">Esports World Cup 2026: EMEA Qualifier</h1>

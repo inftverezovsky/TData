@@ -125,21 +125,26 @@ export function parseVlrMatchDetailHtml(html: string, fallbackUrl = ""): Partial
   const statusText = cleanText(scope.find(".match-header-vs-note, .match-header-note, .match-header-date").text());
   const href = fallbackUrl || "";
   const rawText = cleanText(scope.text()).slice(0, 1500) || null;
+  const detail: Partial<VlrMatch> = {};
+  const id = extractVlrMatchId(href);
+  const isLive = /live/i.test(statusText);
 
-  return {
-    id: extractVlrMatchId(href) || undefined,
-    url: href ? absoluteVlrUrl(href) : undefined,
-    tournament: eventTitle || undefined,
-    stage: series || undefined,
-    team1: teamNames[0] || titleTeams[0],
-    team2: teamNames[1] || titleTeams[1],
-    utcTimestamp: timestamp.utcTimestamp,
-    unix_time: timestamp.unixTime,
-    format,
-    status: /live/i.test(statusText) ? "live" : "upcoming",
-    isLive: /live/i.test(statusText),
-    rawText,
-  };
+  if (id) detail.id = id;
+  if (href) detail.url = absoluteVlrUrl(href);
+  if (eventTitle) detail.tournament = eventTitle;
+  if (series) detail.stage = series;
+  if (teamNames[0] || titleTeams[0]) detail.team1 = teamNames[0] || titleTeams[0];
+  if (teamNames[1] || titleTeams[1]) detail.team2 = teamNames[1] || titleTeams[1];
+  if (timestamp.utcTimestamp) detail.utcTimestamp = timestamp.utcTimestamp;
+  if (timestamp.unixTime !== null) detail.unix_time = timestamp.unixTime;
+  if (format) detail.format = format;
+  if (statusText) {
+    detail.status = isLive ? "live" : "upcoming";
+    detail.isLive = isLive;
+  }
+  if (rawText) detail.rawText = rawText;
+
+  return detail;
 }
 
 export function parseVlrEventsHtml(html: string, baseUrl = VLR_ORIGIN): VlrEvent[] {

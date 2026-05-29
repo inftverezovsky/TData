@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { filterDltvEvents, filterDltvEventsByWindow, parseDltvEventPage, parseDltvEvents, parseDltvMatchPage } from "../src/lib/dltv/parse";
-import { resolveDltvImportStatus } from "../src/lib/importSources/dltv";
+import { resolveDltvImportStatus, shouldReplaceDltvMatchesOnImport } from "../src/lib/importSources/dltv";
 
 test("parseDltvEvents extracts and filters live/upcoming events", () => {
   const html = `
@@ -197,4 +197,37 @@ test("resolveDltvImportStatus marks partial imports when match pages fail or sav
     matchPagesFailed: 0,
     savedMatchesCount: 12,
   }), "SUCCESS");
+  assert.equal(resolveDltvImportStatus({
+    ok: true,
+    matchUrlsFound: 0,
+    matchPagesFailed: 0,
+    savedMatchesCount: 0,
+  }), "PARTIAL");
+});
+
+test("DLTV force replacement is allowed only after a complete source fetch", () => {
+  assert.equal(shouldReplaceDltvMatchesOnImport({
+    ok: true,
+    matchUrlsFound: 12,
+    matchPagesFailed: 0,
+    sourceMatchesCount: 12,
+  }), true);
+  assert.equal(shouldReplaceDltvMatchesOnImport({
+    ok: true,
+    matchUrlsFound: 12,
+    matchPagesFailed: 1,
+    sourceMatchesCount: 11,
+  }), false);
+  assert.equal(shouldReplaceDltvMatchesOnImport({
+    ok: true,
+    matchUrlsFound: 0,
+    matchPagesFailed: 0,
+    sourceMatchesCount: 0,
+  }), false);
+  assert.equal(shouldReplaceDltvMatchesOnImport({
+    ok: false,
+    matchUrlsFound: 12,
+    matchPagesFailed: 0,
+    sourceMatchesCount: 12,
+  }), false);
 });

@@ -69,7 +69,7 @@ export function normalizeFandomLeagueOfLegendsTournament(input: {
     ...filterFandomFallbackMatchesCoveredByCargo(fallbackMatches, enrichedCargoMatches),
   ];
   const matches = rawMatches
-    .map((match, index) => normalizeFandomMatch(match, input.title, String(index), teamNameMap))
+    .map((match) => normalizeFandomMatch(match, input.title, teamNameMap))
     .filter((match): match is NormalizedMatch => Boolean(match));
 
   applyTbdPairCycling(matches, input.title);
@@ -275,9 +275,11 @@ export function extractFandomCargoScheduleMatches(rows: unknown[], pageUrl: stri
     }
 
     const bestOf = parseInteger(firstCargoValue(row, "BestOf", "bestof"));
+    const nativeMatchId = firstClean(firstCargoValue(row, "MatchId", "MatchID", "Match Id", "matchid"));
     const rawText = JSON.stringify(row).slice(0, 2500);
 
     matches.push({
+      matchId: nativeMatchId ? createNativeFandomMatchId(pageUrl, nativeMatchId) : undefined,
       stage: firstClean(
         firstCargoValue(row, "Tab"),
         firstCargoValue(row, "Phase"),
@@ -297,6 +299,7 @@ export function extractFandomCargoScheduleMatches(rows: unknown[], pageUrl: stri
       status: "scheduled",
       sourceUrl: pageUrl,
       rawText,
+      sourceBreakdown: nativeMatchId ? { fandom: { matchId: nativeMatchId } } : undefined,
     });
   }
 
@@ -335,13 +338,13 @@ function filterFandomFallbackMatchesCoveredByCargo(fallbackMatches: NormalizedMa
 
   const cargoCoverage = new Map<string, number>();
   for (const match of cargoMatches) {
-    const key = getFandomPlaceholderSlotKey(match);
+    const key = getFandomMatchCoverageKey(match);
     if (!key) continue;
     cargoCoverage.set(key, (cargoCoverage.get(key) || 0) + 1);
   }
 
   return fallbackMatches.filter((match) => {
-    const key = getFandomPlaceholderSlotKey(match);
+    const key = getFandomMatchCoverageKey(match);
     if (!key) return true;
 
     const remaining = cargoCoverage.get(key) || 0;
@@ -364,6 +367,33 @@ function getFandomPlaceholderSlotKey(match: NormalizedMatch) {
     match.sourceUrl || "",
     Math.floor(date.getTime() / 60000),
   ].join("|");
+}
+
+function getFandomMatchCoverageKey(match: NormalizedMatch) {
+  const date = match.matchDate
+    ? new Date(match.matchDate)
+    : parseFandomDate(match.matchDateTime);
+  if (!date || !Number.isFinite(date.getTime())) return null;
+
+  const teamA = normalizeFandomCoverageTeam(match.teamAName);
+  const teamB = normalizeFandomCoverageTeam(match.teamBName);
+  if (!teamA && !teamB) return null;
+
+  if (teamA === "tbd" && teamB === "tbd") {
+    return getFandomPlaceholderSlotKey(match);
+  }
+
+  return [
+    match.sourceUrl || "",
+    Math.floor(date.getTime() / 60000),
+    [teamA || "unknownA", teamB || "unknownB"].sort().join("|"),
+  ].join("|");
+}
+
+function normalizeFandomCoverageTeam(value: string | null | undefined) {
+  const cleaned = cleanTeamName(value);
+  if (!cleaned) return "";
+  return isPlaceholderTeam(cleaned) ? "tbd" : cleaned.toLowerCase();
 }
 
 function chooseFandomSlotContext(primary: string | null | undefined, fallback: string | null | undefined) {
@@ -534,7 +564,6 @@ function extractFandomWikitextMatches(wikitext: string, pageUrl: string, issues:
 function normalizeFandomMatch(
   candidate: NormalizedMatch,
   sourceTitle: string,
-  indexHint: string,
   teamNameMap: Map<string, string>,
 ): NormalizedMatch | null {
   const teamAName = canonicalizeTeam(candidate.teamAName, teamNameMap);
@@ -545,7 +574,7 @@ function normalizeFandomMatch(
   const finalTeamBName = !teamBName || isPlaceholderTeam(teamBName) ? "TBD" : teamBName;
   const teamAId = finalTeamAName === "TBD" ? "tbd" : generateInternalTeamId(finalTeamAName);
   const teamBId = finalTeamBName === "TBD" ? "tbd" : generateInternalTeamId(finalTeamBName);
-  const matchId = createStableFandomMatchId({
+  const matchId = candidate.matchId || createStableFandomMatchId({
     sourceTitle,
     matchDate: candidate.matchDate,
     matchDateTime: candidate.matchDateTime,
@@ -553,7 +582,7 @@ function normalizeFandomMatch(
     teamBId,
     stage: candidate.stage,
     round: candidate.round,
-    extraHint: indexHint,
+    extraHint: getFandomStructuralIdHint(candidate, finalTeamAName, finalTeamBName),
   });
 
   return {
@@ -875,6 +904,18 @@ function createStableFandomMatchId(input: {
   return `fandom_${hash}`;
 }
 
+function createNativeFandomMatchId(pageUrl: string, nativeMatchId: string) {
+  const data = ["fandom-cargo", pageUrl, nativeMatchId].join("|");
+  const hash = createHash("md5").update(data).digest("hex").slice(0, 12);
+  return `fandom_${hash}`;
+}
+
+function getFandomStructuralIdHint(candidate: NormalizedMatch, teamAName: string, teamBName: string) {
+  if (!isPlaceholderTeam(teamAName) || !isPlaceholderTeam(teamBName)) return null;
+  if (!candidate.rawText) return null;
+  return createHash("md5").update(candidate.rawText).digest("hex").slice(0, 8);
+}
+
 function stringToNumericalId(str: string) {
   const hash = createHash("md5").update(str).digest("hex").slice(0, 12);
   return BigInt("0x" + hash);
@@ -883,7 +924,7 @@ function stringToNumericalId(str: string) {
 function dedupeFandomMatches(matches: NormalizedMatch[]) {
   const seen = new Map<string, NormalizedMatch>();
   for (const match of matches) {
-    const key = [
+    const key = getFandomMatchCoverageKey(match) || [
       match.matchDate?.toISOString() || "",
       [match.teamAName || "", match.teamBName || ""].sort().join("|").toLowerCase(),
       (match.stage || "").toLowerCase(),

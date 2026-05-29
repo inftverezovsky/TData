@@ -110,10 +110,9 @@ export default function MatchList({
   const [hideUploaded, setHideUploaded] = useState(false);
   const [draftAdminHeaderIdByGroup, setDraftAdminHeaderIdByGroup] = useState<Record<string, string>>({});
   const [draftCourtByGroup, setDraftCourtByGroup] = useState<Record<string, string>>({});
-  const [draftFormatByGroup, setDraftFormatByGroup] = useState<Record<string, string>>({});
   const usesCourtGrouping = isBeachVolleyballScopeSlug(disciplineSlug) || isBeachVolleyballTournamentSource(source);
   const showCourtAdminDraftFields = usesCourtGrouping && groupByPrimary;
-  const showFormatAdminDraftFields = !usesCourtGrouping && groupByPrimary;
+  const showAdminHeaderIdDraftFields = groupByPrimary;
 
   useEffect(() => {
     const handleSuccess = () => {
@@ -610,22 +609,6 @@ export default function MatchList({
                         className="h-7 w-28 rounded-md border border-slate-200 bg-white px-2 text-[10px] font-bold text-slate-700 outline-none transition-colors placeholder:text-slate-300 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
                       />
                     )}
-                    {showFormatAdminDraftFields && (
-                      <input
-                        type="text"
-                        value={draftFormatByGroup[group.label] ?? ""}
-                        onChange={(event) => {
-                          const value = event.target.value;
-                          setDraftFormatByGroup((current) => ({
-                            ...current,
-                            [group.label]: value,
-                          }));
-                        }}
-                        aria-label={`Фактический формат для ${group.label}`}
-                        placeholder="Факт. формат"
-                        className="h-7 w-32 rounded-md border border-slate-200 bg-white px-2 text-[10px] font-bold text-slate-700 outline-none transition-colors placeholder:text-slate-300 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100"
-                      />
-                    )}
                     <div className="h-px min-w-8 flex-1 bg-slate-100" />
                     {groupSelectableCount > 0 && (
                       <button
@@ -642,7 +625,7 @@ export default function MatchList({
                         Выбрать все
                       </button>
                     )}
-                    {showCourtAdminDraftFields && (
+                    {showAdminHeaderIdDraftFields && (
                       <input
                         type="text"
                         inputMode="numeric"

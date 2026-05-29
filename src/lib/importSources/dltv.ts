@@ -51,6 +51,16 @@ export async function importDltvTournament(input: ImportDltvTournamentInput) {
   }
 
   let savedMatchesCount = 0;
+  const matchUrlsFound = dltvData.event?.matchUrls.length ?? dltvData.matches?.length ?? 0;
+  const matchPagesFailed = dltvData.matchPageFailures?.length ?? (dltvData.ok ? 0 : 1);
+  const canReplaceExistingMatches = shouldReplaceDltvMatchesOnImport({
+    ok: !!dltvData.ok,
+    matchUrlsFound,
+    matchPagesFailed,
+    sourceMatchesCount: dltvData.matches?.length ?? 0,
+  });
+  const forceWasDowngraded = Boolean(input.force && !canReplaceExistingMatches);
+
   if (dltvData.ok && dltvData.matches) {
     const saveResult = await saveDltvTournamentMatches({
       tournamentId: tournament.id,
@@ -58,7 +68,7 @@ export async function importDltvTournament(input: ImportDltvTournamentInput) {
       title: input.title,
       matches: dltvData.matches,
       participants: dltvData.event?.participants || [],
-      force: !!input.force,
+      force: Boolean(input.force && canReplaceExistingMatches),
     });
     savedMatchesCount = saveResult.savedCount;
 
@@ -78,8 +88,6 @@ export async function importDltvTournament(input: ImportDltvTournamentInput) {
     }
   }
 
-  const matchUrlsFound = dltvData.event?.matchUrls.length ?? dltvData.matches?.length ?? 0;
-  const matchPagesFailed = dltvData.matchPageFailures?.length ?? (dltvData.ok ? 0 : 1);
   const normalizedStatus = resolveDltvImportStatus({
     ok: !!dltvData.ok,
     matchUrlsFound,
@@ -112,7 +120,11 @@ export async function importDltvTournament(input: ImportDltvTournamentInput) {
     data: {
       extractionStatus: normalizedStatus,
       normalization: {
-        warnings: [dltvData.warning, dltvData.error].filter((item): item is string => typeof item === "string" && item.length > 0),
+        warnings: [
+          dltvData.warning,
+          dltvData.error,
+          forceWasDowngraded ? "DLTV force-refresh не удалял старые матчи: источник вернул частичное или пустое расписание." : null,
+        ].filter((item): item is string => typeof item === "string" && item.length > 0),
         cacheHit: !!dltvData.cacheHit,
         stale: !!dltvData.stale,
         dota2Diagnostics: diagnostics,
@@ -281,7 +293,26 @@ function buildDltvExtraIssues(data: DltvRunResult): Dota2DiagnosticIssue[] {
       message: data.error,
     });
   }
+  if (data.ok && data.event && data.event.matchUrls.length === 0) {
+    issues.push({
+      reason: "parse_failed",
+      message: "DLTV event page did not expose match links.",
+      sourceUrl: data.event.url,
+    });
+  }
   return issues;
+}
+
+export function shouldReplaceDltvMatchesOnImport(input: {
+  ok: boolean;
+  matchUrlsFound: number;
+  matchPagesFailed: number;
+  sourceMatchesCount: number;
+}) {
+  return input.ok &&
+    input.matchUrlsFound > 0 &&
+    input.matchPagesFailed === 0 &&
+    input.sourceMatchesCount >= input.matchUrlsFound;
 }
 
 export function resolveDltvImportStatus(input: {
@@ -291,6 +322,7 @@ export function resolveDltvImportStatus(input: {
   savedMatchesCount: number;
 }): ImportStatus {
   if (!input.ok) return "PARTIAL";
+  if (input.matchUrlsFound === 0 && input.savedMatchesCount === 0) return "PARTIAL";
   if (input.matchPagesFailed > 0) return "PARTIAL";
   if (input.matchUrlsFound > 0 && input.savedMatchesCount === 0) return "PARTIAL";
   return "SUCCESS";

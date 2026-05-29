@@ -9,7 +9,6 @@ const navItems = [
   { href: "/counterstrike", label: "Counter-Strike" },
   { href: "/leagueoflegends", label: "League of Legends" },
   { href: "/valorant", label: "Valorant" },
-  { href: "/manual-import", label: "Ручной импорт" },
   { href: "/history", label: "История" }
 ];
 
@@ -34,6 +33,7 @@ function isTbvolleyPath(pathname: string) {
 export function PlatformTabs() {
   const pathname = usePathname();
   const isTcyberActive = isTcyberPath(pathname);
+  const isManualImportActive = isActivePath(pathname, "/manual-import");
   const isTbvolleyActive = isTbvolleyPath(pathname);
   const isSettingsActive = isActivePath(pathname, "/settings");
 
@@ -50,6 +50,19 @@ export function PlatformTabs() {
         <span className="relative z-10">TCyber</span>
         {isTcyberActive && (
           <span className="absolute inset-x-3 bottom-1 h-0.5 rounded-full bg-indigo-600 animate-slide-in" />
+        )}
+      </Link>
+      <Link
+        href="/manual-import"
+        className={`relative shrink-0 rounded-lg px-3 py-2 text-sm font-bold transition-all duration-200 active:scale-[0.95] will-change-transform ${
+          isManualImportActive
+            ? "bg-rose-50 text-rose-700 ring-1 ring-rose-100 shadow-sm"
+            : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+        }`}
+      >
+        <span className="relative z-10">Ручной импорт</span>
+        {isManualImportActive && (
+          <span className="absolute inset-x-3 bottom-1 h-0.5 rounded-full bg-rose-600 animate-slide-in" />
         )}
       </Link>
       <Link

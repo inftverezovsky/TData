@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { toAdminFixtPayloadEnvelope } from "@/lib/adminUpload/fixtPayloadFormat";
 import { phpSerialize } from "@/lib/adminUpload/phpSerialize";
 import { resolveAdminSettings } from "@/lib/adminUpload/resolveAdminSettings";
 import { sendFixtPayload } from "@/lib/adminUpload/sendFixtPayload";
@@ -47,7 +48,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const serialized = phpSerialize(buildResult.payload);
+    const adminPayload = toAdminFixtPayloadEnvelope(buildResult.payload);
+    const serialized = phpSerialize(adminPayload);
 
     if (!force) {
       const existingSuccessfulSend = await prisma.adminUploadLog.findFirst({
@@ -91,7 +93,7 @@ export async function POST(request: Request) {
         requestMode: settings.requestMode,
         timezone: settings.timezone,
         dateFormat: settings.dateFormat,
-        phpArrayJson: buildResult.payload as any,
+        phpArrayJson: adminPayload as any,
         serializedFixt: serialized,
         readyMatchesCount: buildResult.readyMatchesCount,
         skippedMatchesCount: buildResult.skippedMatches.length,

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { toAdminFixtPayloadEnvelope } from "@/lib/adminUpload/fixtPayloadFormat";
 import { phpSerialize } from "@/lib/adminUpload/phpSerialize";
 import { toPhpString } from "@/lib/adminUpload/utils";
 import { buildManualFixtPayload } from "@/lib/manualImport/buildManualFixtPayload";
@@ -28,13 +29,14 @@ export async function POST(request: Request) {
       disciplineId,
     });
 
-    const serialized = buildResult.payload ? phpSerialize(buildResult.payload) : "";
-    const phpArrayText = buildResult.payload ? toPhpString(buildResult.payload) : "";
+    const adminPayload = buildResult.payload ? toAdminFixtPayloadEnvelope(buildResult.payload) : null;
+    const serialized = adminPayload ? phpSerialize(adminPayload) : "";
+    const phpArrayText = adminPayload ? toPhpString(adminPayload) : "";
 
     return NextResponse.json({
       ok: true,
       discipline,
-      phpArray: buildResult.payload,
+      phpArray: adminPayload,
       phpArrayText,
       serialized,
       postBody: serialized ? `fixt=${serialized}` : "",

@@ -3,6 +3,7 @@ import LoadTournamentButton from "@/components/ui/LoadTournamentButton";
 import StatusBadge from "@/components/ui/StatusBadge";
 import TeamMappingPanel from "@/components/tournament/TeamMappingPanel";
 import TournamentAdminView from "@/components/tournament/TournamentAdminView";
+import TBvolleyGenderSwitcher from "@/components/tbvolley/TBvolleyGenderSwitcher";
 import { ClientErrorBoundary } from "@/components/ui/ClientErrorBoundary";
 import { prisma } from "@/lib/db/db";
 
@@ -13,9 +14,13 @@ import { buildTeamMappingLookup, findTeamMapping } from "@/lib/teams/mappingLook
 import { buildAdminTeamDisplayLookup, resolveTeamMappingDisplay } from "@/lib/teams/mappingDisplay";
 import { normalizeTeamName } from "@/lib/teams/teams";
 import { collectTournamentTeamNames } from "@/lib/teams/tournamentTeamNames";
-import { detectTournamentSource, getTournamentSourceLabel } from "@/lib/utils/tournamentSource";
+import { detectTournamentSource, getTournamentSourceLabel, isBeachVolleyballTournamentSource } from "@/lib/utils/tournamentSource";
 import { resolveAdminSettings } from "@/lib/adminUpload/resolveAdminSettings";
-import { resolveTournamentTeamMappingDisciplineSlug } from "@/lib/tbvolley/config";
+import {
+  normalizeBeachVolleyballGender,
+  readBeachVolleyballGenderFromNormalization,
+  resolveTournamentTeamMappingDisciplineSlug,
+} from "@/lib/tbvolley/config";
 
 export default async function TournamentWorkspacePage({
   disciplineSlug,
@@ -122,6 +127,11 @@ export default async function TournamentWorkspacePage({
   const disciplineName = discipline?.name || slug.charAt(0).toUpperCase() + slug.slice(1);
   const adminSettings = await resolveAdminSettings(slug);
   const refreshExtraPayload = getRefreshExtraPayload(tournament.normalization);
+  const tbvolleyGender = normalizeBeachVolleyballGender(readBeachVolleyballGenderFromNormalization(tournament.normalization));
+  const showTbvolleyGenderSwitcher = slug === "beachvolleyball"
+    && isBeachVolleyballTournamentSource(source)
+    && Boolean(tbvolleyGender)
+    && (source === "volleyballworld" || source === "beachvolleyru" || source === "germanbeachtour");
 
   return (
     <div className="space-y-6">
@@ -159,6 +169,15 @@ export default async function TournamentWorkspacePage({
           </div>
         </div>
       </section>
+
+      {showTbvolleyGenderSwitcher && tbvolleyGender ? (
+        <TBvolleyGenderSwitcher
+          currentGender={tbvolleyGender}
+          currentTournamentId={tournament.id}
+          disciplineSlug={slug}
+          targetBasePath={refreshTargetBasePath}
+        />
+      ) : null}
 
       <TournamentAdminView
         tournament={tournamentForView}

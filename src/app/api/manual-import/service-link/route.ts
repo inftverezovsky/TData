@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { toAdminFixtPayloadEnvelope } from "@/lib/adminUpload/fixtPayloadFormat";
 import { resolvePublicOrigin } from "@/lib/http/publicOrigin";
 import { putManualImportJson } from "@/lib/manualImport/cache";
 import { buildManualFixtPayload } from "@/lib/manualImport/buildManualFixtPayload";
@@ -40,7 +41,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const token = putManualImportJson(buildResult.payload);
+    const token = putManualImportJson(toAdminFixtPayloadEnvelope(buildResult.payload));
     const jsonUrl = `${publicOrigin}/api/manual-import/json/${token}`;
 
     return NextResponse.json({

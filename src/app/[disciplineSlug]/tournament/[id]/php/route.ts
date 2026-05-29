@@ -1,4 +1,5 @@
 import { buildFixtPayload } from "@/lib/adminUpload/buildFixtPayload";
+import { toAdminFixtPayloadEnvelope } from "@/lib/adminUpload/fixtPayloadFormat";
 import { toPhpString } from "@/lib/adminUpload/utils";
 import { prisma } from "@/lib/db/db";
 
@@ -38,7 +39,7 @@ export async function GET(
     });
   }
 
-  return new Response(toPhpString(buildResult.payload), {
+  return new Response(toPhpString(toAdminFixtPayloadEnvelope(buildResult.payload)), {
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
       "Cache-Control": "no-store, max-age=0",

@@ -56,25 +56,25 @@ export default function VolleyballWorldBeachSchedule() {
   return (
     <div className="animate-in space-y-6">
       <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-soft">
-        <div className="grid gap-0 lg:grid-cols-[1fr_360px]">
-          <div className="p-6 md:p-8">
-            <div className="mb-5 flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-2 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-emerald-700">
+        <div className="grid gap-0 lg:grid-cols-[1fr_320px]">
+          <div className="p-4 md:p-5">
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-2 rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-emerald-700">
                 <Radio className="h-3.5 w-3.5" />
                 TBvolley
               </span>
-              <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-slate-500">
+              <span className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-slate-500">
                 VolleyballWorld
               </span>
-              <span className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-[10px] font-black uppercase tracking-widest text-amber-700">
+              <span className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-amber-700">
                 Beach
               </span>
             </div>
 
-            <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
               <div className="min-w-0">
-                <h1 className="text-3xl font-black tracking-tight text-slate-950 md:text-4xl">Beach Volleyball</h1>
-                <p className="mt-2 max-w-2xl text-sm font-semibold leading-relaxed text-slate-600">
+                <h1 className="text-2xl font-black tracking-tight text-slate-950 md:text-3xl">Beach Volleyball</h1>
+                <p className="mt-1 max-w-2xl text-sm font-semibold leading-relaxed text-slate-600">
                   Расписание Volleyball World по пляжному волейболу, раздельно по мужской и женской сетке.
                 </p>
               </div>
@@ -86,7 +86,7 @@ export default function VolleyballWorldBeachSchedule() {
                     type="date"
                     value={fromDate}
                     onChange={(event) => setFromDate(event.target.value)}
-                    className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 shadow-sm outline-none transition-all focus:border-emerald-300 focus:ring-4 focus:ring-emerald-100"
+                    className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 shadow-sm outline-none transition-all focus:border-emerald-300 focus:ring-4 focus:ring-emerald-100"
                   />
                 </label>
 
@@ -95,7 +95,7 @@ export default function VolleyballWorldBeachSchedule() {
                   <select
                     value={days}
                     onChange={(event) => setDays(event.target.value)}
-                    className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 shadow-sm outline-none transition-all focus:border-emerald-300 focus:ring-4 focus:ring-emerald-100"
+                    className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 shadow-sm outline-none transition-all focus:border-emerald-300 focus:ring-4 focus:ring-emerald-100"
                   >
                     <option value="7">7 дней</option>
                     <option value="14">14 дней</option>
@@ -108,7 +108,7 @@ export default function VolleyballWorldBeachSchedule() {
                   type="button"
                   onClick={loadSchedule}
                   disabled={loading}
-                  className="mt-auto inline-flex h-11 w-11 items-center justify-center rounded-xl bg-slate-950 text-white shadow-sm transition-all hover:bg-emerald-600 active:scale-[0.95] disabled:opacity-50"
+                  className="mt-auto inline-flex h-10 w-10 items-center justify-center rounded-xl bg-slate-950 text-white shadow-sm transition-all hover:bg-emerald-600 active:scale-[0.95] disabled:opacity-50"
                   title="Обновить"
                 >
                   {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
@@ -117,9 +117,9 @@ export default function VolleyballWorldBeachSchedule() {
             </div>
           </div>
 
-          <aside className="border-t border-slate-200 bg-slate-950 p-6 text-white lg:border-l lg:border-t-0 md:p-8">
+          <aside className="border-t border-slate-200 bg-slate-950 p-4 text-white lg:border-l lg:border-t-0">
             <p className="text-[10px] font-black uppercase tracking-[0.24em] text-slate-400">Сводка</p>
-            <div className="mt-5 grid grid-cols-2 gap-3">
+            <div className="mt-3 grid grid-cols-4 gap-2">
               <Metric label="Матчи" value={schedule?.summary.total ?? 0} />
               <Metric label="Турниры" value={schedule?.summary.competitions ?? 0} />
               <Metric label="Live" value={schedule?.summary.live ?? 0} tone="text-rose-300" />
@@ -130,7 +130,7 @@ export default function VolleyballWorldBeachSchedule() {
                 href={schedule.sourceUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-white transition-all hover:border-emerald-400/30 hover:bg-white/10"
+                className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-[10px] font-black uppercase tracking-widest text-white transition-all hover:border-emerald-400/30 hover:bg-white/10"
               >
                 <ExternalLink className="h-3.5 w-3.5" />
                 Открыть источник
@@ -202,9 +202,9 @@ export default function VolleyballWorldBeachSchedule() {
 
 function Metric({ label, value, tone = "text-white" }: { label: string; value: number; tone?: string }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-      <div className={`text-2xl font-black tabular-nums ${tone}`}>{value}</div>
-      <div className="mt-1 text-[9px] font-black uppercase tracking-widest text-slate-500">{label}</div>
+    <div className="rounded-xl border border-white/10 bg-white/5 p-2">
+      <div className={`text-lg font-black tabular-nums ${tone}`}>{value}</div>
+      <div className="mt-1 text-[8px] font-black uppercase tracking-widest text-slate-500">{label}</div>
     </div>
   );
 }

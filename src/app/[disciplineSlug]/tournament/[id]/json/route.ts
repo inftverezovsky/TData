@@ -1,4 +1,5 @@
 import { buildFixtPayload } from "@/lib/adminUpload/buildFixtPayload";
+import { toAdminFixtPayloadEnvelope } from "@/lib/adminUpload/fixtPayloadFormat";
 import { prisma } from "@/lib/db/db";
 
 export const dynamic = "force-dynamic";
@@ -39,7 +40,7 @@ export async function GET(
     });
   }
 
-  const jsonString = JSON.stringify(buildResult.payload, null, 2);
+  const jsonString = JSON.stringify(toAdminFixtPayloadEnvelope(buildResult.payload), null, 2);
 
   return new Response(jsonString, {
     headers: { 

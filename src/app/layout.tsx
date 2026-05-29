@@ -49,7 +49,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </div>
           </header>
 
-          <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 md:px-6 md:py-8 animate-in">
+          <main className="mx-auto w-full max-w-[1620px] flex-1 px-4 py-6 md:px-6 md:py-8 animate-in">
             {children}
           </main>
           
