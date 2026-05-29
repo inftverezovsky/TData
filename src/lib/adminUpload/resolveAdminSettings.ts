@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db/db";
 import {
   BEACH_VOLLEYBALL_ADMIN_SPORT_ID,
   isBeachVolleyballScopeSlug,
-} from "@/lib/tbvolley/config";
+} from "@/lib/sources/tbvolley/config";
 
 export interface ResolvedAdminSettings {
   apiUrl: string | null;

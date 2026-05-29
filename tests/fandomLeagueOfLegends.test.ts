@@ -3,7 +3,7 @@ import test from "node:test";
 import {
   extractFandomCargoScheduleMatches,
   normalizeFandomLeagueOfLegendsTournament,
-} from "../src/lib/fandom/leagueoflegends";
+} from "../src/lib/sources/TCyber/fandom/leagueoflegends";
 import { expandScheduleAnnouncementsForDiscipline } from "../src/lib/matches/scheduleView";
 
 const fandomInfobox = `

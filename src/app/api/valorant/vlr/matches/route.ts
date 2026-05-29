@@ -5,7 +5,7 @@ import { applyDisciplineScheduleLead, formatMoscowDateTime } from "@/lib/matches
 import { classifyParserError, emptyValidIfNoItems } from "@/lib/proxy/parserErrors";
 import { getTeamAliasKey, getTeamMappingLookupKeys } from "@/lib/teams/canonicalize";
 import { normalizeTeamName } from "@/lib/teams/teams";
-import { runVlrScraper } from "@/lib/vlr/scraper";
+import { runVlrScraper } from "@/lib/sources/TCyber/vlr/scraper";
 
 export const dynamic = "force-dynamic";
 

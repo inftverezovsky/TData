@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fetchVolleyballWorldBeachSchedule } from "@/lib/tbvolley/volleyballworld";
+import { fetchVolleyballWorldBeachSchedule } from "@/lib/sources/tbvolley/VolleyballWorld";
 
 export const dynamic = "force-dynamic";
 

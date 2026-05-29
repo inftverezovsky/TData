@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { searchVolleyballWorldBeachTournaments } from "@/lib/tbvolley/volleyballworld";
+import { searchVolleyballWorldBeachTournaments } from "@/lib/sources/tbvolley/VolleyballWorld";
 
 export const dynamic = "force-dynamic";
 

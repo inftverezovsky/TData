@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { BEACH_VOLLEYBALL_ADMIN_SPORT_ID } from "@/lib/tbvolley/config";
+import { BEACH_VOLLEYBALL_ADMIN_SPORT_ID } from "@/lib/sources/tbvolley/config";
 
 const DEFAULT_SETTINGS = {
   tbvolley_volleyballworld_api: "https://en.volleyballworld.com/api/v1/globalschedule",

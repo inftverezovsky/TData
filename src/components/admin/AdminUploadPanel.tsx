@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { buildAdminServiceUrl } from '@/lib/adminUpload/adminServiceUrl';
 import { appendShapkaOverridesSearchParam } from '@/lib/adminUpload/shapkaOverrides';
 import { toPhpString } from '@/lib/adminUpload/utils';
 import { dispatchAdminMappingUpdated, dispatchTournamentDataUpdated } from '@/lib/utils/clientEvents';
@@ -346,7 +347,10 @@ export default function AdminUploadPanel({
 
     let openedWindow: Window | null = null;
     try {
-      const targetUrl = `https://in.upzero.net/infotdel/results_fixtures/cyber/liquiped/?link=${encodeURIComponent(absoluteJsonUrl)}`;
+      const targetUrl = buildAdminServiceUrl(absoluteJsonUrl, process.env.NEXT_PUBLIC_ADMIN_SERVICE_URL);
+      if (!targetUrl) {
+        throw new Error('URL сервиса админки не настроен.');
+      }
       openedWindow = window.open('', '_blank');
       if (!openedWindow) {
         throw new Error('Не удалось автоматически открыть окно. Разрешите всплывающие окна для этого сайта.');

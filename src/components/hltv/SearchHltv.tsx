@@ -3,7 +3,7 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Calendar, Trash2 } from "lucide-react";
-import { getHltvSearchErrorMessage } from "@/lib/hltv/userFacingErrors";
+import { getHltvSearchErrorMessage } from "@/lib/sources/TCyber/hltv/userFacingErrors";
 
 const HLTV_SEARCH_CLIENT_TIMEOUT_MS = 180000;
 

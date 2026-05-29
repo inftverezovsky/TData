@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Loader2, Mars, Venus } from "lucide-react";
 import { dispatchTournamentDataUpdated } from "@/lib/utils/clientEvents";
-import type { BeachVolleyballGender } from "@/lib/tbvolley/config";
+import type { BeachVolleyballGender } from "@/lib/sources/tbvolley/config";
 
 const genderOptions: Array<{ value: BeachVolleyballGender; label: string }> = [
   { value: "men", label: "Мужчины" },

@@ -2,18 +2,18 @@ import fs from "fs";
 import path from "path";
 import { prisma } from "../src/lib/db/db";
 import { getOrCreateDiscipline, KNOWN_DISCIPLINE_SLUGS, type KnownDisciplineSlug } from "../src/lib/config/disciplines";
-import { makeLiquipediaPageUrl } from "../src/lib/liquipedia/client";
-import { importTournamentRecursive } from "../src/lib/liquipedia/importer";
+import { makeLiquipediaPageUrl } from "../src/lib/sources/TCyber/liquipedia/client";
+import { importTournamentRecursive } from "../src/lib/sources/TCyber/liquipedia/importer";
 import { getNormalizer } from "../src/lib/normalizers/registry";
-import { importHltvTournament } from "../src/lib/importSources/hltv";
-import { importVlrTournament } from "../src/lib/importSources/vlr";
-import { importDltvTournament } from "../src/lib/importSources/dltv";
-import { importFandomTournament } from "../src/lib/importSources/fandom";
-import { runHltvScript } from "../src/lib/hltv/scraper";
-import { parseHltvDate } from "../src/lib/hltv/parse";
-import { runVlrScraper } from "../src/lib/vlr/scraper";
-import { runDltv } from "../src/lib/dltv/queue";
-import { fetchFandomTournamentCargoEvents, makeFandomPageUrl } from "../src/lib/fandom/client";
+import { importHltvTournament } from "../src/lib/sources/TCyber/hltv/importTournament";
+import { importVlrTournament } from "../src/lib/sources/TCyber/vlr/importTournament";
+import { importDltvTournament } from "../src/lib/sources/TCyber/dltv/importTournament";
+import { importFandomTournament } from "../src/lib/sources/TCyber/fandom/importTournament";
+import { runHltvScript } from "../src/lib/sources/TCyber/hltv/scraper";
+import { parseHltvDate } from "../src/lib/sources/TCyber/hltv/parse";
+import { runVlrScraper } from "../src/lib/sources/TCyber/vlr/scraper";
+import { runDltv } from "../src/lib/sources/TCyber/dltv/queue";
+import { fetchFandomTournamentCargoEvents, makeFandomPageUrl } from "../src/lib/sources/TCyber/fandom/client";
 import { dedupeTournamentMatches } from "../src/lib/matches/dedupe";
 import { expandScheduleAnnouncementsForDiscipline, isDisplayableScheduleMatch, isUploadReadyScheduleMatch } from "../src/lib/matches/scheduleView";
 import { detectTournamentSource, type TournamentSource } from "../src/lib/utils/tournamentSource";
@@ -308,7 +308,7 @@ async function collectLiquipediaCandidates(
   disciplineSlug: KnownDisciplineSlug,
   options: AuditOptions,
 ): Promise<AuditCandidate[]> {
-  const { fetchDisciplinePortal } = await import("../src/lib/liquipedia/portal");
+  const { fetchDisciplinePortal } = await import("../src/lib/sources/TCyber/liquipedia/portal");
   const data = await fetchDisciplinePortal(disciplineSlug, options.forceEvents);
   return data.tournaments.map((tournament) => ({
     key: `${disciplineSlug}:liquipedia:${tournament.url}`,

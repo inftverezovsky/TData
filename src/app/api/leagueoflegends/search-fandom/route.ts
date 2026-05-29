@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { searchFandomTournamentPages, classifyFandomError } from "@/lib/fandom/client";
+import { searchFandomTournamentPages, classifyFandomError } from "@/lib/sources/TCyber/fandom/client";
 import { prisma } from "@/lib/db/db";
 import crypto from "crypto";
 

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/db';
+import { requireAdmin } from '@/lib/auth/adminAuth';
 import { getAdminAuthConfigStatus } from '@/lib/adminUpload/adminHttpClient';
 import { resolveAdminSettings } from '@/lib/adminUpload/resolveAdminSettings';
 import { queueIdentitySync } from '@/lib/sync/identitySync';
@@ -11,7 +12,8 @@ export async function GET(
   { params }: { params: Promise<{ disciplineSlug: string }> }
 ) {
   const { disciplineSlug } = await params;
-  // API remains callable directly; password gate is UI-only for settings visibility.
+  const unauthorized = await requireAdmin(request);
+  if (unauthorized) return unauthorized;
 
   try {
     const settings = await resolveAdminSettings(disciplineSlug);
@@ -34,7 +36,8 @@ export async function POST(
   { params }: { params: Promise<{ disciplineSlug: string }> }
 ) {
   const { disciplineSlug } = await params;
-  // API remains callable directly; password gate is UI-only for settings visibility.
+  const unauthorized = await requireAdmin(request);
+  if (unauthorized) return unauthorized;
 
   try {
     const body = await request.json();

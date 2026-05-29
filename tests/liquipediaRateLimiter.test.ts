@@ -4,7 +4,7 @@ import {
   getLiquipediaRateLimitSnapshot,
   registerLiquipediaBackoff,
   resetLiquipediaRateLimitForTests,
-} from "../src/lib/liquipedia/rateLimiter";
+} from "../src/lib/sources/TCyber/liquipedia/rateLimiter";
 
 test("Liquipedia rate limiter registers Retry-After cooldown for 429", () => {
   resetLiquipediaRateLimitForTests();

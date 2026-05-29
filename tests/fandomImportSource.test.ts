@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { importFandomTournament } from "../src/lib/importSources/fandom";
+import { importFandomTournament } from "../src/lib/sources/TCyber/fandom/importTournament";
 
 test("Fandom importer is scoped to League of Legends", async () => {
   await assert.rejects(

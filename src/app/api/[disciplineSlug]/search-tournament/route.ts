@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/db";
+import { requireAdmin } from "@/lib/auth/adminAuth";
 import { getKnownDisciplineApiUrl, isKnownDisciplineSlug } from "@/lib/config/disciplines";
-import { createSearchTournamentPostRoute } from "@/lib/liquipedia/searchRoute";
+import { createSearchTournamentPostRoute } from "@/lib/sources/TCyber/liquipedia/searchRoute";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -9,7 +10,8 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ disciplineSlug: string }> }
 ) {
-  // API remains callable directly; password gate is UI-only for settings visibility.
+  const unauthorized = await requireAdmin(request);
+  if (unauthorized) return unauthorized;
 
   const { disciplineSlug } = await params;
   const slug = disciplineSlug.trim().toLowerCase();

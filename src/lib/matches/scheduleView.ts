@@ -7,8 +7,8 @@ import {
   supportsStageAnnouncements,
   type TournamentSource,
 } from "@/lib/utils/tournamentSource";
-import { isBeachVolleyballScopeSlug } from "@/lib/tbvolley/config";
-import { cleanLiquipediaBracketLabel, isLikelyLiquipediaLayoutNoise } from "@/lib/liquipedia/bracketLabels";
+import { isBeachVolleyballScopeSlug } from "@/lib/sources/tbvolley/config";
+import { cleanLiquipediaBracketLabel, isLikelyLiquipediaLayoutNoise } from "@/lib/sources/TCyber/liquipedia/bracketLabels";
 
 export type TbdAnnouncementSide = "teamA" | "teamB" | "stage";
 

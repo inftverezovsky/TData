@@ -4,8 +4,8 @@ import { resolveAdminSettingsFromData } from "../src/lib/adminUpload/resolveAdmi
 import {
   BEACH_VOLLEYBALL_ADMIN_SPORT_ID,
   resolveTournamentTeamMappingDisciplineSlug,
-} from "../src/lib/tbvolley/config";
-import { selectCachedTBvolleyGenderTournament } from "../src/lib/tbvolley/genderSwitchCache";
+} from "../src/lib/sources/tbvolley/config";
+import { selectCachedTBvolleyGenderTournament } from "../src/lib/sources/tbvolley/genderSwitchCache";
 
 test("TBvolley settings use one beach volleyball sport id for men and women scopes", () => {
   for (const disciplineSlug of ["beachvolleyball", "beachvolleyball-men", "beachvolleyball-women"]) {

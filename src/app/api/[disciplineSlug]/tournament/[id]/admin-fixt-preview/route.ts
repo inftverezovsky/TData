@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { requireAdmin } from '@/lib/auth/adminAuth';
 import { buildFixtPayload } from '@/lib/adminUpload/buildFixtPayload';
 import { toAdminFixtPayloadEnvelope } from '@/lib/adminUpload/fixtPayloadFormat';
 import { phpSerialize } from '@/lib/adminUpload/phpSerialize';
@@ -8,7 +9,8 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string; disciplineSlug: string }> }
 ) {
-  // API remains callable directly; password gate is UI-only for settings visibility.
+  const unauthorized = await requireAdmin(request);
+  if (unauthorized) return unauthorized;
 
   const { disciplineSlug: routeDisciplineSlug, id } = await params;
   try {

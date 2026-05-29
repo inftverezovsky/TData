@@ -5,7 +5,7 @@ import {
   normalizeVolleyballWorldGender,
   normalizeVolleyballWorldSchedule,
   resolveVolleyballWorldDateRange,
-} from "../src/lib/tbvolley/volleyballworld";
+} from "../src/lib/sources/tbvolley/VolleyballWorld";
 
 test("Volleyball World normalizer keeps only beach matches for selected gender", () => {
   const schedule = normalizeVolleyballWorldSchedule(

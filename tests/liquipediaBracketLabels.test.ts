@@ -4,7 +4,7 @@ import * as cheerio from "cheerio";
 import {
   findLiquipediaBracketRoundLabel,
   isLikelyLiquipediaLayoutNoise,
-} from "../src/lib/liquipedia/bracketLabels";
+} from "../src/lib/sources/TCyber/liquipedia/bracketLabels";
 
 test("findLiquipediaBracketRoundLabel maps match R-number to bracket header", () => {
   const $ = cheerio.load(`

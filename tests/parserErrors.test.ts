@@ -6,8 +6,8 @@ import {
   normalizeParserErrorClass,
   shouldCooldownProxyForError,
 } from "../src/lib/proxy/parserErrors";
-import { getHltvSearchErrorMessage } from "../src/lib/hltv/userFacingErrors";
-import { getLiquipediaUserMessage, toLiquipediaUserFacingError } from "../src/lib/liquipedia/userFacingErrors";
+import { getHltvSearchErrorMessage } from "../src/lib/sources/TCyber/hltv/userFacingErrors";
+import { getLiquipediaUserMessage, toLiquipediaUserFacingError } from "../src/lib/sources/TCyber/liquipedia/userFacingErrors";
 
 test("classifyParserError maps proxy tunnel failures", () => {
   assert.equal(classifyParserError({ message: "net::ERR_TUNNEL_CONNECTION_FAILED" }), "proxy_tunnel");

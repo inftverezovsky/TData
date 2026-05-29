@@ -4,7 +4,7 @@ import fs from 'fs';
 async function main() {
   const filePath = process.argv[2];
   if (!filePath) {
-    console.error('Please provide path to excel file. Example: npm run import:dota2-admin-teams -- "data/imports/Dota 2.xlsx"');
+    console.error('Please provide path to an admin teams Excel file. Example: npm run import:dota2-admin-teams -- "C:\\\\path\\\\teams.xlsx"');
     process.exit(1);
   }
   

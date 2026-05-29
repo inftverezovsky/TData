@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { runHltvScript } from "@/lib/hltv/scraper";
+import { runHltvScript } from "@/lib/sources/TCyber/hltv/scraper";
 import { classifyParserError } from "@/lib/proxy/parserErrors";
 
 export const dynamic = "force-dynamic";

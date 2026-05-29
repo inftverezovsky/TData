@@ -8,7 +8,7 @@ import {
   parseBeachVolleyRuCalendar,
   parseBeachVolleyRuMatches,
   resolveBeachVolleyRuUpcomingWindow,
-} from "../src/lib/tbvolley/beachVolleyRu";
+} from "../src/lib/sources/tbvolley/beach.volley.ru";
 
 test("BeachVolleyRu calendar parser keeps Russia Cup and Championship events", () => {
   const html = `

@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { detectTournamentSource, type TournamentSource } from "@/lib/utils/tournamentSource";
 import { dispatchTournamentDataUpdated } from "@/lib/utils/clientEvents";
-import { getLiquipediaUserMessage } from "@/lib/liquipedia/userFacingErrors";
+import { getLiquipediaUserMessage } from "@/lib/sources/TCyber/liquipedia/userFacingErrors";
 
 type BundleItem = {
   title: string;

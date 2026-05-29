@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import sharp from "sharp";
-import { parseHltvCopiedText } from "../src/lib/hltv/manualTextParser";
+import { parseHltvCopiedText } from "../src/lib/sources/TCyber/hltv/manualTextParser";
 import { extractManualImportOcr, shutdownManualImportOcrWorker } from "../src/lib/manualImport/ocrPipeline";
 
 test("extractManualImportOcr reads a generated schedule image", async () => {

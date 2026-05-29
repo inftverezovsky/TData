@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/auth/adminAuth";
 import { prisma } from "@/lib/db/db";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  // API remains callable directly; password gate is UI-only for settings visibility.
+  const unauthorized = await requireAdmin(request);
+  if (unauthorized) return unauthorized;
 
   const start = Date.now();
   try {

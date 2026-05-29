@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/db";
-import { normalizeBeachVolleyballGender } from "@/lib/tbvolley/config";
-import { selectCachedTBvolleyGenderTournament } from "@/lib/tbvolley/genderSwitchCache";
+import { normalizeBeachVolleyballGender } from "@/lib/sources/tbvolley/config";
+import { selectCachedTBvolleyGenderTournament } from "@/lib/sources/tbvolley/genderSwitchCache";
 
 export const dynamic = "force-dynamic";
 

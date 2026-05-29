@@ -17,7 +17,7 @@ import { generateInternalTeamId, isPlaceholderTeam } from "@/lib/teams/teams";
 import { applyTbdPairCycling } from "@/lib/matches/tbdCycling";
 import { getBestOfLabel } from "@/lib/matches/format";
 import { hasExplicitTimeText } from "@/lib/matches/time";
-import { findLiquipediaBracketRoundLabel, isLikelyLiquipediaLayoutNoise } from "@/lib/liquipedia/bracketLabels";
+import { findLiquipediaBracketRoundLabel, isLikelyLiquipediaLayoutNoise } from "@/lib/sources/TCyber/liquipedia/bracketLabels";
 
 const CHINA_CST_DATE_OPTIONS: WikiDateParseOptions = {
   timezoneOffsets: {

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { runHltvScript } from "@/lib/hltv/scraper";
+import { runHltvScript } from "@/lib/sources/TCyber/hltv/scraper";
 import { prisma } from "@/lib/db/db";
 import { classifyParserError, emptyValidIfNoItems } from "@/lib/proxy/parserErrors";
 

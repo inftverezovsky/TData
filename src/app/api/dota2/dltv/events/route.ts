@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/db";
-import { runDltv } from "@/lib/dltv/queue";
-import { getDltvErrorMessage, normalizeDltvErrorClass } from "@/lib/dltv/userFacingErrors";
+import { runDltv } from "@/lib/sources/TCyber/dltv/queue";
+import { getDltvErrorMessage, normalizeDltvErrorClass } from "@/lib/sources/TCyber/dltv/userFacingErrors";
 import { emptyValidIfNoItems } from "@/lib/proxy/parserErrors";
 
 export const dynamic = "force-dynamic";

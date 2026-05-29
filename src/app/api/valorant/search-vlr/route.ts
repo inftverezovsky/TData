@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { emptyValidIfNoItems, classifyParserError } from "@/lib/proxy/parserErrors";
-import { runVlrScraper } from "@/lib/vlr/scraper";
+import { runVlrScraper } from "@/lib/sources/TCyber/vlr/scraper";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;

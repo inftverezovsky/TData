@@ -9,7 +9,7 @@ import {
   parseGermanBeachTourMatches,
   parseGermanBeachTourTournamentPage,
   resolveGermanBeachTourUpcomingWindow,
-} from "../src/lib/tbvolley/germanBeachTour";
+} from "../src/lib/sources/tbvolley/GermanBeachTour";
 
 test("German Beach Tour calendar parser keeps upcoming gender-specific tour events", () => {
   const html = `

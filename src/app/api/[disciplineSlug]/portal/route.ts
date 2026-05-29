@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { fetchDisciplinePortal } from "@/lib/liquipedia/portal";
+import { fetchDisciplinePortal } from "@/lib/sources/TCyber/liquipedia/portal";
 import { prisma } from "@/lib/db/db";
-import { getLiquipediaResponseStatus, toLiquipediaUserFacingError } from "@/lib/liquipedia/userFacingErrors";
+import { getLiquipediaResponseStatus, toLiquipediaUserFacingError } from "@/lib/sources/TCyber/liquipedia/userFacingErrors";
 
 export const dynamic = "force-dynamic";
 

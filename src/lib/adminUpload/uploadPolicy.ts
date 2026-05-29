@@ -7,7 +7,7 @@ import {
   resolveStageSlotAnnouncement,
 } from "@/lib/matches/scheduleView";
 import { hasExactMatchTime } from "@/lib/matches/time";
-import { resolveTournamentTeamMappingDisciplineSlug } from "@/lib/tbvolley/config";
+import { resolveTournamentTeamMappingDisciplineSlug } from "@/lib/sources/tbvolley/config";
 import { isPlaceholderTeam, isTbdPlaceholderTeam } from "@/lib/teams/teams";
 import { detectTournamentSource, type TournamentSource } from "@/lib/utils/tournamentSource";
 

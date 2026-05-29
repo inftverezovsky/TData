@@ -20,7 +20,7 @@ import {
   normalizeBeachVolleyballGender,
   readBeachVolleyballGenderFromNormalization,
   resolveTournamentTeamMappingDisciplineSlug,
-} from "@/lib/tbvolley/config";
+} from "@/lib/sources/tbvolley/config";
 
 export default async function TournamentWorkspacePage({
   disciplineSlug,

@@ -5,7 +5,7 @@ import {
   filterLiquipediaSearchResultsForQuery,
   isLiquipediaSearchTitleRelevant,
   shouldShowLiquipediaSearchResult,
-} from "../src/lib/liquipedia/client";
+} from "../src/lib/sources/TCyber/liquipedia/client";
 
 test("Liquipedia search expands trailing league abbreviation", () => {
   const variations = buildLiquipediaSearchVariations("Dream L", 2026);

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { cleanHltvTeamName, formatHltvDate, parseHltvDate, shouldKeepHltvEvent } from "../src/lib/hltv/parse";
+import { cleanHltvTeamName, formatHltvDate, parseHltvDate, shouldKeepHltvEvent } from "../src/lib/sources/TCyber/hltv/parse";
 
 const today = new Date("2026-05-10T12:00:00Z");
 

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { buildAdminServiceUrl } from "@/lib/adminUpload/adminServiceUrl";
 import { toAdminFixtPayloadEnvelope } from "@/lib/adminUpload/fixtPayloadFormat";
 import { resolvePublicOrigin } from "@/lib/http/publicOrigin";
 import { putManualImportJson } from "@/lib/manualImport/cache";
@@ -43,11 +44,22 @@ export async function POST(request: Request) {
 
     const token = putManualImportJson(toAdminFixtPayloadEnvelope(buildResult.payload));
     const jsonUrl = `${publicOrigin}/api/manual-import/json/${token}`;
+    const serviceUrl = buildAdminServiceUrl(
+      jsonUrl,
+      process.env.ADMIN_SERVICE_URL || process.env.NEXT_PUBLIC_ADMIN_SERVICE_URL,
+    );
+
+    if (!serviceUrl) {
+      return NextResponse.json(
+        { ok: false, error: "Admin service URL is not configured." },
+        { status: 400 }
+      );
+    }
 
     return NextResponse.json({
       ok: true,
       jsonUrl,
-      serviceUrl: `https://in.upzero.net/infotdel/results_fixtures/cyber/liquiped/?link=${encodeURIComponent(jsonUrl)}`,
+      serviceUrl,
       readyMatchesCount: buildResult.readyMatchesCount,
     });
   } catch (error) {

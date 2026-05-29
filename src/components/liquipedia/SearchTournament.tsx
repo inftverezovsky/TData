@@ -4,7 +4,7 @@ import { FormEvent, useState } from "react";
 import LoadTournamentButton from "@/components/ui/LoadTournamentButton";
 import UpcomingTournamentsWidget from "@/components/liquipedia/UpcomingTournamentsWidget";
 import { Loader2, Calendar, Trash2 } from "lucide-react";
-import { getLiquipediaUserMessage } from "@/lib/liquipedia/userFacingErrors";
+import { getLiquipediaUserMessage } from "@/lib/sources/TCyber/liquipedia/userFacingErrors";
 
 type SearchResult = {
   pageId: number;

@@ -3,7 +3,7 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Calendar, Loader2, Trash2 } from "lucide-react";
-import { getDltvErrorMessage } from "@/lib/dltv/userFacingErrors";
+import { getDltvErrorMessage } from "@/lib/sources/TCyber/dltv/userFacingErrors";
 
 type DltvEvent = {
   id: string;

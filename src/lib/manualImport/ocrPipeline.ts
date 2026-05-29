@@ -2,7 +2,7 @@ import sharp from "sharp";
 import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import type { PSM as TesseractPsm, Worker } from "tesseract.js";
-import { parseManualScheduleText } from "@/lib/hltv/manualTextParser";
+import { parseManualScheduleText } from "@/lib/sources/TCyber/hltv/manualTextParser";
 
 export type ManualImportOcrInput = {
   imageDataUrl?: string;

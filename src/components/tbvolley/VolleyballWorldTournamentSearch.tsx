@@ -7,7 +7,7 @@ import type {
   VolleyballWorldBeachTournament,
   VolleyballWorldBeachTournamentSearch,
   VolleyballWorldGender,
-} from "@/lib/tbvolley/volleyballworld";
+} from "@/lib/sources/tbvolley/VolleyballWorld";
 
 const BEACH_VOLLEYBALL_SLUG = "beachvolleyball";
 

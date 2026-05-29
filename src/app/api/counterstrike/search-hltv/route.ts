@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { runHltvScript } from "@/lib/hltv/scraper";
-import { filterHltvEventsByQuery } from "@/lib/hltv/searchFallback";
+import { runHltvScript } from "@/lib/sources/TCyber/hltv/scraper";
+import { filterHltvEventsByQuery } from "@/lib/sources/TCyber/hltv/searchFallback";
 import { emptyValidIfNoItems } from "@/lib/proxy/parserErrors";
-import { getHltvSearchErrorMessage, normalizeHltvErrorClass } from "@/lib/hltv/userFacingErrors";
+import { getHltvSearchErrorMessage, normalizeHltvErrorClass } from "@/lib/sources/TCyber/hltv/userFacingErrors";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300; // 5 minutes for long scraping with retries

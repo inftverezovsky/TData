@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/db";
-import { runHltvScript } from "@/lib/hltv/scraper";
+import { runHltvScript } from "@/lib/sources/TCyber/hltv/scraper";
 import { getBestOfLabel } from "@/lib/matches/format";
 import { applyDisciplineScheduleLead } from "@/lib/matches/scheduleOffset";
 import { classifyParserError, emptyValidIfNoItems } from "@/lib/proxy/parserErrors";

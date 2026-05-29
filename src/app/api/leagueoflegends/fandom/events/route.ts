@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/db";
-import { classifyFandomError, fetchFandomTournamentCargoEvents, makeFandomPageUrl, searchFandomTournamentPages } from "@/lib/fandom/client";
+import { classifyFandomError, fetchFandomTournamentCargoEvents, makeFandomPageUrl, searchFandomTournamentPages } from "@/lib/sources/TCyber/fandom/client";
 
 export const dynamic = "force-dynamic";
 

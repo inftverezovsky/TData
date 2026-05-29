@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireAdmin } from "@/lib/auth/adminAuth";
 import { prisma } from "@/lib/db/db";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import { SocksProxyAgent } from "socks-proxy-agent";
@@ -19,7 +20,8 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
   } else {
-    // API remains callable directly; password gate is UI-only for settings visibility.
+    const unauthorized = await requireAdmin(request);
+    if (unauthorized) return unauthorized;
   }
 
   try {

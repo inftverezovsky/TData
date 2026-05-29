@@ -19,7 +19,7 @@ import { normalizeTeamName } from "@/lib/teams/teams";
 import { getTeamAliasKey } from "@/lib/teams/canonicalize";
 import type { TournamentSource } from "@/lib/utils/tournamentSource";
 import { isBeachVolleyballTournamentSource } from "@/lib/utils/tournamentSource";
-import { isBeachVolleyballScopeSlug } from "@/lib/tbvolley/config";
+import { isBeachVolleyballScopeSlug } from "@/lib/sources/tbvolley/config";
 import { Clock, LayoutGrid, CheckCircle2, TimerReset } from "lucide-react";
 
 type Match = {

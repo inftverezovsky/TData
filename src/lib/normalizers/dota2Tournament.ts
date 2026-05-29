@@ -18,7 +18,7 @@ import { generateInternalTeamId, isPlaceholderTeam } from "@/lib/teams/teams";
 import { applyTbdPairCycling } from "@/lib/matches/tbdCycling";
 import { getBestOfLabel } from "@/lib/matches/format";
 import { hasExplicitTimeText } from "@/lib/matches/time";
-import { findLiquipediaBracketRoundLabel } from "@/lib/liquipedia/bracketLabels";
+import { findLiquipediaBracketRoundLabel } from "@/lib/sources/TCyber/liquipedia/bracketLabels";
 
 const DOTA2_LIQUIPEDIA_DATE_OPTIONS: WikiDateParseOptions = {
   timezoneOffsets: {

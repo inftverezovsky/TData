@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildLeagueOfLegendsPortalResult } from "../src/lib/liquipedia/portal";
+import { buildLeagueOfLegendsPortalResult } from "../src/lib/sources/TCyber/liquipedia/portal";
 
 test("League of Legends portal parser reads tournaments-list items from main page HTML", () => {
   const html = `

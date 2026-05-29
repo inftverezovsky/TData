@@ -4,25 +4,31 @@ import path from "node:path";
 import test from "node:test";
 
 const API_ROOT = path.join(process.cwd(), "src", "app", "api");
-const MUTATING_ROUTE_PATTERN = /export\s+async\s+function\s+(POST|PUT|PATCH|DELETE)\b/;
 const ADMIN_GUARD_PATTERN = /\brequireAdmin\s*\(/;
 
-const ALLOWED_GUARDED_MUTATING_ROUTES = new Set([
-  "admin-auth/login/route.ts",
-  "admin-auth/logout/route.ts",
-  "admin-settings/identity-sync/route.ts",
-  "counterstrike/hltv/matches/manual/route.ts",
+const REQUIRED_ADMIN_GUARDED_ROUTES = new Set([
+  "[disciplineSlug]/import-tournament/route.ts",
+  "[disciplineSlug]/search-tournament/route.ts",
+  "[disciplineSlug]/tournament/[id]/admin-fixt-preview/route.ts",
+  "[disciplineSlug]/tournament/[id]/admin-mapping/route.ts",
+  "admin-settings/[disciplineSlug]/route.ts",
+  "admin-settings/proxy-pool/route.ts",
+  "admin/proxies/route.ts",
+  "admin/sandbox/route.ts",
+  "cron/check-proxies/route.ts",
+  "settings/clear-search-cache/route.ts",
+  "settings/global/route.ts",
+  "settings/route.ts",
 ]);
 
-test("mutating API routes stay callable without the UI password gate", () => {
-  const guardedRoutes = collectRouteFiles(API_ROOT)
-    .filter((filePath) => MUTATING_ROUTE_PATTERN.test(fs.readFileSync(filePath, "utf8")))
-    .filter((filePath) => !ALLOWED_GUARDED_MUTATING_ROUTES.has(toApiRelativePath(filePath)))
-    .filter((filePath) => ADMIN_GUARD_PATTERN.test(fs.readFileSync(filePath, "utf8")))
+test("sensitive admin API routes require the admin password gate", () => {
+  const missingGuards = collectRouteFiles(API_ROOT)
+    .filter((filePath) => REQUIRED_ADMIN_GUARDED_ROUTES.has(toApiRelativePath(filePath)))
+    .filter((filePath) => !ADMIN_GUARD_PATTERN.test(fs.readFileSync(filePath, "utf8")))
     .map(toApiRelativePath)
     .sort();
 
-  assert.deepEqual(guardedRoutes, []);
+  assert.deepEqual(missingGuards, []);
 });
 
 function collectRouteFiles(directory: string): string[] {

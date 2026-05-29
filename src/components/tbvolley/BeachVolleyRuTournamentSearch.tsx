@@ -9,7 +9,7 @@ import type {
   BeachVolleyRuTournament,
   BeachVolleyRuTournamentKind,
   BeachVolleyRuTournamentSearch,
-} from "@/lib/tbvolley/beachVolleyRu";
+} from "@/lib/sources/tbvolley/beach.volley.ru";
 
 const BEACH_VOLLEYBALL_SLUG = "beachvolleyball";
 

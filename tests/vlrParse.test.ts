@@ -7,7 +7,7 @@ import {
   parseVlrMatchDetailHtml,
   parseVlrMatchesHtml,
   parseVlrUtcTimestamp,
-} from "../src/lib/vlr/parse";
+} from "../src/lib/sources/TCyber/vlr/parse";
 
 test("buildVlrEventMatchesUrl points event imports at the full schedule page", () => {
   assert.equal(

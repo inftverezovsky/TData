@@ -1,4 +1,4 @@
-import { parseHltvCopiedText } from "@/lib/hltv/manualTextParser";
+import { parseHltvCopiedText } from "@/lib/sources/TCyber/hltv/manualTextParser";
 import { createHash } from "node:crypto";
 import { ARCCODEX_CHAT_COMPLETIONS_URL, ARCCODEX_RESPONSES_URL, MANUAL_IMPORT_AI_TIMEOUT_MS, MANUAL_IMPORT_MODEL } from "./config";
 import type { ManualImportRawMatch } from "./buildManualFixtPayload";
