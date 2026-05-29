@@ -1,15 +1,11 @@
 import { NextResponse } from 'next/server';
-import { requireAdmin } from '@/lib/auth/adminAuth';
 import { findTournamentAdminMapping, upsertTournamentAdminMapping } from '@/lib/adminUpload/adminMappingStore';
 import { queueIdentitySync } from '@/lib/sync/identitySync';
 
 export async function GET(
-  request: Request,
+  _request: Request,
   { params }: { params: Promise<{ id: string; disciplineSlug: string }> }
 ) {
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
-
   const { id } = await params;
   try {
     const mapping = await findTournamentAdminMapping(id);
@@ -24,9 +20,6 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string; disciplineSlug: string }> }
 ) {
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
-
   const { disciplineSlug: routeDisciplineSlug, id } = await params;
   try {
     const body = await request.json();

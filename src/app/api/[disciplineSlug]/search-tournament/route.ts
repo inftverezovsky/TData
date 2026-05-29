@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/db/db";
-import { requireAdmin } from "@/lib/auth/adminAuth";
 import { getKnownDisciplineApiUrl, isKnownDisciplineSlug } from "@/lib/config/disciplines";
 import { createSearchTournamentPostRoute } from "@/lib/sources/TCyber/liquipedia/searchRoute";
 import { NextResponse } from "next/server";
@@ -10,9 +9,6 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ disciplineSlug: string }> }
 ) {
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
-
   const { disciplineSlug } = await params;
   const slug = disciplineSlug.trim().toLowerCase();
 

@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { requireAdmin } from '@/lib/auth/adminAuth';
 import { buildFixtPayload } from '@/lib/adminUpload/buildFixtPayload';
 import { toAdminFixtPayloadEnvelope } from '@/lib/adminUpload/fixtPayloadFormat';
 import { phpSerialize } from '@/lib/adminUpload/phpSerialize';
@@ -9,9 +8,6 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string; disciplineSlug: string }> }
 ) {
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
-
   const { disciplineSlug: routeDisciplineSlug, id } = await params;
   try {
     const body = await request.json();

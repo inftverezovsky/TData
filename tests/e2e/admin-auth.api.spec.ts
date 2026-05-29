@@ -6,7 +6,6 @@ test("admin auth protects settings endpoints and creates a usable session cookie
     () => request.post("/api/settings/global"),
     () => request.get("/api/settings"),
     () => request.post("/api/settings"),
-    () => request.post("/api/settings/clear-search-cache"),
     () => request.get("/api/admin/proxies"),
     () => request.get("/api/admin/health"),
     () => request.post("/api/admin/sandbox"),
@@ -18,14 +17,6 @@ test("admin auth protects settings endpoints and creates a usable session cookie
     () => request.get("/api/admin-settings/identity-sync"),
     () => request.post("/api/admin-settings/identity-sync"),
     () => request.get("/api/cron/check-proxies"),
-    () => request.post("/api/counterstrike/import-tournament", { data: { title: "" } }),
-    () => request.post("/api/dota2/search-tournament", { data: { query: "" } }),
-    () => request.post("/api/counterstrike/tournament/example/admin-mapping", {
-      data: { sourceTournamentName: "Example", adminShapkaId: "12345" },
-    }),
-    () => request.post("/api/counterstrike/tournament/example/admin-fixt-preview", {
-      data: { selectedMatchIds: [] },
-    }),
   ];
 
   for (const makeRequest of protectedRequests) {
@@ -41,6 +32,21 @@ test("admin auth protects settings endpoints and creates a usable session cookie
 
   const publicTeamMapping = await request.get("/api/team-mapping?discipline=counterstrike");
   expect(publicTeamMapping.status()).not.toBe(401);
+
+  const publicCacheClearValidation = await request.post("/api/settings/clear-search-cache", {
+    data: { source: "hltv", disciplineSlug: "../counterstrike" },
+  });
+  expect(publicCacheClearValidation.status()).toBe(400);
+
+  const publicImportValidation = await request.post("/api/counterstrike/import-tournament", {
+    data: { title: "" },
+  });
+  expect(publicImportValidation.status()).not.toBe(401);
+
+  const publicSearchValidation = await request.post("/api/dota2/search-tournament", {
+    data: { query: "" },
+  });
+  expect(publicSearchValidation.status()).not.toBe(401);
 
   const badLogin = await request.post("/api/admin-auth/login", {
     data: { password: "wrong-password" },
