@@ -596,7 +596,7 @@ function AdminTeamNameCombobox({
       } finally {
         setLoading(false);
       }
-    }, 250);
+    }, 150);
 
     return () => {
       window.clearTimeout(timeout);

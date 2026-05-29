@@ -3,6 +3,7 @@ import {
   levenshteinDistance,
   normalizeFuzzyName,
   scorePlatformTeamCandidateDetailed,
+  transliterateCyrillicToLatin,
   type PlatformTeamCandidate,
 } from "@/lib/teams/fuzzyMatch";
 
@@ -20,6 +21,21 @@ export type AdminTeamSuggestion = {
 
 const GENERIC_TEAM_TOKENS = new Set(["the", "team", "esport", "esports", "gaming", "club", "clan"]);
 
+const EMPTY_DETAILED_SCORE = {
+  score: 0,
+  matchedName: null,
+} as const;
+
+type PreparedAdminTeamSuggestionCandidate = {
+  team: PlatformTeamCandidate;
+  rawSearchableNames: string[];
+  searchableNames: string[];
+  platformId: string;
+  platformName: string;
+};
+
+const preparedCandidateCache = new WeakMap<PlatformTeamCandidate[], PreparedAdminTeamSuggestionCandidate[]>();
+
 export function buildAdminTeamSuggestions(
   teams: PlatformTeamCandidate[],
   query: string,
@@ -29,36 +45,68 @@ export function buildAdminTeamSuggestions(
   if (normalizedQuery.length < 2) return [];
 
   const seenPlatformIds = new Set<string>();
-  const suggestions: AdminTeamSuggestion[] = [];
+  const directSuggestions: AdminTeamSuggestion[] = [];
+  const fuzzyCandidates: PreparedAdminTeamSuggestionCandidate[] = [];
 
-  for (const team of teams) {
-    const platformId = String(team.platformId || "").trim();
-    const platformName = String(team.platformName || "").trim();
-    if (!platformId || !platformName || seenPlatformIds.has(platformId)) continue;
+  for (const candidate of getPreparedSuggestionCandidates(teams)) {
+    const { team, rawSearchableNames, searchableNames, platformId, platformName } = candidate;
+    if (seenPlatformIds.has(platformId)) continue;
     seenPlatformIds.add(platformId);
-
-    const rawSearchableNames = getPlatformTeamSearchNames(team);
-    const searchableNames = rawSearchableNames.map((name) => normalizeFuzzyName(name)).filter(Boolean);
-
     const exact = searchableNames.some((name) => name === normalizedQuery);
     const startsWith = !exact && searchableNames.some((name) => name.startsWith(normalizedQuery));
     const contains = !exact && !startsWith && searchableNames.some((name) => name.includes(normalizedQuery));
-    const detailedScore = scorePlatformTeamCandidateDetailed(query, team);
-    const fuzzyScore = Math.max(detailedScore.score, getBroadCandidateScore(normalizedQuery, searchableNames));
+
+    if (exact || startsWith || contains) {
+      directSuggestions.push({
+        platformId,
+        platformName,
+        platformNameRu: team.platformNameRu,
+        platformNameEn: team.platformNameEn,
+        matchedName: findMatchedDisplayName(normalizedQuery, rawSearchableNames),
+        score: exact ? 1 : startsWith ? 0.92 : 0.82,
+        matchType: exact ? "exact" : startsWith ? "starts_with" : "contains",
+      });
+      continue;
+    }
+
+    fuzzyCandidates.push(candidate);
+  }
+
+  if (directSuggestions.length > 0) {
+    const extraSuggestions = buildFuzzySuggestions(
+      fuzzyCandidates.filter((candidate) => shouldTryFuzzyAlongsideDirectMatch(normalizedQuery, candidate.searchableNames)),
+      query,
+      normalizedQuery,
+    );
+    return sortAndLimitSuggestions([...directSuggestions, ...extraSuggestions], limit);
+  }
+
+  if (isLowSignalFuzzyQuery(normalizedQuery)) return [];
+
+  return sortAndLimitSuggestions(buildFuzzySuggestions(fuzzyCandidates, query, normalizedQuery), limit);
+}
+
+function buildFuzzySuggestions(
+  candidates: PreparedAdminTeamSuggestionCandidate[],
+  query: string,
+  normalizedQuery: string,
+) {
+  const suggestions: AdminTeamSuggestion[] = [];
+
+  for (const { team, rawSearchableNames, searchableNames, platformId, platformName } of candidates) {
+    const fuzzyThreshold = getFuzzyThreshold(normalizedQuery);
+    const broadScore = getBroadCandidateScore(normalizedQuery, searchableNames);
+    const shouldRunDetailedScore =
+      broadScore >= fuzzyThreshold - 0.08 || shouldTryDetailedTransliteration(normalizedQuery, searchableNames);
+    const detailedScore = shouldRunDetailedScore
+      ? scorePlatformTeamCandidateDetailed(query, team)
+      : EMPTY_DETAILED_SCORE;
+    const fuzzyScore = Math.max(detailedScore.score, broadScore);
 
     let matchType: AdminTeamSuggestionMatchType | null = null;
     let score = 0;
 
-    if (exact) {
-      matchType = "exact";
-      score = 1;
-    } else if (startsWith) {
-      matchType = "starts_with";
-      score = Math.max(0.92, fuzzyScore);
-    } else if (contains) {
-      matchType = "contains";
-      score = Math.max(0.82, fuzzyScore);
-    } else if (fuzzyScore >= getFuzzyThreshold(normalizedQuery)) {
+    if (fuzzyScore >= fuzzyThreshold) {
       matchType = "fuzzy";
       score = fuzzyScore;
     }
@@ -75,6 +123,61 @@ export function buildAdminTeamSuggestions(
     });
   }
 
+  return suggestions;
+}
+
+function getPreparedSuggestionCandidates(teams: PlatformTeamCandidate[]) {
+  const cached = preparedCandidateCache.get(teams);
+  if (cached) return cached;
+
+  const seenPlatformIds = new Set<string>();
+  const prepared: PreparedAdminTeamSuggestionCandidate[] = [];
+
+  for (const team of teams) {
+    const platformId = String(team.platformId || "").trim();
+    const platformName = String(team.platformName || "").trim();
+    if (!platformId || !platformName || seenPlatformIds.has(platformId)) continue;
+    seenPlatformIds.add(platformId);
+
+    const rawSearchableNames = getPlatformTeamSearchNames(team);
+    const searchableNames = rawSearchableNames.map((name) => normalizeFuzzyName(name)).filter(Boolean);
+    if (searchableNames.length === 0) continue;
+
+    prepared.push({
+      team,
+      rawSearchableNames,
+      searchableNames,
+      platformId,
+      platformName,
+    });
+  }
+
+  preparedCandidateCache.set(teams, prepared);
+  return prepared;
+}
+
+function shouldTryFuzzyAlongsideDirectMatch(query: string, searchableNames: string[]) {
+  const queryTokens = stripGenericTokens(getTokens(query)).filter((token) => token.length >= 3);
+  if (queryTokens.length === 0) return false;
+
+  return searchableNames.some((name) => {
+    const candidateTokens = stripGenericTokens(getTokens(name));
+    return queryTokens.some((queryToken) =>
+      candidateTokens.some((candidateToken) =>
+        candidateToken === queryToken ||
+        candidateToken.startsWith(queryToken) ||
+        queryToken.startsWith(candidateToken)
+      )
+    );
+  });
+}
+
+function isLowSignalFuzzyQuery(query: string) {
+  const tokens = getTokens(query);
+  return tokens.length === 1 && GENERIC_TEAM_TOKENS.has(tokens[0]);
+}
+
+function sortAndLimitSuggestions(suggestions: AdminTeamSuggestion[], limit: number) {
   return suggestions
     .sort((a, b) => {
       const priorityDiff = getMatchTypePriority(a.matchType) - getMatchTypePriority(b.matchType);
@@ -84,6 +187,21 @@ export function buildAdminTeamSuggestions(
       return a.platformName.localeCompare(b.platformName, "ru");
     })
     .slice(0, Math.max(1, Math.min(20, Math.trunc(limit) || 8)));
+}
+
+function shouldTryDetailedTransliteration(query: string, searchableNames: string[]) {
+  if (!/\p{Script=Cyrillic}/u.test(query)) return false;
+
+  const transliteratedQuery = transliterateCyrillicToLatin(query);
+  const compactTransliteratedQuery = getCompactKey(transliteratedQuery);
+  if (compactTransliteratedQuery.length < 4 || compactTransliteratedQuery === getCompactKey(query)) return false;
+
+  const queryPrefix = compactTransliteratedQuery.slice(0, Math.min(4, compactTransliteratedQuery.length));
+  return searchableNames.some((name) => {
+    const compactName = getCompactKey(name);
+    if (compactName.length < 4) return false;
+    return compactName.includes(queryPrefix) || compactTransliteratedQuery.includes(compactName.slice(0, 4));
+  });
 }
 
 function findMatchedDisplayName(query: string, names: string[]) {

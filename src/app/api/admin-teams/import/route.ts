@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/db";
 import { queueIdentitySync } from "@/lib/sync/identitySync";
 import { parseAdminTeamImportRows } from "@/lib/adminTeams/importSpreadsheet";
+import { invalidateAdminTeamSuggestCache } from "@/lib/adminTeams/suggestCache";
 import {
   getSpreadsheetSourceErrorStatus,
   readAdminTeamRowsFromSpreadsheetSource,
@@ -66,6 +67,7 @@ export async function POST(request: Request) {
         skipDuplicates: true,
       }),
     ]);
+    invalidateAdminTeamSuggestCache(disciplineSlug);
 
     // Run auto-mapping after import
     const mappingResult = await runAutoMappingForDiscipline(disciplineSlug);

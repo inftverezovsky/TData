@@ -70,6 +70,12 @@ test("admin team suggestions do not run matching for too-short queries", () => {
   assert.deepEqual(buildAdminTeamSuggestions(adminTeams, "G", 5), []);
 });
 
+test("admin team suggestions skip low-signal generic-only fuzzy queries", () => {
+  const beachTeams = [{ platformId: "20", platformName: "Там/Чань", platformNameEn: "Tam/Chan" }];
+
+  assert.deepEqual(buildAdminTeamSuggestions(beachTeams, "Team", 5), []);
+});
+
 test("admin team suggestions include broad partial and out-of-order letter matches", () => {
   const typo = buildAdminTeamSuggestions(adminTeams, "Pamd", 5);
   const missingLetters = buildAdminTeamSuggestions(adminTeams, "Pnd Gmg", 5);

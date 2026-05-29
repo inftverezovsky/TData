@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db/db";
 import { buildAdminTeamSuggestions } from "@/lib/adminTeams/suggest";
+import { getCachedAdminTeamsForSuggest } from "@/lib/adminTeams/suggestCache";
 import { normalizeFuzzyName } from "@/lib/teams/fuzzyMatch";
 
 export const dynamic = "force-dynamic";
@@ -19,19 +19,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ items: [], adminTeamsCount: null, minQueryLength: 2 });
   }
 
-  const adminTeams = await prisma.adminTeam.findMany({
-    where: { disciplineSlug },
-    select: {
-      platformId: true,
-      platformName: true,
-      platformNameRu: true,
-      platformNameEn: true,
-      normalizedName: true,
-      normalizedNameRu: true,
-      normalizedNameEn: true,
-    },
-    orderBy: { platformName: "asc" },
-  });
+  const adminTeams = await getCachedAdminTeamsForSuggest(disciplineSlug);
 
   return NextResponse.json({
     items: buildAdminTeamSuggestions(adminTeams, query, limit),

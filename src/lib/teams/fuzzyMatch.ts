@@ -666,7 +666,7 @@ function containsCyrillic(value: string) {
   return /\p{Script=Cyrillic}/u.test(value);
 }
 
-function transliterateCyrillicToLatin(value: string) {
+export function transliterateCyrillicToLatin(value: string) {
   return normalizeFuzzyName(value)
     .split("")
     .map((char) => CYRILLIC_TO_LATIN[char] ?? char)
