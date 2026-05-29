@@ -420,11 +420,7 @@ export function buildDuplicateAnnouncementSecondOffsets(candidates: DuplicateAnn
 
   for (const candidate of candidates) {
     if (candidate.team2 !== "") continue;
-    const key = [
-      Math.floor(candidate.uploadDate.getTime() / 1000),
-      candidate.team1,
-      candidate.team2,
-    ].join('|');
+    const key = String(Math.floor(candidate.uploadDate.getTime() / 1000));
     const group = groups.get(key) || [];
     group.push(candidate);
     groups.set(key, group);

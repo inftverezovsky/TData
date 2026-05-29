@@ -13,11 +13,11 @@ test("duplicate admin announcements at the same time get stable second offsets",
 
   assert.equal(offsets.get("match-1::stage"), 1);
   assert.equal(offsets.get("match-2::stage"), 2);
-  assert.equal(offsets.has("match-3::stage"), false);
+  assert.equal(offsets.get("match-3::stage"), 3);
   assert.equal(offsets.has("match-4"), false);
 });
 
-test("duplicate announcement offsets are based on exact source time and mapped announcement id", () => {
+test("duplicate announcement offsets are global for all announcement teams at the same exact source time", () => {
   const offsets = buildDuplicateAnnouncementSecondOffsets([
     { id: "lcq-1::stage", uploadDate: new Date("2026-05-30T12:00:00.000Z"), team1: 333, team2: "" },
     { id: "lcq-2::stage", uploadDate: new Date("2026-05-30T12:00:00.000Z"), team1: 333, team2: "" },
@@ -27,7 +27,7 @@ test("duplicate announcement offsets are based on exact source time and mapped a
 
   assert.deepEqual(
     ["lcq-1::stage", "lcq-2::stage", "lcq-3::stage", "lcq-4::stage"].map((id) => offsets.get(id) ?? 0),
-    [1, 2, 0, 0],
+    [1, 2, 0, 3],
   );
 });
 
