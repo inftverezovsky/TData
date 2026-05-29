@@ -162,6 +162,118 @@ test("auto mapping transliterates Cyrillic source names to English admin names",
   assert.equal(preview.auto[0].matchMethod, "translit_fuzzy");
 });
 
+test("auto mapping uses exact pair index for surname-initial beach volleyball pairs", () => {
+  const decoys = Array.from({ length: 200 }, (_, index) => ({
+    platformId: `decoy-${index}`,
+    platformName: `Beach Pair ${index}/Other Pair ${index}`,
+    normalizedName: `beach pair ${index} other pair ${index}`,
+  }));
+  const preview = buildAutoMappingPreviewFromData({
+    teamNames: ["J. J. Zeng/CHEN Jihan", "N.L. Tsang/M.C. Wong"],
+    mappings: [],
+    adminTeams: [
+      ...decoys,
+      {
+        platformId: "975831",
+        platformName: "Цзэн Ц.Ц./Чень Дзихань",
+        platformNameEn: "Zeng J.J./Chen Jihan",
+        normalizedName: "цзэн ц ц чень дзихань",
+        normalizedNameEn: "zeng j j chen jihan",
+      },
+      {
+        platformId: "960278",
+        platformName: "Цанг Н.Л./Вон М.С.",
+        platformNameEn: "Tsang N.L./Wong M.C.",
+        normalizedName: "цанг н л вон м с",
+        normalizedNameEn: "tsang n l wong m c",
+      },
+    ],
+  });
+
+  assert.equal(preview.auto.length, 2);
+  assert.equal(preview.auto[0].platformId, "975831");
+  assert.equal(preview.auto[0].matchMethod, "pair_exact");
+  assert.equal(preview.auto[1].platformId, "960278");
+  assert.equal(preview.diagnostics.exactIndexHits, 2);
+  assert.equal(preview.diagnostics.fuzzyCandidateComparisons, 0);
+});
+
+test("auto mapping expands Chinese pinyin initials in beach volleyball pairs", () => {
+  const preview = buildAutoMappingPreviewFromData({
+    teamNames: [
+      "Wu Jiaxin/Ch. W. Zhou",
+      "LI Wei/ZHANG Tai",
+      "J.Q. Liu/SUN Xinglong",
+      "S. H. Kan/C. H. Lee",
+    ],
+    mappings: [],
+    adminTeams: [
+      {
+        platformId: "840493",
+        platformName: "Ву Ц.Х./Чжоу Ч.В.",
+        platformNameEn: "Wu Jiaxin/Zhou Chenwei",
+        normalizedName: "ву ц х чжоу ч в",
+        normalizedNameEn: "wu jiaxin zhou chenwei",
+      },
+      {
+        platformId: "975001",
+        platformName: "Ли Вэй/Чжан Тай",
+        platformNameEn: "Li Wei/Zhang Tai",
+        normalizedName: "ли вэй чжан тай",
+        normalizedNameEn: "li wei zhang tai",
+      },
+      {
+        platformId: "975002",
+        platformName: "Лю Цзяци/Сунь Синлун",
+        platformNameEn: "Liu Jiaqi/Sun Xinglong",
+        normalizedName: "лю цзяци сунь синлун",
+        normalizedNameEn: "liu jiaqi sun xinglong",
+      },
+      {
+        platformId: "975003",
+        platformName: "Кан Ш.Х./Ли Ч.Х.",
+        platformNameEn: "Kan Shih Han/Lee Chih Hsuan",
+        normalizedName: "кан ш х ли ч х",
+        normalizedNameEn: "kan shih han lee chih hsuan",
+      },
+    ],
+  });
+
+  assert.equal(preview.auto.length, 4);
+  assert.deepEqual(preview.auto.map((item) => item.platformId), ["840493", "975001", "975002", "975003"]);
+  assert.equal(preview.diagnostics.exactIndexHits, 4);
+  assert.equal(preview.diagnostics.fuzzyCandidateComparisons, 0);
+});
+
+test("auto mapping caps fuzzy beach pairs when only one surname matches", () => {
+  const preview = buildAutoMappingPreviewFromData({
+    teamNames: ["Jiang K. Y./Yan X."],
+    mappings: [],
+    adminTeams: [
+      {
+        platformId: "749396",
+        platformName: "Каделие/Ян",
+        platformNameEn: "Kadelie/Yan",
+        normalizedName: "каделие ян",
+        normalizedNameEn: "kadelie yan",
+      },
+      {
+        platformId: "937831",
+        platformName: "Ян Сю/Синья Ся",
+        platformNameEn: "Yan Xu/Xinya Xia",
+        normalizedName: "ян сю синья ся",
+        normalizedNameEn: "yan xu xinya xia",
+      },
+    ],
+  });
+
+  assert.equal(preview.auto.length, 0);
+  assert.equal(preview.suggested.length, 0);
+  assert.equal(preview.ambiguous.length, 0);
+  assert.equal(preview.unmapped.length, 1);
+  assert.equal(preview.unmapped[0].liquipediaName, "Jiang K. Y./Yan X.");
+});
+
 test("auto mapping preview reports manual locked ID conflicts instead of overwriting", () => {
   const preview = buildAutoMappingPreviewFromData({
     teamNames: ["Liquid"],

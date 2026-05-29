@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db/db';
 import { buildFixtPayload } from '@/lib/adminUpload/buildFixtPayload';
+import { normalizeShapkaOverrides } from '@/lib/adminUpload/shapkaOverrides';
 
 export async function POST(
   request: Request,
@@ -22,6 +23,7 @@ export async function POST(
     const selectedMatchIds = Array.isArray(body.selectedMatchIds)
       ? body.selectedMatchIds.filter((id: unknown): id is string => typeof id === 'string' && id.trim().length > 0)
       : [];
+    const shapkaIdBySelectionId = normalizeShapkaOverrides(body.shapkaIdBySelectionId);
 
     if (selectedMatchIds.length === 0) {
       return NextResponse.json({
@@ -30,7 +32,7 @@ export async function POST(
       }, { status: 400 });
     }
 
-    const buildResult = await buildFixtPayload(id, disciplineSlug, selectedMatchIds);
+    const buildResult = await buildFixtPayload(id, disciplineSlug, selectedMatchIds, shapkaIdBySelectionId);
 
     if (!buildResult.payload) {
       return NextResponse.json({

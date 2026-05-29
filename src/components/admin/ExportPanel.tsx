@@ -1,37 +1,54 @@
 'use client';
 
+import { appendShapkaOverridesSearchParam } from '@/lib/adminUpload/shapkaOverrides';
+
 interface ExportPanelProps {
   tournamentId: string;
   disciplineSlug: string;
   selectedMatchIds?: string[];
+  shapkaIdBySelectionId?: Record<string, string>;
 }
 
 function buildSelectedIdsQuery(selectedMatchIds: string[]) {
   return selectedMatchIds.map((id) => encodeURIComponent(id)).join(',');
 }
 
-export default function ExportPanel({ tournamentId, disciplineSlug, selectedMatchIds = [] }: ExportPanelProps) {
+export default function ExportPanel({
+  tournamentId,
+  disciplineSlug,
+  selectedMatchIds = [],
+  shapkaIdBySelectionId = {},
+}: ExportPanelProps) {
+  const buildAdminParams = () => {
+    const params = new URLSearchParams();
+    if (selectedMatchIds.length > 0) params.set('ids', selectedMatchIds.join(','));
+    appendShapkaOverridesSearchParam(params, shapkaIdBySelectionId);
+    return params.toString();
+  };
+
   const getJsonUrl = () => {
     const baseUrl = `/${disciplineSlug}/tournament/${tournamentId}/json`;
-    if (selectedMatchIds.length > 0) {
-      return `${baseUrl}?ids=${buildSelectedIdsQuery(selectedMatchIds)}`;
-    }
-    return baseUrl;
+    const query = buildAdminParams();
+    return query ? `${baseUrl}?${query}` : baseUrl;
   };
 
   const getExportUrl = (format: string, type: string = 'matches') => {
     let url = `/api/${disciplineSlug}/tournament/${tournamentId}/export?format=${format}`;
     if (format === 'csv') url += `&type=${type}`;
     if (selectedMatchIds.length > 0) url += `&ids=${buildSelectedIdsQuery(selectedMatchIds)}`;
+    if (format === 'json' || format === 'php') {
+      const params = new URLSearchParams();
+      appendShapkaOverridesSearchParam(params, shapkaIdBySelectionId);
+      const query = params.toString();
+      if (query) url += `&${query}`;
+    }
     return url;
   };
 
   const getPhpUrl = () => {
     const baseUrl = `/${disciplineSlug}/tournament/${tournamentId}/php`;
-    if (selectedMatchIds.length > 0) {
-      return `${baseUrl}?ids=${buildSelectedIdsQuery(selectedMatchIds)}`;
-    }
-    return baseUrl;
+    const query = buildAdminParams();
+    return query ? `${baseUrl}?${query}` : baseUrl;
   };
 
   return (

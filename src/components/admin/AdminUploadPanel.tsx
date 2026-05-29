@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { appendShapkaOverridesSearchParam } from '@/lib/adminUpload/shapkaOverrides';
 import { toPhpString } from '@/lib/adminUpload/utils';
 import { dispatchAdminMappingUpdated, dispatchTournamentDataUpdated } from '@/lib/utils/clientEvents';
 
@@ -42,13 +43,15 @@ export default function AdminUploadPanel({
   disciplineSlug,
   tournamentName,
   initialSettings,
-  selectedMatchIds = []
+  selectedMatchIds = [],
+  shapkaIdBySelectionId = {},
 }: { 
   tournamentId: string; 
   disciplineSlug: string;
   tournamentName: string;
   initialSettings: Settings;
   selectedMatchIds?: string[];
+  shapkaIdBySelectionId?: Record<string, string>;
 }) {
   const router = useRouter();
   const [mapping, setMapping] = useState<AdminMapping>({ adminShapkaId: '', adminShapkaName: '' });
@@ -59,16 +62,18 @@ export default function AdminUploadPanel({
   const [isEditing, setIsEditing] = useState(false);
   const [lastSavedId, setLastSavedId] = useState<string | null>(null);
   const [result, setResult] = useState<{ type: 'success' | 'error' | 'info'; text: string; raw?: string } | null>(null);
-  const selectedMatchKey = selectedMatchIds.join('\u0001');
+  const selectedMatchKey = `${selectedMatchIds.join('\u0001')}\u0002${JSON.stringify(shapkaIdBySelectionId)}`;
   const selectedCount = selectedMatchIds.length;
   const normalizedShapkaId = mapping.adminShapkaId.trim();
   const savedShapkaId = (lastSavedId || '').trim();
   const hasUnsavedShapkaId = normalizedShapkaId !== '' && normalizedShapkaId !== savedShapkaId;
   const effectiveShapkaId = savedShapkaId || settings?.defaultShapkaId;
+  const allSelectedHaveGroupShapka =
+    selectedCount > 0 && selectedMatchIds.every((id) => Boolean(shapkaIdBySelectionId[id]));
   const readyCount = preview?.readyMatchesCount ?? selectedCount;
-  const uploadPayloadDisabledReason = hasUnsavedShapkaId
+  const uploadPayloadDisabledReason = hasUnsavedShapkaId && !allSelectedHaveGroupShapka
     ? "Сначала сохраните ID шапки"
-    : !effectiveShapkaId
+    : !effectiveShapkaId && !allSelectedHaveGroupShapka
       ? "Укажите ID шапки"
       : !settings?.adminSportId
         ? "Не настроен Sport ID"
@@ -121,7 +126,7 @@ export default function AdminUploadPanel({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ disciplineSlug, selectedMatchIds }),
+        body: JSON.stringify({ disciplineSlug, selectedMatchIds, shapkaIdBySelectionId }),
       });
       const data = await res.json();
       if (data.ok) {
@@ -134,7 +139,7 @@ export default function AdminUploadPanel({
     } finally {
       setActionLoading(false);
     }
-  }, [disciplineSlug, tournamentId, selectedMatchIds, uploadPayloadDisabledReason]);
+  }, [disciplineSlug, tournamentId, selectedMatchIds, shapkaIdBySelectionId, uploadPayloadDisabledReason]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -201,7 +206,7 @@ export default function AdminUploadPanel({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ disciplineSlug, selectedMatchIds }),
+        body: JSON.stringify({ disciplineSlug, selectedMatchIds, shapkaIdBySelectionId }),
       });
       const data = await res.json();
       if (data.ok) {
@@ -234,10 +239,11 @@ export default function AdminUploadPanel({
 
   const getJsonUrl = () => {
     const baseUrl = `/${disciplineSlug}/tournament/${tournamentId}/json`;
-    if (selectedMatchIds.length > 0) {
-      return `${baseUrl}?ids=${buildSelectedIdsQuery(selectedMatchIds)}`;
-    }
-    return baseUrl;
+    const params = new URLSearchParams();
+    if (selectedMatchIds.length > 0) params.set("ids", selectedMatchIds.join(','));
+    appendShapkaOverridesSearchParam(params, shapkaIdBySelectionId);
+    const query = params.toString();
+    return query ? `${baseUrl}?${query}` : baseUrl;
   };
 
   async function markSelectedMatchesUploaded() {
@@ -245,7 +251,7 @@ export default function AdminUploadPanel({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'same-origin',
-      body: JSON.stringify({ selectedMatchIds, confirmed: true }),
+      body: JSON.stringify({ selectedMatchIds, shapkaIdBySelectionId, confirmed: true }),
     });
     const data = await res.json();
     if (!data.ok) {
@@ -268,8 +274,11 @@ export default function AdminUploadPanel({
     setResult(null);
 
     const baseUrl = `/${disciplineSlug}/tournament/${tournamentId}/json`;
-    const idsQuery = selectedMatchIds.length > 0 ? `?ids=${buildSelectedIdsQuery(selectedMatchIds)}` : '';
-    const absoluteJsonUrl = `${window.location.origin}${baseUrl}${idsQuery}`;
+    const params = new URLSearchParams();
+    if (selectedMatchIds.length > 0) params.set("ids", selectedMatchIds.join(','));
+    appendShapkaOverridesSearchParam(params, shapkaIdBySelectionId);
+    const query = params.toString();
+    const absoluteJsonUrl = `${window.location.origin}${baseUrl}${query ? `?${query}` : ''}`;
 
     const fallbackCopyText = (text: string) => {
       try {

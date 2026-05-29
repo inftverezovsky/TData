@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/db";
 import { buildFixtPayload } from "@/lib/adminUpload/buildFixtPayload";
 import { toAdminFixtPayloadEnvelope } from "@/lib/adminUpload/fixtPayloadFormat";
+import { readShapkaOverridesSearchParam } from "@/lib/adminUpload/shapkaOverrides";
 import { matchesToCsv, participantsToCsv, tournamentToMarkdown } from "@/lib/exporters/tournament";
 import { dedupeTournamentMatches } from "@/lib/matches/dedupe";
 
@@ -17,6 +18,7 @@ export async function GET(
   const type = searchParams.get("type") ?? "matches";
   const idsParam = searchParams.get("ids");
   const selectedIds = idsParam ? idsParam.split(",") : undefined;
+  const shapkaIdBySelectionId = readShapkaOverridesSearchParam(searchParams);
 
   const tournament = await prisma.tournament.findUnique({
     where: { id },
@@ -40,7 +42,7 @@ export async function GET(
 
   // Admin-ready format (JSON/PHP)
   if (format === "json" || format === "php") {
-    const buildResult = await buildFixtPayload(id, disciplineSlug, selectedIds);
+    const buildResult = await buildFixtPayload(id, disciplineSlug, selectedIds, shapkaIdBySelectionId);
     const adminPayload = buildResult.payload ? toAdminFixtPayloadEnvelope(buildResult.payload) : null;
 
     if (format === "json") {

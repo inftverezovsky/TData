@@ -36,9 +36,10 @@ export function PlatformTabs() {
   const isManualImportActive = isActivePath(pathname, "/manual-import");
   const isTbvolleyActive = isTbvolleyPath(pathname);
   const isSettingsActive = isActivePath(pathname, "/settings");
+  const isSandboxActive = isActivePath(pathname, "/sandbox");
 
   return (
-    <nav aria-label="Платформы TData" className="flex min-w-0 items-center gap-1 overflow-x-auto">
+    <nav aria-label="Платформы TData" className="flex min-w-0 flex-wrap items-center gap-1 md:flex-nowrap md:overflow-x-auto">
       <Link
         href="/"
         className={`relative shrink-0 rounded-lg px-3 py-2 text-sm font-bold transition-all duration-200 active:scale-[0.95] will-change-transform ${
@@ -89,6 +90,19 @@ export function PlatformTabs() {
         <span className="relative z-10">API</span>
         {isSettingsActive && (
           <span className="absolute inset-x-3 bottom-1 h-0.5 rounded-full bg-indigo-600 animate-slide-in" />
+        )}
+      </Link>
+      <Link
+        href="/sandbox"
+        className={`relative shrink-0 rounded-lg px-3 py-2 text-sm font-bold transition-all duration-200 active:scale-[0.95] will-change-transform ${
+          isSandboxActive
+            ? "bg-sky-50 text-sky-700 ring-1 ring-sky-100 shadow-sm"
+            : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+        }`}
+      >
+        <span className="relative z-10">Песочница</span>
+        {isSandboxActive && (
+          <span className="absolute inset-x-3 bottom-1 h-0.5 rounded-full bg-sky-600 animate-slide-in" />
         )}
       </Link>
     </nav>

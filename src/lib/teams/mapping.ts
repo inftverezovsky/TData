@@ -1,68 +1,24 @@
 import { prisma } from "@/lib/db/db";
-import { isKnownStageAnnouncementLabel } from "@/lib/matches/scheduleView";
-import { buildTeamMappingLookup, findTeamMapping } from "@/lib/teams/mappingLookup";
 import { isPlaceholderTeam, normalizeTeamName } from "@/lib/teams/teams";
-import { scorePlatformTeamCandidateDetailed } from "@/lib/teams/fuzzyMatch";
+import {
+  autoMappingSelectionKey,
+  buildAutoMappingPreviewFromData,
+  isInvalidAutoMappingName,
+  normalizeInputTeamNames,
+  type AutoMappingPreviewItem,
+  type AutoMappingSelection,
+} from "@/lib/teams/autoMappingPreview";
 import { MappingStatus } from "@prisma/client";
 
-const AUTO_MAP_MIN_SCORE = 85;
-const AUTO_MAP_SUGGESTED_MIN_SCORE = 75;
-const MANUAL_CONFLICT_MIN_SCORE = 92;
-
-export type AutoMappingAdminTeam = {
-  platformId: string;
-  platformName: string;
-  platformNameRu?: string | null;
-  platformNameEn?: string | null;
-  normalizedName?: string | null;
-  normalizedNameRu?: string | null;
-  normalizedNameEn?: string | null;
-};
-
-export type AutoMappingSourceMapping = {
-  id?: string;
-  liquipediaName: string;
-  liquipediaNormalizedName?: string | null;
-  platformId?: string | null;
-  canonicalName?: string | null;
-  status?: string | null;
-  isManual?: boolean | null;
-  isLockedFromAutoMapping?: boolean | null;
-  alias?: string | null;
-};
-
-export type AutoMappingPreviewItem = {
-  liquipediaName: string;
-  normalizedName: string;
-  platformId?: string | null;
-  adminName?: string | null;
-  matchedName?: string | null;
-  score?: number | null;
-  secondPlatformId?: string | null;
-  secondAdminName?: string | null;
-  secondScore?: number | null;
-  existingPlatformId?: string | null;
-  existingAdminName?: string | null;
-  reason?: string | null;
-  matchMethod?: string | null;
-};
-
-export type AutoMappingPreview = {
-  adminTeamsCount: number;
-  liquipediaTeamsFound: number;
-  alreadyMappedCount: number;
-  auto: AutoMappingPreviewItem[];
-  suggested: AutoMappingPreviewItem[];
-  ambiguous: AutoMappingPreviewItem[];
-  unmapped: AutoMappingPreviewItem[];
-  invalid: AutoMappingPreviewItem[];
-  conflicts: AutoMappingPreviewItem[];
-};
-
-export type AutoMappingSelection = {
-  liquipediaName: string;
-  platformId: string;
-};
+export {
+  buildAutoMappingPreviewFromData,
+  isInvalidAutoMappingName,
+  type AutoMappingAdminTeam,
+  type AutoMappingPreview,
+  type AutoMappingPreviewItem,
+  type AutoMappingSelection,
+  type AutoMappingSourceMapping,
+} from "@/lib/teams/autoMappingPreview";
 
 export async function ensureTeamMappingsForTournament(tournamentId: string, disciplineSlug: string = "dota2") {
   const tournament = await prisma.tournament.findUnique({
@@ -167,114 +123,6 @@ export async function buildAutoMappingPreviewForDiscipline(
     adminTeams,
     includeAutoMapped: options.includeAutoMapped,
   });
-}
-
-export function buildAutoMappingPreviewFromData({
-  teamNames,
-  mappings,
-  adminTeams,
-  includeAutoMapped = false,
-}: {
-  teamNames: string[];
-  mappings: AutoMappingSourceMapping[];
-  adminTeams: AutoMappingAdminTeam[];
-  includeAutoMapped?: boolean;
-}): AutoMappingPreview {
-  const preview: AutoMappingPreview = {
-    adminTeamsCount: adminTeams.length,
-    liquipediaTeamsFound: 0,
-    alreadyMappedCount: 0,
-    auto: [],
-    suggested: [],
-    ambiguous: [],
-    unmapped: [],
-    invalid: [],
-    conflicts: [],
-  };
-  const names = normalizeInputTeamNames(teamNames);
-  const mappingLookup = buildTeamMappingLookup(mappings);
-  const exactMappings = new Map(mappings.map((mapping) => [mapping.liquipediaName.toLowerCase(), mapping]));
-
-  for (const name of names) {
-    const normalizedName = normalizeTeamName(name);
-    const exactMapping = exactMappings.get(name.toLowerCase());
-    const lookupMapping = findTeamMapping(mappingLookup, name);
-    const existingMapping = exactMapping || lookupMapping;
-
-    if (existingMapping) preview.liquipediaTeamsFound++;
-
-    if (isInvalidAutoMappingName(name) && !existingMapping?.platformId) {
-      preview.invalid.push({
-        liquipediaName: name,
-        normalizedName,
-        reason: "invalid_source_name",
-      });
-      continue;
-    }
-
-    if (existingMapping?.isLockedFromAutoMapping) {
-      const conflict = getLockedMappingConflict(name, existingMapping, adminTeams);
-      if (conflict) {
-        preview.conflicts.push(conflict);
-      } else if (existingMapping.platformId) {
-        preview.alreadyMappedCount++;
-      } else {
-        preview.unmapped.push({
-          liquipediaName: name,
-          normalizedName,
-          reason: "manual_locked_without_platform_id",
-        });
-      }
-      continue;
-    }
-
-    if (existingMapping?.platformId && !includeAutoMapped) {
-      preview.alreadyMappedCount++;
-      continue;
-    }
-
-    if (adminTeams.length === 0) {
-      preview.unmapped.push({
-        liquipediaName: name,
-        normalizedName,
-        reason: "admin_team_source_missing",
-      });
-      continue;
-    }
-
-    const sourceMapping = exactMapping || {
-      liquipediaName: name,
-      liquipediaNormalizedName: normalizedName,
-    };
-    const decision = getTeamAutoMappingDecision(sourceMapping, adminTeams);
-    const item = toPreviewItem(name, normalizedName, decision, existingMapping);
-
-    if (!decision.bestAdminTeam || decision.bestScore < AUTO_MAP_SUGGESTED_MIN_SCORE) {
-      preview.unmapped.push({
-        ...item,
-        reason: "score_below_threshold",
-      });
-      continue;
-    }
-
-    const scoreGap = decision.bestScore - decision.secondBestScore;
-    const requiredGap = getRequiredAutoMapGap(decision.bestScore);
-    if (decision.bestScore >= AUTO_MAP_MIN_SCORE && scoreGap >= requiredGap) {
-      preview.auto.push(item);
-    } else if (scoreGap >= 5) {
-      preview.suggested.push({
-        ...item,
-        reason: "medium_confidence",
-      });
-    } else {
-      preview.ambiguous.push({
-        ...item,
-        reason: "candidate_gap_too_small",
-      });
-    }
-  }
-
-  return preview;
 }
 
 export async function applyAutoMappingForDiscipline({
@@ -387,129 +235,4 @@ export async function runAutoMappingForDiscipline(
     conflictCount: result.preview.conflicts.length,
     newlyMappedNames: result.newlyMappedNames,
   };
-}
-
-export function isInvalidAutoMappingName(name: string | null | undefined) {
-  const raw = String(name ?? "").trim();
-  if (isKnownStageAnnouncementLabel(raw)) return false;
-  if (!raw || isPlaceholderTeam(raw)) return true;
-  if (raw.includes("{{") || raw.includes("}}") || raw.includes("-->") || raw.includes("<--")) return true;
-  if (/^[-–—<>]+$/.test(raw)) return true;
-  if (/^\d+$/.test(raw)) return true;
-
-  const normalized = normalizeTeamName(raw);
-  const compact = normalized.replace(/\s+/g, "");
-  if (!compact) return true;
-  return compact.length < 3 && !/\d/.test(compact);
-}
-
-function getLockedMappingConflict(
-  name: string,
-  existingMapping: AutoMappingSourceMapping,
-  adminTeams: AutoMappingAdminTeam[]
-): AutoMappingPreviewItem | null {
-  if (!existingMapping.platformId || adminTeams.length === 0) return null;
-
-  const decision = getTeamAutoMappingDecision(
-    {
-      liquipediaName: name,
-      liquipediaNormalizedName: normalizeTeamName(name),
-    },
-    adminTeams
-  );
-
-  if (
-    decision.bestAdminTeam &&
-    decision.bestScore >= MANUAL_CONFLICT_MIN_SCORE &&
-    decision.bestAdminTeam.platformId !== existingMapping.platformId
-  ) {
-    return {
-      ...toPreviewItem(name, normalizeTeamName(name), decision, existingMapping),
-      existingPlatformId: existingMapping.platformId,
-      existingAdminName: existingMapping.canonicalName || null,
-      reason: "manual_mapping_conflict",
-    };
-  }
-
-  return null;
-}
-
-function getTeamAutoMappingDecision(
-  mapping: { liquipediaName: string; liquipediaNormalizedName?: string | null },
-  adminTeams: AutoMappingAdminTeam[]
-) {
-  const liqName = mapping.liquipediaNormalizedName || normalizeTeamName(mapping.liquipediaName);
-  if (!liqName) {
-    return {
-      bestScore: 0,
-      secondBestScore: 0,
-      bestAdminTeam: null,
-      secondAdminTeam: null,
-      bestMatch: null,
-      secondMatch: null,
-    };
-  }
-
-  const candidates = adminTeams
-    .map((admin) => {
-      const rawMatch = scorePlatformTeamCandidateDetailed(mapping.liquipediaName, admin);
-      const normalizedMatch = scorePlatformTeamCandidateDetailed(liqName, admin);
-      const bestMatch = rawMatch.score >= normalizedMatch.score ? rawMatch : normalizedMatch;
-      return {
-        admin,
-        score: bestMatch.score * 100,
-        match: bestMatch,
-      };
-    })
-    .sort((a, b) => b.score - a.score);
-
-  const best = candidates[0] ?? null;
-  const secondDistinct = best
-    ? candidates.find((candidate) => candidate.admin.platformId !== best.admin.platformId) ?? null
-    : null;
-
-  return {
-    bestScore: best?.score ?? 0,
-    secondBestScore: secondDistinct?.score ?? 0,
-    bestAdminTeam: best?.admin ?? null,
-    secondAdminTeam: secondDistinct?.admin ?? null,
-    bestMatch: best?.match ?? null,
-    secondMatch: secondDistinct?.match ?? null,
-  };
-}
-
-function toPreviewItem(
-  liquipediaName: string,
-  normalizedName: string,
-  decision: ReturnType<typeof getTeamAutoMappingDecision>,
-  existingMapping?: AutoMappingSourceMapping
-): AutoMappingPreviewItem {
-  return {
-    liquipediaName,
-    normalizedName,
-    platformId: decision.bestAdminTeam?.platformId || null,
-    adminName: decision.bestAdminTeam?.platformName || null,
-    matchedName: decision.bestMatch?.matchedName || null,
-    score: decision.bestScore,
-    secondPlatformId: decision.secondAdminTeam?.platformId || null,
-    secondAdminName: decision.secondAdminTeam?.platformName || null,
-    secondScore: decision.secondBestScore,
-    existingPlatformId: existingMapping?.platformId || null,
-    existingAdminName: existingMapping?.canonicalName || null,
-    matchMethod: decision.bestMatch?.matchMethod || "token_fuzzy",
-  };
-}
-
-function getRequiredAutoMapGap(score: number) {
-  if (score >= 95) return 3;
-  if (score >= 90) return 5;
-  return 10;
-}
-
-function normalizeInputTeamNames(teamNames: string[]) {
-  return Array.from(new Set(teamNames.map((name) => String(name ?? "").trim()).filter(Boolean)));
-}
-
-function autoMappingSelectionKey(liquipediaName: string, platformId: string) {
-  return `${liquipediaName.trim().toLowerCase()}\u0000${platformId.trim()}`;
 }

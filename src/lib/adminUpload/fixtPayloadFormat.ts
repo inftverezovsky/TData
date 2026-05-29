@@ -9,7 +9,7 @@ export type AdminFixtPayload = {
   }>;
 };
 
-export type AdminFixtPayloadEnvelope<T extends AdminFixtPayload = AdminFixtPayload> = [T];
+export type AdminFixtPayloadEnvelope<T extends AdminFixtPayload = AdminFixtPayload> = T[];
 
 export function toAdminFixtPayloadEnvelope<T extends AdminFixtPayload>(
   payload: T | AdminFixtPayloadEnvelope<T>

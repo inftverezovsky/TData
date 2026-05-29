@@ -50,6 +50,7 @@ type MappingInfo = { alias: string | null; platformId: string | null; logoUrl?: 
 type ScheduleEntryVariant = "matches" | "announcements";
 type ScheduleMode = "all" | ScheduleEntryVariant;
 type DisplayScheduleEntry = DisplayMatch & { scheduleEntryVariant: ScheduleEntryVariant };
+type ShapkaIdBySelectionId = Record<string, string>;
 
 const moscowDateFormatter = new Intl.DateTimeFormat("ru-RU", {
   timeZone: "Europe/Moscow",
@@ -95,6 +96,9 @@ export default function MatchList({
   source,
   selectedIds,
   setSelectedIds,
+  groupShapkaIds,
+  setGroupShapkaIds,
+  onShapkaOverridesChange,
   mutate
 }: {
   matches: Match[];
@@ -103,12 +107,14 @@ export default function MatchList({
   source: TournamentSource;
   selectedIds: Set<string>;
   setSelectedIds: (ids: Set<string>) => void;
+  groupShapkaIds: Record<string, string>;
+  setGroupShapkaIds: (ids: Record<string, string>) => void;
+  onShapkaOverridesChange: (ids: ShapkaIdBySelectionId) => void;
   mutate?: () => void;
 }) {
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>("all");
   const [groupByPrimary, setGroupByPrimary] = useState(false);
   const [hideUploaded, setHideUploaded] = useState(false);
-  const [draftAdminHeaderIdByGroup, setDraftAdminHeaderIdByGroup] = useState<Record<string, string>>({});
   const [draftCourtByGroup, setDraftCourtByGroup] = useState<Record<string, string>>({});
   const usesCourtGrouping = isBeachVolleyballScopeSlug(disciplineSlug) || isBeachVolleyballTournamentSource(source);
   const showCourtAdminDraftFields = usesCourtGrouping && groupByPrimary;
@@ -209,6 +215,26 @@ export default function MatchList({
       setSelectedIds(nextSelectedIds);
     }
   }, [getSelectionId, selectableMatches, selectedIds, setSelectedIds]);
+
+  useEffect(() => {
+    if (!groupByPrimary) {
+      onShapkaOverridesChange({});
+      return;
+    }
+
+    const overrides: ShapkaIdBySelectionId = {};
+    for (const group of groupedMatches) {
+      const shapkaId = (groupShapkaIds[group.label] || "").trim();
+      if (!shapkaId) continue;
+
+      for (const match of group.matches) {
+        const selectionId = getSelectionId(match);
+        if (selectionId !== "unknown") overrides[selectionId] = shapkaId;
+      }
+    }
+
+    onShapkaOverridesChange(overrides);
+  }, [getSelectionId, groupByPrimary, groupedMatches, groupShapkaIds, onShapkaOverridesChange]);
 
   function toggleAll() {
     const newIds = new Set(selectedIds);
@@ -630,13 +656,18 @@ export default function MatchList({
                         type="text"
                         inputMode="numeric"
                         pattern="[0-9]*"
-                        value={draftAdminHeaderIdByGroup[group.label] ?? ""}
+                        value={groupShapkaIds[group.label] ?? ""}
                         onChange={(event) => {
                           const value = event.target.value.replace(/\D/g, "");
-                          setDraftAdminHeaderIdByGroup((current) => ({
-                            ...current,
+                          setGroupShapkaIds({
+                            ...groupShapkaIds,
                             [group.label]: value,
-                          }));
+                          });
+                        }}
+                        onBlur={() => {
+                          if ((groupShapkaIds[group.label] || "").trim()) return;
+                          const { [group.label]: _removed, ...rest } = groupShapkaIds;
+                          setGroupShapkaIds(rest);
                         }}
                         aria-label={`ID шапки турнира для ${group.label}`}
                         placeholder="ID шапки"

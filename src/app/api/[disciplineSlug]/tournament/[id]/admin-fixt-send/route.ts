@@ -7,6 +7,7 @@ import { toAdminFixtPayloadEnvelope } from '@/lib/adminUpload/fixtPayloadFormat'
 import { phpSerialize } from '@/lib/adminUpload/phpSerialize';
 import { resolveAdminSettings } from '@/lib/adminUpload/resolveAdminSettings';
 import { sendFixtPayload } from '@/lib/adminUpload/sendFixtPayload';
+import { normalizeShapkaOverrides } from '@/lib/adminUpload/shapkaOverrides';
 
 export async function POST(
   request: Request,
@@ -21,6 +22,7 @@ export async function POST(
     const selectedMatchIds = Array.isArray(body.selectedMatchIds)
       ? body.selectedMatchIds.filter((id: unknown): id is string => typeof id === 'string' && id.trim().length > 0)
       : [];
+    const shapkaIdBySelectionId = normalizeShapkaOverrides(body.shapkaIdBySelectionId);
     const force = body.force === true;
 
     if (selectedMatchIds.length === 0) {
@@ -38,7 +40,7 @@ export async function POST(
     }
 
     // 2. Build payload
-    const buildResult = await buildFixtPayload(id, disciplineSlug, selectedMatchIds);
+    const buildResult = await buildFixtPayload(id, disciplineSlug, selectedMatchIds, shapkaIdBySelectionId);
     
     if (!buildResult.payload) {
       return NextResponse.json({ 
@@ -59,7 +61,7 @@ export async function POST(
       apiUrl: settings.apiUrl,
       adminSportId: settings.adminSportId,
       adminMax: settings.adminMax,
-      adminShapkaId: buildResult.payload.shapka.toString(),
+      adminShapkaId: buildResult.payload.map((payload) => payload.shapka).join(','),
       requestMode: settings.requestMode,
       timezone: settings.timezone,
       dateFormat: settings.dateFormat,

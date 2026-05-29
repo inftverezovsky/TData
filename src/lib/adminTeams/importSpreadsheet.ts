@@ -298,7 +298,11 @@ function findHeaderRowIndex(rows: unknown[][]) {
     if (normalizedCells.length === 0) continue;
 
     const hasId = normalizedCells.some((cell) => matchesHeaderCandidate(cell, HEADER_ID_CANDIDATES));
-    const hasName = normalizedCells.some((cell) => matchesHeaderCandidate(cell, HEADER_NAME_CANDIDATES));
+    const hasName = normalizedCells.some((cell) =>
+      matchesHeaderCandidate(cell, HEADER_NAME_CANDIDATES)
+      || matchesHeaderCandidate(cell, HEADER_RU_NAME_CANDIDATES)
+      || matchesHeaderCandidate(cell, HEADER_EN_NAME_CANDIDATES)
+    );
     const hasNumericCell = row.some((cell) => isNumericLikeCell(cell));
 
     if (hasId && hasName && !hasNumericCell) {

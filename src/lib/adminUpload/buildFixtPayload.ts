@@ -21,6 +21,7 @@ import {
   type UploadPolicy,
 } from '@/lib/adminUpload/uploadPolicy';
 import { resolveAdminSettings } from './resolveAdminSettings';
+import { normalizeShapkaOverrides, type ShapkaIdBySelectionId } from './shapkaOverrides';
 
 export interface FixtMatch {
   date: string;
@@ -36,7 +37,7 @@ export interface FixtPayload {
 }
 
 export interface BuildResult {
-  payload: FixtPayload | null;
+  payload: FixtPayload[] | null;
   readyMatchesCount: number;
   readyMatchIds: string[];
   skippedMatches: any[];
@@ -50,13 +51,17 @@ export type DuplicateAnnouncementOffsetCandidate = {
   team2: number | "";
 };
 
+export type ReadyMatchesByShapkaId = Map<string, FixtMatch[]>;
+
 export async function buildFixtPayload(
   tournamentId: string,
   disciplineSlug: string,
-  matchIds?: string[]
+  matchIds?: string[],
+  shapkaIdBySelectionId?: ShapkaIdBySelectionId
 ): Promise<BuildResult> {
   const warnings: string[] = [];
   const skippedMatches: any[] = [];
+  const shapkaOverrides = normalizeShapkaOverrides(shapkaIdBySelectionId);
   const selectedMatchIds = matchIds
     ?.filter((id): id is string => typeof id === 'string')
     .map((id) => id.trim())
@@ -110,7 +115,7 @@ export async function buildFixtPayload(
   });
   const { source, teamMappingDisciplineSlug, scheduleLeadDisciplineSlug } = uploadPolicy;
 
-  if (!shapkaId) warnings.push('Shapka ID is not set.');
+  if (!shapkaId && Object.keys(shapkaOverrides).length === 0) warnings.push('Shapka ID is not set.');
   if (!sportId) warnings.push('Sport ID is not set.');
   // if (!max) warnings.push('Max is not set.'); // Max now defaults to 5000
 
@@ -129,7 +134,7 @@ export async function buildFixtPayload(
 
   const mappingMap = buildTeamMappingLookup(teamMappings);
 
-  const readyMatches: FixtMatch[] = [];
+  const readyMatchesByShapkaId = new Map<string, FixtMatch[]>();
   const readyMatchIds = new Set<string>();
 
   const dedupedMatches = dedupeTournamentMatches(matches);
@@ -217,7 +222,7 @@ export async function buildFixtPayload(
           continue;
         }
 
-        readyMatches.push({
+        pushReadyMatch(readyMatchesByShapkaId, getEffectiveShapkaId(virtualMatchId, shapkaId, shapkaOverrides), {
           date: formatUploadDate(
             applyDuplicateAnnouncementSecondOffset(matchDate, duplicateAnnouncementSecondOffsets.get(virtualMatchId)),
             settings.timezone,
@@ -261,7 +266,7 @@ export async function buildFixtPayload(
           continue;
         }
 
-        readyMatches.push({
+        pushReadyMatch(readyMatchesByShapkaId, getEffectiveShapkaId(virtualMatchId, shapkaId, shapkaOverrides), {
           date: formatUploadDate(
             applyDuplicateAnnouncementSecondOffset(matchDate, duplicateAnnouncementSecondOffsets.get(virtualMatchId)),
             settings.timezone,
@@ -332,7 +337,7 @@ export async function buildFixtPayload(
       continue;
     }
 
-    readyMatches.push({
+    pushReadyMatch(readyMatchesByShapkaId, getEffectiveShapkaId(match.matchId, shapkaId, shapkaOverrides), {
       date: formatUploadDate(matchDate, settings.timezone, settings.dateFormat),
       team1,
       team2,
@@ -340,28 +345,48 @@ export async function buildFixtPayload(
     readyMatchIds.add(match.id);
   }
 
-  const parsedShapkaId = parsePositiveInteger(shapkaId);
   const parsedSportId = parsePositiveInteger(sportId);
   const parsedMax = parsePositiveInteger(max);
 
-  if (shapkaId && parsedShapkaId === null) warnings.push('Shapka ID must be a positive integer.');
+  const invalidShapkaIds = Array.from(readyMatchesByShapkaId.keys()).filter((id) => parsePositiveInteger(id) === null);
+  if (invalidShapkaIds.length > 0) warnings.push('Shapka ID must be a positive integer.');
   if (sportId && parsedSportId === null) warnings.push('Sport ID must be a positive integer.');
   if (max && parsedMax === null) warnings.push('Max must be a positive integer.');
 
-  const payload: FixtPayload | null = (parsedShapkaId && parsedSportId && parsedMax && readyMatches.length > 0) ? {
-    shapka: parsedShapkaId,
-    sport: parsedSportId,
-    max: parsedMax,
-    match: readyMatches,
-  } : null;
+  const payload: FixtPayload[] | null = (parsedSportId && parsedMax && readyMatchesByShapkaId.size > 0 && invalidShapkaIds.length === 0)
+    ? buildFixtPayloadsByShapka(readyMatchesByShapkaId, parsedSportId, parsedMax)
+    : null;
 
   return {
     payload,
-    readyMatchesCount: readyMatches.length,
+    readyMatchesCount: Array.from(readyMatchesByShapkaId.values()).reduce((sum, matches) => sum + matches.length, 0),
     readyMatchIds: Array.from(readyMatchIds),
     skippedMatches,
     warnings,
   };
+}
+
+function getEffectiveShapkaId(selectionId: string, fallbackShapkaId: string | null | undefined, shapkaOverrides: ShapkaIdBySelectionId) {
+  return shapkaOverrides[selectionId] || fallbackShapkaId || "";
+}
+
+function pushReadyMatch(groups: Map<string, FixtMatch[]>, shapkaId: string, match: FixtMatch) {
+  const group = groups.get(shapkaId) || [];
+  group.push(match);
+  groups.set(shapkaId, group);
+}
+
+export function buildFixtPayloadsByShapka(
+  groups: ReadyMatchesByShapkaId,
+  sport: number,
+  max: number,
+): FixtPayload[] {
+  return Array.from(groups.entries()).map(([shapkaId, matches]) => ({
+    shapka: parsePositiveInteger(shapkaId) as number,
+    sport,
+    max,
+    match: matches,
+  }));
 }
 
 function collectDuplicateAnnouncementOffsetCandidates(params: {

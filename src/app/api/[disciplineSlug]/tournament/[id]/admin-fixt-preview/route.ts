@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { buildFixtPayload } from '@/lib/adminUpload/buildFixtPayload';
 import { toAdminFixtPayloadEnvelope } from '@/lib/adminUpload/fixtPayloadFormat';
 import { phpSerialize } from '@/lib/adminUpload/phpSerialize';
+import { normalizeShapkaOverrides } from '@/lib/adminUpload/shapkaOverrides';
 
 export async function POST(
   request: Request,
@@ -14,8 +15,9 @@ export async function POST(
     const body = await request.json();
     const disciplineSlug = routeDisciplineSlug;
     const selectedMatchIds = body.selectedMatchIds;
+    const shapkaIdBySelectionId = normalizeShapkaOverrides(body.shapkaIdBySelectionId);
 
-    const buildResult = await buildFixtPayload(id, disciplineSlug, selectedMatchIds);
+    const buildResult = await buildFixtPayload(id, disciplineSlug, selectedMatchIds, shapkaIdBySelectionId);
     
     let serialized = '';
     let postBody = '';

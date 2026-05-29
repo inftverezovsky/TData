@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import MatchList from "@/components/matches/MatchList";
 import AdminUploadPanel from "@/components/admin/AdminUploadPanel";
 import ExportPanel from "@/components/admin/ExportPanel";
@@ -33,7 +33,12 @@ interface Props {
 
 export default function TournamentAdminView({ tournament: initialTournament, mappingMap, disciplineSlug, source, adminSettings }: Props) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [groupShapkaIds, setGroupShapkaIds] = useState<Record<string, string>>({});
+  const [shapkaIdBySelectionId, setShapkaIdBySelectionId] = useState<Record<string, string>>({});
   const selectedMatchIds = useMemo(() => Array.from(selectedIds), [selectedIds]);
+  const handleShapkaOverridesChange = useCallback((ids: Record<string, string>) => {
+    setShapkaIdBySelectionId(ids);
+  }, []);
 
   const { data: tournament, error: refreshError, mutate } = useSWR(
     `/api/${disciplineSlug}/tournament/${initialTournament.id}/data`,
@@ -67,6 +72,7 @@ export default function TournamentAdminView({ tournament: initialTournament, map
       mutate();
       if (event.type === TOURNAMENT_DATA_UPDATED_EVENT) {
         setSelectedIds(new Set());
+        setShapkaIdBySelectionId({});
       }
     };
 
@@ -107,6 +113,9 @@ export default function TournamentAdminView({ tournament: initialTournament, map
               source={source}
               selectedIds={selectedIds}
               setSelectedIds={setSelectedIds}
+              groupShapkaIds={groupShapkaIds}
+              setGroupShapkaIds={setGroupShapkaIds}
+              onShapkaOverridesChange={handleShapkaOverridesChange}
               mutate={mutate}
             />
           </ClientErrorBoundary>
@@ -122,6 +131,7 @@ export default function TournamentAdminView({ tournament: initialTournament, map
               tournamentName={tournament.name}
               initialSettings={adminSettings}
               selectedMatchIds={selectedMatchIds}
+              shapkaIdBySelectionId={shapkaIdBySelectionId}
             />
           </ClientErrorBoundary>
 
@@ -130,6 +140,7 @@ export default function TournamentAdminView({ tournament: initialTournament, map
               tournamentId={tournament.id}
               disciplineSlug={disciplineSlug}
               selectedMatchIds={selectedMatchIds}
+              shapkaIdBySelectionId={shapkaIdBySelectionId}
             />
           </ClientErrorBoundary>
         </div>
