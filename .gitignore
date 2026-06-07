@@ -26,6 +26,7 @@ scratch/
 !src/lib/cache/
 !src/lib/cache/**
 User/
+TData/
 hltv_debug_error.png
 *.tsbuildinfo
 

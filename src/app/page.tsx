@@ -58,7 +58,7 @@ export default function HomePage() {
                 Admin hub
               </div>
               <h1 className="text-4xl font-black tracking-tight text-slate-950">
-                Оперативная панель TCyber
+                Оперативная панель TData
               </h1>
               <p className="mt-3 max-w-xl text-sm font-semibold leading-relaxed text-slate-600">
                 Быстрый вход в поиск турниров, импорт матчей, проверку ID команд и отправку расписания в админку.

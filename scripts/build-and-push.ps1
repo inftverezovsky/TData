@@ -13,7 +13,7 @@ Set-Location $ProjectRoot
 if (-not $Username) {
   Write-Host ""
   Write-Host "=============================================" -ForegroundColor Cyan
-  Write-Host "    TCYBER DOCKER HUB BUILD & PUSH UTILITY   " -ForegroundColor Cyan
+  Write-Host "    TDATA DOCKER HUB BUILD & PUSH UTILITY    " -ForegroundColor Cyan
   Write-Host "=============================================" -ForegroundColor Cyan
   $Username = Read-Host "Enter your Docker Hub Username"
   if (-not $Username) {
@@ -21,7 +21,7 @@ if (-not $Username) {
   }
 }
 
-$ImageName = "${Username}/tcyber-web:${Tag}"
+$ImageName = "${Username}/tdata-web:${Tag}"
 
 Write-Host ""
 Write-Host "==> Starting local Docker build..." -ForegroundColor Cyan
@@ -57,7 +57,7 @@ Write-Host "   SUCCESS! IMAGE PUSHED TO DOCKER HUB!" -ForegroundColor Green
 Write-Host "==========================================================================" -ForegroundColor Green
 Write-Host "You can now recreate the container on your server in Portainer:"
 Write-Host "1. Open Portainer."
-Write-Host "2. Go to 'Containers' -> click on 'tcyber-web'."
+Write-Host "2. Go to 'Containers' -> click on 'tdata-web'."
 Write-Host "3. Click the 'Recreate' button at the top."
 Write-Host "4. Enable the 'Pull latest image' toggle."
 Write-Host "5. Click 'Recreate'."

@@ -1,18 +1,18 @@
-name: tcyber
+name: tdata
 
 services:
   postgres:
     image: postgres:16
-    container_name: tcyber-postgres
+    container_name: tdata-postgres
     restart: always
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-tcyber}
+      POSTGRES_USER: ${POSTGRES_USER:-tdata}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
-      POSTGRES_DB: ${POSTGRES_DB:-tcyber}
+      POSTGRES_DB: ${POSTGRES_DB:-tdata}
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-5434}:5432"
     volumes:
-      - tcyber_postgres_data:/var/lib/postgresql/data
+      - tdata_postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 10s
@@ -21,12 +21,12 @@ services:
 
   web:
     build: .
-    container_name: tcyber-web
+    container_name: tdata-web
     restart: always
     ports:
       - "3010:3010"
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-tcyber}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-tcyber}?schema=public
+      DATABASE_URL: postgresql://${POSTGRES_USER:-tdata}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-tdata}?schema=public
       LIQUIPEDIA_USER_AGENT: ${LIQUIPEDIA_USER_AGENT:?LIQUIPEDIA_USER_AGENT is required}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD is required}
       ADMIN_SESSION_SECRET: ${ADMIN_SESSION_SECRET:?ADMIN_SESSION_SECRET is required}
@@ -74,8 +74,8 @@ services:
       IDENTITY_SYNC_INCLUDE_API_URL: ${IDENTITY_SYNC_INCLUDE_API_URL:-0}
     volumes:
       - ./certs:/app/certs:ro
-      - tcyber_cache:/app/cache
-      - tcyber_tesseract_cache:/app/.tesseract-cache
+      - tdata_cache:/app/cache
+      - tdata_tesseract_cache:/app/.tesseract-cache
     depends_on:
       postgres:
         condition: service_healthy
@@ -87,6 +87,6 @@ services:
       start_period: 60s
 
 volumes:
-  tcyber_postgres_data:
-  tcyber_cache:
-  tcyber_tesseract_cache:
+  tdata_postgres_data:
+  tdata_cache:
+  tdata_tesseract_cache:

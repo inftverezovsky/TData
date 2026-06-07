@@ -1,6 +1,6 @@
-# TCyber Architecture
+# TData Architecture
 
-TCyber is a tournament operations platform. The codebase is organized around clear runtime boundaries:
+TData is a tournament operations platform. The codebase is organized around clear runtime boundaries:
 
 - `src/app` contains Next.js routes, pages, and API handlers. API routes should stay thin: validate input, call domain services, and return HTTP responses.
 - `src/components` contains React UI only. Components may call browser APIs and fetch app endpoints, but should not read Prisma, filesystem, or server-only configuration directly.
@@ -15,7 +15,7 @@ TCyber is a tournament operations platform. The codebase is organized around cle
 - `adminTeams`: admin team import parsing, spreadsheet loading, and sandbox dry-runs.
 - `teams`: canonicalization, fuzzy matching, mapping lookup, and pure automapping preview.
 - `matches`: schedule display policy, date/time handling, dedupe, quality, and announcement offsets.
-- `sources`: external source clients, parsers, and import adapters. Cyber sources live under `sources/TCyber`; volleyball sources live under `sources/tbvolley`.
+- `sources`: external source clients, parsers, and import adapters. Cyber source adapters currently live under the legacy `sources/TCyber` namespace; volleyball sources live under `sources/tbvolley`.
 - `imports`: tournament import dispatch/orchestration that keeps API routes thin while preserving public route URLs.
 - `normalizers`: Liquipedia wikitext/html normalization by discipline.
 - `settings`, `auth`, `proxy`, `sync`, `http`, `cache`, `db`: infrastructure and platform services.

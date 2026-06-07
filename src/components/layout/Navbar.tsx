@@ -48,7 +48,7 @@ export function PlatformTabs() {
             : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
         }`}
       >
-        <span className="relative z-10">TCyber</span>
+        <span className="relative z-10">Cyber</span>
         {isTcyberActive && (
           <span className="absolute inset-x-3 bottom-1 h-0.5 rounded-full bg-indigo-600 animate-slide-in" />
         )}
@@ -147,7 +147,7 @@ export default function Navbar() {
 
   return (
     <nav
-      aria-label="Навигация TCyber"
+      aria-label="Навигация Cyber"
       className="flex min-w-0 items-center gap-1 overflow-x-auto border-t border-slate-200/70 py-2"
     >
       {navItems.map((item) => {

@@ -13,7 +13,7 @@ Set-Location $ProjectRoot
 
 Write-Host ""
 Write-Host "===============================================================" -ForegroundColor Cyan
-Write-Host "              TCYBER FULL DEPLOYMENT PIPELINE                  " -ForegroundColor Cyan
+  Write-Host "              TDATA FULL DEPLOYMENT PIPELINE                   " -ForegroundColor Cyan
 Write-Host "===============================================================" -ForegroundColor Cyan
 Write-Host ""
 

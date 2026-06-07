@@ -20,7 +20,7 @@ export default function SandboxPage() {
       <div className="space-y-8">
         <div>
           <p className="text-[10px] font-black uppercase tracking-[0.3em] text-sky-600">
-            TCyber Sandbox
+            TData Sandbox
           </p>
           <h1 className="mt-4 text-5xl font-black tracking-normal text-slate-950">
             Песочница <span className="text-slate-400">TData.</span>

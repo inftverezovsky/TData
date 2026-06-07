@@ -1,8 +1,8 @@
 {
-  "name": "tcyber",
+  "name": "tdata",
   "version": "0.1.0",
   "private": true,
-  "description": "TCyber tournament admin hub: search tournaments, import matches, map teams, and send schedules to admin APIs.",
+  "description": "TData tournament admin hub: search tournaments, import matches, map teams, and send schedules to admin APIs.",
   "scripts": {
     "dev": "cross-env NODE_OPTIONS=--openssl-legacy-provider next dev -p 3010",
     "build": "prisma generate && next build",
@@ -14,6 +14,7 @@
     "test:e2e:prod": "cross-env PLAYWRIGHT_PROD_SERVER=1 playwright test",
     "test:e2e:db": "cross-env RUN_DB_E2E=1 playwright test tests/e2e/fixt-send.integration.spec.ts",
     "test:all": "npm run typecheck && npm run lint && npm test && npm run build && npm run test:e2e && npm run test:e2e:db && npm run test:e2e:prod",
+    "git:save": "powershell -ExecutionPolicy Bypass -File scripts/git-save-agent.ps1",
     "prisma:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate:dev": "prisma migrate dev",
