@@ -127,7 +127,7 @@ export const sourceProviders = [
     hostnames: ["worldtabletennis.com", "www.worldtabletennis.com"],
     fallbackPatterns: [
       /(?:^|\/\/)(?:www\.)?worldtabletennis\.com\//i,
-      /\[WTT:\d+]/i,
+      /\[WTT:\d+(?::[^\]]+)?]/i,
     ],
   },
 ] as const satisfies readonly SourceProviderDefinition[];

@@ -6,6 +6,11 @@ import {
   resolveTournamentTeamMappingDisciplineSlug,
 } from "../src/lib/sources/tbvolley/config";
 import { selectCachedTBvolleyGenderTournament } from "../src/lib/sources/tbvolley/genderSwitchCache";
+import {
+  getTableTennisMappingSlug,
+  resolveTournamentTeamMappingDisciplineSlug as resolveTableTennisTournamentTeamMappingDisciplineSlug,
+} from "../src/lib/sources/tablet/config";
+import { selectCachedWttCategoryTournament } from "../src/lib/sources/tablet/wttCategorySwitchCache";
 
 test("TBvolley settings use one beach volleyball sport id for men and women scopes", () => {
   for (const disciplineSlug of ["beachvolleyball", "beachvolleyball-men", "beachvolleyball-women"]) {
@@ -52,6 +57,38 @@ test("TableT settings leave sport id empty when unset", () => {
 
   assert.equal(settings.apiUrl, "https://admin.test/tablet");
   assert.equal(settings.adminSportId, null);
+});
+
+test("TableT category scopes use isolated admin settings", () => {
+  for (const disciplineSlug of ["tabletennis-men", "tabletennis-women", "tabletennis-men-doubles", "tabletennis-women-doubles", "tabletennis-mixed"]) {
+    const settings = resolveAdminSettingsFromData(
+      disciplineSlug,
+      null,
+      {
+        admin_api_url: "https://admin.test/global",
+        admin_sport_id: "999",
+        tablet_admin_api_url: "https://admin.test/tablet",
+        tablet_sport_id: "46",
+      },
+    );
+
+    assert.equal(settings.apiUrl, "https://admin.test/tablet");
+    assert.equal(settings.adminSportId, "46");
+  }
+});
+
+test("TableT tournament mapping scope follows WTT category", () => {
+  assert.equal(getTableTennisMappingSlug("Мужчины"), "tabletennis-men");
+  assert.equal(getTableTennisMappingSlug("Женщины"), "tabletennis-women");
+  assert.equal(getTableTennisMappingSlug("Муж. пары"), "tabletennis-men-doubles");
+  assert.equal(getTableTennisMappingSlug("Жен. пары"), "tabletennis-women-doubles");
+  assert.equal(getTableTennisMappingSlug("Микст"), "tabletennis-mixed");
+  assert.equal(
+    resolveTableTennisTournamentTeamMappingDisciplineSlug("tabletennis", {
+      wtt: { categoryScope: "women-doubles" },
+    }),
+    "tabletennis-women-doubles",
+  );
 });
 
 test("TBvolley tournament mapping scope follows beach volleyball source gender", () => {
@@ -230,4 +267,27 @@ test("TBvolley cached gender switch groups Federvolley by visible tournament", (
   };
 
   assert.equal(selectCachedTBvolleyGenderTournament(current, [women], "women")?.id, "fipav-women");
+});
+
+test("WTT cached category switch finds same event category counterpart", () => {
+  const current = {
+    id: "wtt-men",
+    sourceTitle: "WTT Contender Zagreb 2026 — Мужчины [WTT:3240:men]",
+    sourceUrl: "https://www.worldtabletennis.com/eventInfo?selectedTab=Matches&eventId=3240",
+    name: "WTT Contender Zagreb 2026 — Мужчины",
+    startDate: "2026-06-10T00:00:00.000Z",
+    endDate: "2026-06-15T00:00:00.000Z",
+    location: "Zagreb, Croatia",
+    formatText: "Table Tennis · WTT Contender",
+    normalization: { wtt: { eventId: "3240", categoryScope: "men" } },
+  };
+  const mixed = {
+    ...current,
+    id: "wtt-mixed",
+    sourceTitle: "WTT Contender Zagreb 2026 — Микст [WTT:3240:mixed]",
+    name: "WTT Contender Zagreb 2026 — Микст",
+    normalization: { wtt: { eventId: "3240", categoryScope: "mixed" } },
+  };
+
+  assert.equal(selectCachedWttCategoryTournament(current, [mixed], "mixed")?.id, "wtt-mixed");
 });

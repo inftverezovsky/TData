@@ -7,13 +7,22 @@ import { TABLE_TENNIS_DISCIPLINE_SLUG } from "@/lib/sources/tablet/config";
 import {
   buildWttEventUrl,
   fetchWttSchedule,
+  getWttCategoryLabel,
   isActiveWttMatch,
+  inferWttCategoryScope,
   normalizeWttSchedule,
   normalizeWttTournamentEvents,
   searchWttTournaments,
+  summarizeWttMatchCategories,
   type WttMatch,
+  type WttCategorySummary,
   type WttTournamentEvent,
 } from "@/lib/sources/tablet/WTT";
+import {
+  getTableTennisMappingSlug,
+  normalizeTableTennisCategoryScope,
+  type TableTennisCategoryScope,
+} from "@/lib/sources/tablet/config";
 
 type ImportWttTournamentInput = {
   slug: string;
@@ -25,6 +34,7 @@ type ImportWttTournamentInput = {
   fromDate?: string | null;
   toDate?: string | null;
   days?: string | number | null;
+  categoryScope?: string | null;
   force?: boolean;
 };
 
@@ -95,15 +105,29 @@ export async function importWttTournament(input: ImportWttTournamentInput) {
       { eventId: wttTournament.eventId, timeZoneId },
     );
     const activeMatches = schedule.matches.filter((match) => isActiveWttMatch(match));
-    const displayName = wttTournament.title;
-    const sourceTitle = buildSourceTitle(wttTournament);
-    const normalizedStatus = resolveWttImportStatus(activeMatches.length);
+    const categoryScope = resolveRequestedWttCategoryScope(input.categoryScope, activeMatches, wttTournament.categories);
+    if (!categoryScope) {
+      throw new Error("Не удалось определить сетку WTT. Загрузите турнир, где есть матчи по нужной категории.");
+    }
+
+    const categoryMatches = activeMatches.filter((match) => {
+      const matchScope = match.categoryScope || inferWttCategoryScope(match.subEvent, match.eventCategory);
+      return matchScope === categoryScope;
+    });
+    const categorySummary = summarizeWttMatchCategories(categoryMatches).find((item) => item.scope === categoryScope)
+      || findCategorySummary(wttTournament.categories, categoryScope);
+    const displayName = buildDisplayName(wttTournament, categoryScope);
+    const sourceTitle = buildSourceTitle(wttTournament, categoryScope);
+    const normalizedStatus = resolveWttImportStatus(categoryMatches.length);
     const metadata = buildWttMetadata(wttTournament, {
       requestedTitle: input.title,
       requestedPageUrl: input.pageUrl,
       timeZoneId,
       timeZoneCode: schedule.timeZoneCode,
-      matchCount: activeMatches.length,
+      matchCount: categoryMatches.length,
+      categoryScope,
+      categories: summarizeWttMatchCategories(activeMatches),
+      activeCategories: summarizeWttMatchCategories(categoryMatches),
     });
 
     const tournament = await prisma.tournament.upsert({
@@ -144,8 +168,8 @@ export async function importWttTournament(input: ImportWttTournamentInput) {
 
     const saveResult = await saveWttTournamentMatches({
       tournamentId: tournament.id,
-      slug: input.slug,
-      matches: activeMatches,
+      mappingSlug: getTableTennisMappingSlug(categoryScope),
+      matches: categoryMatches,
       force: Boolean(input.force),
     });
     const finalStatus = resolveWttImportStatus(saveResult.savedCount);
@@ -160,6 +184,7 @@ export async function importWttTournament(input: ImportWttTournamentInput) {
             wtt: {
               ...metadata.wtt,
               savedMatches: saveResult.savedCount,
+              categoryLabel: categorySummary?.label || getWttCategoryLabel(categoryScope),
             },
           } as Prisma.InputJsonValue,
         },
@@ -224,7 +249,7 @@ async function resolveWttTournament(input: {
 
 async function saveWttTournamentMatches(params: {
   tournamentId: string;
-  slug: string;
+  mappingSlug: string;
   matches: WttMatch[];
   force?: boolean;
 }): Promise<{ savedCount: number }> {
@@ -322,7 +347,7 @@ async function saveWttTournamentMatches(params: {
         where: { tournamentId: params.tournamentId },
         select: { name: true, platformId: true, logoUrl: true, rawText: true },
       }),
-    prisma.teamMapping.findMany({ where: { disciplineSlug: params.slug } }),
+    prisma.teamMapping.findMany({ where: { disciplineSlug: params.mappingSlug } }),
   ]);
 
   const existingParticipantMap = new Map(existingParticipants.map((participant) => [participant.name.toLowerCase(), participant]));
@@ -381,8 +406,12 @@ function selectTournament(
   }) || null;
 }
 
-function buildSourceTitle(tournament: WttTournamentEvent) {
-  return `${tournament.title} [WTT:${tournament.eventId}]`;
+function buildSourceTitle(tournament: WttTournamentEvent, categoryScope: TableTennisCategoryScope) {
+  return `${tournament.title} — ${getWttCategoryLabel(categoryScope)} [WTT:${tournament.eventId}:${categoryScope}]`;
+}
+
+function buildDisplayName(tournament: WttTournamentEvent, categoryScope: TableTennisCategoryScope) {
+  return `${tournament.title} — ${getWttCategoryLabel(categoryScope)}`;
 }
 
 function buildFormatText(tournament: WttTournamentEvent) {
@@ -397,6 +426,9 @@ function buildWttMetadata(
     timeZoneId: string | null;
     timeZoneCode: string | null;
     matchCount: number;
+    categoryScope: TableTennisCategoryScope;
+    categories: WttCategorySummary[];
+    activeCategories: WttCategorySummary[];
   },
 ): WttNormalization {
   return {
@@ -417,6 +449,10 @@ function buildWttMetadata(
       requestedTitle: context.requestedTitle,
       requestedPageUrl: context.requestedPageUrl,
       matchCount: context.matchCount,
+      categoryScope: context.categoryScope,
+      categoryLabel: getWttCategoryLabel(context.categoryScope),
+      categories: context.categories,
+      activeCategories: context.activeCategories,
     },
   };
 }
@@ -449,7 +485,7 @@ function inferWttEventId(...values: Array<unknown>) {
     const text = clean(value);
     if (!text) continue;
 
-    const marker = text.match(/\[WTT:(\d+)]/i);
+    const marker = text.match(/\[WTT:(\d+)(?::[^\]]+)?]/i);
     if (marker) return marker[1];
 
     try {
@@ -465,7 +501,7 @@ function inferWttEventId(...values: Array<unknown>) {
 }
 
 function stripSourceMarker(value: string) {
-  return clean(value).replace(/\s*\[WTT:\d+]\s*$/i, "");
+  return clean(value).replace(/\s*\[WTT:\d+(?::[^\]]+)?]\s*$/i, "");
 }
 
 function parseDate(value: string | null | undefined) {
@@ -486,4 +522,23 @@ function normalizeSearch(value: string) {
 
 function clean(value: unknown) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
+}
+
+function resolveRequestedWttCategoryScope(
+  rawCategoryScope: unknown,
+  matches: WttMatch[],
+  tournamentCategories: WttCategorySummary[],
+) {
+  const requested = normalizeTableTennisCategoryScope(rawCategoryScope);
+  if (requested) return requested;
+
+  const fromMatches = summarizeWttMatchCategories(matches);
+  if (fromMatches.length === 1) return fromMatches[0].scope;
+  if (fromMatches.length > 1) return fromMatches[0].scope;
+  if (tournamentCategories.length === 1) return tournamentCategories[0].scope;
+  return null;
+}
+
+function findCategorySummary(categories: WttCategorySummary[], scope: TableTennisCategoryScope) {
+  return categories.find((category) => category.scope === scope) || null;
 }

@@ -31,6 +31,26 @@ export const MANUAL_IMPORT_DISCIPLINES = {
     slug: "beachvolleyball-women",
     label: "Пляжный волейбол (ж)",
   },
+  "tabletennis-men": {
+    slug: "tabletennis-men",
+    label: "TableT WTT мужчины",
+  },
+  "tabletennis-women": {
+    slug: "tabletennis-women",
+    label: "TableT WTT женщины",
+  },
+  "tabletennis-men-doubles": {
+    slug: "tabletennis-men-doubles",
+    label: "TableT WTT муж. пары",
+  },
+  "tabletennis-women-doubles": {
+    slug: "tabletennis-women-doubles",
+    label: "TableT WTT жен. пары",
+  },
+  "tabletennis-mixed": {
+    slug: "tabletennis-mixed",
+    label: "TableT WTT микст",
+  },
 } as const;
 
 export type ManualImportDisciplineSlug = keyof typeof MANUAL_IMPORT_DISCIPLINES;

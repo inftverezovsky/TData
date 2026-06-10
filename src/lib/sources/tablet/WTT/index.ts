@@ -1,4 +1,8 @@
 import { formatMoscowDate, formatMoscowDateTime } from "@/lib/matches/scheduleOffset";
+import {
+  normalizeTableTennisCategoryScope,
+  type TableTennisCategoryScope,
+} from "@/lib/sources/tablet/config";
 
 export type WttMatchStatus = "upcoming" | "live" | "finished";
 
@@ -9,6 +13,13 @@ export type WttSubEvent = {
   subEventCode?: string | null;
   numberOfTotalMatches?: number | string | null;
   gender?: string | null;
+};
+
+export type WttCategorySummary = {
+  scope: TableTennisCategoryScope;
+  label: string;
+  matchCount: number;
+  firstMatchTimeMoscow: string | null;
 };
 
 export type WttTournamentEvent = {
@@ -31,6 +42,7 @@ export type WttTournamentEvent = {
   tierName: string;
   matchCount: number;
   firstMatchTimeMoscow: string | null;
+  categories: WttCategorySummary[];
   subEvents: WttSubEvent[];
 };
 
@@ -77,6 +89,7 @@ export type WttMatch = {
   teamA: WttCompetitor;
   teamB: WttCompetitor;
   rawText: string | null;
+  categoryScope: TableTennisCategoryScope | null;
 };
 
 export type WttSchedule = {
@@ -565,6 +578,7 @@ function normalizeWttTournamentEvent(event: SourceWttEvent): WttTournamentEvent 
     tierName,
     matchCount: inferredMatchCount,
     firstMatchTimeMoscow: null,
+    categories: inferWttCategoriesFromSubEvents(subEvents),
     subEvents,
   };
 }
@@ -579,10 +593,12 @@ async function enrichWttTournamentsWithScheduleSummaries(tournaments: WttTournam
         { eventId: tournament.eventId, timeZoneId: tournament.timeZoneId },
       );
       const activeMatches = schedule.matches.filter((match) => isActiveWttMatch(match));
+      const categories = summarizeWttMatchCategories(activeMatches);
       return {
         ...tournament,
         matchCount: activeMatches.length || tournament.matchCount,
         firstMatchTimeMoscow: activeMatches[0]?.startTimeMoscow || tournament.firstMatchTimeMoscow,
+        categories: categories.length > 0 ? categories : tournament.categories,
         status: activeMatches.some((match) => match.status === "live") ? "ongoing" : tournament.status,
       };
     } catch {
@@ -602,6 +618,7 @@ function normalizeWttUnit(unit: SourceWttUnit, context: { eventId: string; timeZ
   const teamB = normalizeWttCompetitor(starts[1]);
   const itemDescription = getLocalizedValue(unit.ItemDescription);
   const subEvent = clean(unit.SubEvent);
+  const categoryScope = inferWttCategoryScope(subEvent, unit.EventCategory);
   const round = clean(itemDescription) || clean(unit.Round);
   const stage = [subEvent, normalizeRoundLabel(unit.Round, unit.Draw)].filter(Boolean).join(" · ");
   const court = clean(unit.VenueDescription?.LocationName) || clean(unit.Location);
@@ -635,7 +652,97 @@ function normalizeWttUnit(unit: SourceWttUnit, context: { eventId: string; timeZ
       venueName ? `venue=${venueName}` : null,
       `${teamA.name} vs ${teamB.name}`,
     ].filter(Boolean).join(" | ") || null,
+    categoryScope,
   };
+}
+
+export function inferWttCategoryScope(...values: Array<unknown>): TableTennisCategoryScope | null {
+  for (const value of values) {
+    const text = clean(value);
+    if (!text) continue;
+
+    const direct = normalizeTableTennisCategoryScope(text);
+    if (direct) return direct;
+
+    const normalized = text.toLowerCase().replace(/[_-]+/g, " ");
+    if (/\b(?:x|mixed)\s*doubles\b/i.test(normalized) || /\bxdoubles\b/i.test(normalized)) return "mixed";
+    if (/\bmen'?s?\s*doubles\b/i.test(normalized) || /\bmdoubles\b/i.test(normalized)) return "men-doubles";
+    if (/\bwomen'?s?\s*doubles\b/i.test(normalized) || /\bwdoubles\b/i.test(normalized)) return "women-doubles";
+    if (/\bmen'?s?\s*singles\b/i.test(normalized) || /\bmsingles\b/i.test(normalized)) return "men";
+    if (/\bwomen'?s?\s*singles\b/i.test(normalized) || /\bwsingles\b/i.test(normalized)) return "women";
+  }
+
+  return null;
+}
+
+export function getWttCategoryLabel(scope: TableTennisCategoryScope) {
+  switch (scope) {
+    case "men":
+      return "Мужчины";
+    case "women":
+      return "Женщины";
+    case "men-doubles":
+      return "Муж. пары";
+    case "women-doubles":
+      return "Жен. пары";
+    case "mixed":
+      return "Микст";
+  }
+}
+
+export function summarizeWttMatchCategories(matches: Array<Pick<WttMatch, "categoryScope" | "subEvent" | "eventCategory" | "startTimeUtc" | "startTimeMoscow">>): WttCategorySummary[] {
+  const byScope = new Map<TableTennisCategoryScope, WttCategorySummary & { firstSortKey: string }>();
+
+  for (const match of matches) {
+    const scope = match.categoryScope || inferWttCategoryScope(match.subEvent, match.eventCategory);
+    if (!scope) continue;
+
+    const existing = byScope.get(scope);
+    const sortKey = match.startTimeUtc || "9999-12-31T23:59:59.999Z";
+    if (!existing) {
+      byScope.set(scope, {
+        scope,
+        label: getWttCategoryLabel(scope),
+        matchCount: 1,
+        firstMatchTimeMoscow: match.startTimeMoscow && match.startTimeMoscow !== "TBD" ? match.startTimeMoscow : null,
+        firstSortKey: sortKey,
+      });
+      continue;
+    }
+
+    existing.matchCount += 1;
+    if (sortKey < existing.firstSortKey && match.startTimeMoscow && match.startTimeMoscow !== "TBD") {
+      existing.firstSortKey = sortKey;
+      existing.firstMatchTimeMoscow = match.startTimeMoscow;
+    }
+  }
+
+  return Array.from(byScope.values())
+    .sort((left, right) => getWttCategoryOrder(left.scope) - getWttCategoryOrder(right.scope))
+    .map(({ firstSortKey: _firstSortKey, ...category }) => category);
+}
+
+function inferWttCategoriesFromSubEvents(subEvents: WttSubEvent[]): WttCategorySummary[] {
+  const summaries = new Map<TableTennisCategoryScope, WttCategorySummary>();
+
+  for (const subEvent of subEvents) {
+    const scope = inferWttCategoryScope(subEvent.subEventCode, subEvent.subEventName, subEvent.subEventType, subEvent.gender);
+    if (!scope) continue;
+    const existing = summaries.get(scope);
+    summaries.set(scope, {
+      scope,
+      label: getWttCategoryLabel(scope),
+      matchCount: (existing?.matchCount || 0) + toNumber(subEvent.numberOfTotalMatches),
+      firstMatchTimeMoscow: null,
+    });
+  }
+
+  return Array.from(summaries.values())
+    .sort((left, right) => getWttCategoryOrder(left.scope) - getWttCategoryOrder(right.scope));
+}
+
+function getWttCategoryOrder(scope: TableTennisCategoryScope) {
+  return ["men", "women", "men-doubles", "women-doubles", "mixed"].indexOf(scope);
 }
 
 function normalizeWttCompetitor(start: SourceWttStart | null | undefined): WttCompetitor {

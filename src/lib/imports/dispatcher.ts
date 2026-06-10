@@ -52,6 +52,7 @@ export type ImportTournamentRequestBody = {
   federvolleyNodeId?: unknown;
   matchshareLid?: unknown;
   category?: unknown;
+  categoryScope?: unknown;
   timeZoneId?: unknown;
   gender?: unknown;
   fromDate?: unknown;
@@ -265,6 +266,7 @@ export async function dispatchTournamentImport(
           pageUrl,
           eventId: stringOrNumber(body.eventId),
           timeZoneId: stringOrNumber(body.timeZoneId),
+          categoryScope: stringValue(body.categoryScope),
           fromDate: stringValue(body.fromDate),
           toDate: stringValue(body.toDate),
           days: stringOrNumber(body.days),

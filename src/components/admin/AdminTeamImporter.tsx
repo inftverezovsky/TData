@@ -11,6 +11,11 @@ type KnownDisciplineOption =
   | "beachvolleyball-men"
   | "beachvolleyball-women"
   | "tabletennis"
+  | "tabletennis-men"
+  | "tabletennis-women"
+  | "tabletennis-men-doubles"
+  | "tabletennis-women-doubles"
+  | "tabletennis-mixed"
   | "custom";
 
 const DISCIPLINE_OPTIONS: Array<{ value: KnownDisciplineOption; label: string }> = [
@@ -20,7 +25,12 @@ const DISCIPLINE_OPTIONS: Array<{ value: KnownDisciplineOption; label: string }>
   { value: "leagueoflegends", label: "League of Legends" },
   { value: "beachvolleyball-men", label: "Пляжный волейбол (м)" },
   { value: "beachvolleyball-women", label: "Пляжный волейбол (ж)" },
-  { value: "tabletennis", label: "Table Tennis" },
+  { value: "tabletennis", label: "Table Tennis (общий)" },
+  { value: "tabletennis-men", label: "TableT WTT мужчины" },
+  { value: "tabletennis-women", label: "TableT WTT женщины" },
+  { value: "tabletennis-men-doubles", label: "TableT WTT муж. пары" },
+  { value: "tabletennis-women-doubles", label: "TableT WTT жен. пары" },
+  { value: "tabletennis-mixed", label: "TableT WTT микст" },
   { value: "custom", label: "Другая" },
 ];
 
@@ -96,7 +106,7 @@ export function AdminTeamImporter() {
       <div className="relative z-10">
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h2 className="text-xl font-bold tracking-tight text-slate-900">Импорт команд</h2>
+            <h2 className="text-xl font-bold tracking-tight text-slate-900">Импорт команд / спортсменов</h2>
             <p className="text-[10px] font-medium text-slate-400 uppercase tracking-widest mt-0.5">Excel / Google Sheets</p>
           </div>
           
@@ -255,7 +265,7 @@ export function AdminTeamImporter() {
         {status === "success" && result && (
           <div className="mt-4 p-3 bg-emerald-50 border border-emerald-100 rounded-xl">
             <p className="text-[10px] font-bold text-emerald-700 uppercase tracking-tight">
-              ✓ Успешно: {result.importedCount} команд добавлено в {formatImportTarget(result.targetKey || targetKey)}.
+              ✓ Успешно: {result.importedCount} записей добавлено в {formatImportTarget(result.targetKey || targetKey)}.
               {result.mappingResult ? ` Автомаппинг: ${result.mappingResult.autoMappedCount || 0}, конфликтов: ${result.mappingResult.conflictCount || 0}.` : ""}
             </p>
           </div>

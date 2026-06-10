@@ -2,8 +2,9 @@
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { CalendarDays, ExternalLink, Loader2, MapPin, RefreshCw, Search, Table2, Trophy, UsersRound } from "lucide-react";
-import LoadTournamentButton from "@/components/ui/LoadTournamentButton";
+import WttTournamentBundleButton from "@/components/tablet/WttTournamentBundleButton";
 import type { WttTournamentEvent, WttTournamentSearch as WttTournamentSearchResult } from "@/lib/sources/tablet/WTT";
+import type { TableTennisCategoryScope } from "@/lib/sources/tablet/config";
 
 const TABLE_TENNIS_SLUG = "tabletennis";
 
@@ -243,6 +244,19 @@ function TournamentCard({
           {tournament.firstMatchTimeMoscow ? (
             <p className="mt-3 text-xs font-bold text-slate-400">Первый матч: {tournament.firstMatchTimeMoscow}</p>
           ) : null}
+
+          {tournament.categories.length > 0 ? (
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {tournament.categories.map((category) => (
+                <span
+                  key={category.scope}
+                  className="rounded-md border border-cyan-100 bg-cyan-50 px-2 py-1 text-[9px] font-black uppercase tracking-widest text-cyan-700"
+                >
+                  {category.label}: {category.matchCount}
+                </span>
+              ))}
+            </div>
+          ) : null}
         </div>
 
         <div className="flex flex-wrap items-center gap-2 lg:justify-end">
@@ -255,23 +269,38 @@ function TournamentCard({
             <ExternalLink className="h-3.5 w-3.5" />
             Source
           </a>
-          <LoadTournamentButton
+          <WttTournamentBundleButton
             disciplineSlug={TABLE_TENNIS_SLUG}
             targetBasePath="/tablet/tournament"
-            title={`${tournament.title} [WTT:${tournament.eventId}]`}
-            pageUrl={tournament.pageUrl}
-            source="wtt"
-            extraPayload={{
-              eventId: tournament.eventId,
-              timeZoneId: tournament.timeZoneId,
-              fromDate,
-              days,
-            }}
+            items={resolveTournamentBundleItems(tournament, fromDate, days)}
           />
         </div>
       </div>
     </article>
   );
+}
+
+function resolveTournamentBundleItems(tournament: WttTournamentEvent, fromDate: string, days: string) {
+  const categories = tournament.categories.length > 0
+    ? tournament.categories
+    : [{
+      scope: "men" as TableTennisCategoryScope,
+      label: "Мужчины",
+      matchCount: tournament.matchCount,
+      firstMatchTimeMoscow: tournament.firstMatchTimeMoscow,
+    }];
+
+  return categories.map((category) => ({
+    title: `${tournament.title} — ${category.label} [WTT:${tournament.eventId}:${category.scope}]`,
+    pageUrl: tournament.pageUrl,
+    extraPayload: {
+      eventId: tournament.eventId,
+      timeZoneId: tournament.timeZoneId,
+      categoryScope: category.scope,
+      fromDate,
+      days,
+    },
+  }));
 }
 
 function Metric({ label, value }: { label: string; value: number }) {

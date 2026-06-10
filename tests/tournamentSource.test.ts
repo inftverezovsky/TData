@@ -55,6 +55,7 @@ test("detectTournamentSource detects CBV and Federvolley URLs", () => {
 test("detectTournamentSource detects WTT URLs", () => {
   assert.equal(detectTournamentSource("https://www.worldtabletennis.com/eventInfo?eventId=3031"), "wtt");
   assert.equal(detectTournamentSource("WTT Contender [WTT:3031]"), "wtt");
+  assert.equal(detectTournamentSource("WTT Contender — Микст [WTT:3031:mixed]"), "wtt");
 });
 
 test("detectTournamentSource defaults to Liquipedia", () => {

@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { formatMoscowDateTime } from "../src/lib/matches/scheduleOffset";
 import {
+  inferWttCategoryScope,
   normalizeWttSchedule,
   normalizeWttTournamentEvents,
   parseWttLocalDateTime,
+  summarizeWttMatchCategories,
 } from "../src/lib/sources/tablet/WTT";
 
 test("WTT event normalization excludes Youth and U-age tournaments", () => {
@@ -143,11 +145,13 @@ test("WTT schedule normalization extracts teams, stage, court and placeholders",
   assert.equal(schedule.matches[0].id, "wtt-3240-U001");
   assert.equal(schedule.matches[0].teamA.name, "Truls Moregard");
   assert.equal(schedule.matches[0].teamB.name, "Harimoto Tomokazu");
+  assert.equal(schedule.matches[0].categoryScope, "men");
   assert.equal(schedule.matches[0].round, "Round of 32");
   assert.equal(schedule.matches[0].stage, "Men's Singles · Main Draw R32");
   assert.equal(schedule.matches[0].court, "Table 1");
   assert.equal(schedule.matches[1].teamA.name, "TBD");
   assert.equal(schedule.matches[1].teamB.name, "TBD");
+  assert.equal(schedule.matches[1].categoryScope, "women");
   assert.equal(schedule.matches[2].status, "finished");
   assert.equal(schedule.summary.upcoming, 2);
   assert.equal(schedule.summary.finished, 1);
@@ -166,4 +170,39 @@ test("WTT schedule fails on unknown time zone id", () => {
     () => normalizeWttSchedule([{ Competition: { Unit: [] } }], { eventId: 3240, timeZoneId: "9999" }),
     /Неизвестный часовой пояс WTT/,
   );
+});
+
+test("WTT category normalization splits singles, doubles and mixed", () => {
+  assert.equal(inferWttCategoryScope("MSINGLES"), "men");
+  assert.equal(inferWttCategoryScope("Women's Singles"), "women");
+  assert.equal(inferWttCategoryScope("MDOUBLES"), "men-doubles");
+  assert.equal(inferWttCategoryScope("Women's Doubles"), "women-doubles");
+  assert.equal(inferWttCategoryScope("XDOUBLES"), "mixed");
+
+  const categories = summarizeWttMatchCategories([
+    {
+      categoryScope: "men",
+      subEvent: "Men's Singles",
+      eventCategory: "",
+      startTimeUtc: "2026-06-10T08:00:00.000Z",
+      startTimeMoscow: "10.06.2026 11:00:00",
+    },
+    {
+      categoryScope: "men-doubles",
+      subEvent: "Men's Doubles",
+      eventCategory: "",
+      startTimeUtc: "2026-06-10T09:00:00.000Z",
+      startTimeMoscow: "10.06.2026 12:00:00",
+    },
+    {
+      categoryScope: "mixed",
+      subEvent: "Mixed Doubles",
+      eventCategory: "",
+      startTimeUtc: "2026-06-10T07:00:00.000Z",
+      startTimeMoscow: "10.06.2026 10:00:00",
+    },
+  ]);
+
+  assert.deepEqual(categories.map((category) => category.scope), ["men", "men-doubles", "mixed"]);
+  assert.deepEqual(categories.map((category) => category.label), ["Мужчины", "Муж. пары", "Микст"]);
 });

@@ -7,7 +7,8 @@ import {
   resolveStageSlotAnnouncement,
 } from "@/lib/matches/scheduleView";
 import { hasExactMatchTime } from "@/lib/matches/time";
-import { resolveTournamentTeamMappingDisciplineSlug } from "@/lib/sources/tbvolley/config";
+import { resolveTournamentTeamMappingDisciplineSlug as resolveBeachVolleyballTeamMappingDisciplineSlug } from "@/lib/sources/tbvolley/config";
+import { resolveTournamentTeamMappingDisciplineSlug as resolveTableTennisTeamMappingDisciplineSlug } from "@/lib/sources/tablet/config";
 import { isPlaceholderTeam, isTbdPlaceholderTeam } from "@/lib/teams/teams";
 import { detectTournamentSource, type TournamentSource } from "@/lib/utils/tournamentSource";
 
@@ -35,13 +36,20 @@ export function resolveUploadPolicy(input: {
   return {
     disciplineSlug: input.disciplineSlug,
     source,
-    teamMappingDisciplineSlug: resolveTournamentTeamMappingDisciplineSlug(input.disciplineSlug, input.normalization),
+    teamMappingDisciplineSlug: resolveTeamMappingDisciplineSlug(input.disciplineSlug, input.normalization),
     scheduleLeadDisciplineSlug,
     matchContext: {
       disciplineSlug: input.disciplineSlug,
       source,
     },
   };
+}
+
+function resolveTeamMappingDisciplineSlug(disciplineSlug: string, normalization: unknown) {
+  const slug = disciplineSlug.trim().toLowerCase();
+  if (slug === "beachvolleyball") return resolveBeachVolleyballTeamMappingDisciplineSlug(slug, normalization);
+  if (slug === "tabletennis") return resolveTableTennisTeamMappingDisciplineSlug(slug, normalization);
+  return slug;
 }
 
 export type UploadPolicyMatch = ScheduleViewMatch & {

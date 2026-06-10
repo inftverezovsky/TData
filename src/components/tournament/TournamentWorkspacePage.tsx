@@ -4,6 +4,7 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import TeamMappingPanel from "@/components/tournament/TeamMappingPanel";
 import TournamentAdminView from "@/components/tournament/TournamentAdminView";
 import TBvolleyGenderSwitcher from "@/components/tbvolley/TBvolleyGenderSwitcher";
+import WttCategorySwitcher from "@/components/tablet/WttCategorySwitcher";
 import { ClientErrorBoundary } from "@/components/ui/ClientErrorBoundary";
 import { prisma } from "@/lib/db/db";
 
@@ -19,8 +20,13 @@ import { resolveAdminSettings } from "@/lib/adminUpload/resolveAdminSettings";
 import {
   normalizeBeachVolleyballGender,
   readBeachVolleyballGenderFromNormalization,
-  resolveTournamentTeamMappingDisciplineSlug,
+  resolveTournamentTeamMappingDisciplineSlug as resolveBeachVolleyballTeamMappingDisciplineSlug,
 } from "@/lib/sources/tbvolley/config";
+import {
+  normalizeTableTennisCategoryScope,
+  readTableTennisCategoryFromNormalization,
+  resolveTournamentTeamMappingDisciplineSlug as resolveTableTennisTeamMappingDisciplineSlug,
+} from "@/lib/sources/tablet/config";
 
 export default async function TournamentWorkspacePage({
   disciplineSlug,
@@ -56,7 +62,7 @@ export default async function TournamentWorkspacePage({
   const dedupedMatches = dedupeTournamentMatches(tournament.matches);
   const tournamentForView = { ...tournament, matches: dedupedMatches };
   const source = detectTournamentSource(tournament.sourceUrl);
-  const teamMappingDisciplineSlug = resolveTournamentTeamMappingDisciplineSlug(slug, tournament.normalization);
+  const teamMappingDisciplineSlug = resolveTeamMappingDisciplineSlug(slug, tournament.normalization);
 
   const teamNames = collectTournamentTeamNames({
     matches: dedupedMatches,
@@ -125,9 +131,14 @@ export default async function TournamentWorkspacePage({
   }
 
   const disciplineName = discipline?.name || slug.charAt(0).toUpperCase() + slug.slice(1);
+  const mappingTitle = slug === "tabletennis" ? "Маппинг спортсменов / пар" : "Маппинг команд";
+  const mappingDescription = slug === "tabletennis"
+    ? "Привяжите спортсменов или пары к вашей платформе. Для WTT справочники разделены по сеткам."
+    : "Привяжите команды к вашей платформе. Эти настройки сохраняются навсегда для всех турниров.";
   const adminSettings = await resolveAdminSettings(slug);
   const refreshExtraPayload = getRefreshExtraPayload(tournament.normalization);
   const tbvolleyGender = normalizeBeachVolleyballGender(readBeachVolleyballGenderFromNormalization(tournament.normalization));
+  const wttCategory = normalizeTableTennisCategoryScope(readTableTennisCategoryFromNormalization(tournament.normalization));
   const showTbvolleyGenderSwitcher = slug === "beachvolleyball"
     && isBeachVolleyballTournamentSource(source)
     && Boolean(tbvolleyGender)
@@ -140,6 +151,7 @@ export default async function TournamentWorkspacePage({
       || source === "cbv"
       || source === "federvolley"
     );
+  const showWttCategorySwitcher = slug === "tabletennis" && source === "wtt" && Boolean(wttCategory);
 
   return (
     <div className="space-y-6">
@@ -187,6 +199,15 @@ export default async function TournamentWorkspacePage({
         />
       ) : null}
 
+      {showWttCategorySwitcher && wttCategory ? (
+        <WttCategorySwitcher
+          currentCategory={wttCategory}
+          currentTournamentId={tournament.id}
+          disciplineSlug={slug}
+          targetBasePath={refreshTargetBasePath}
+        />
+      ) : null}
+
       <TournamentAdminView
         tournament={tournamentForView}
         mappingMap={mappingMap}
@@ -207,8 +228,8 @@ export default async function TournamentWorkspacePage({
         <details className="group">
           <summary className="flex cursor-pointer items-center justify-between list-none">
             <div>
-              <h2 className="text-2xl font-extrabold text-slate-950">Маппинг команд</h2>
-              <p className="mt-1 text-sm font-medium text-slate-500">Привяжите команды к вашей платформе. Эти настройки сохраняются навсегда для всех турниров.</p>
+              <h2 className="text-2xl font-extrabold text-slate-950">{mappingTitle}</h2>
+              <p className="mt-1 text-sm font-medium text-slate-500">{mappingDescription}</p>
             </div>
             <div className="rounded-full bg-slate-100 p-2 group-open:rotate-180 transition-transform">
               <svg className="w-6 h-6 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
@@ -288,6 +309,7 @@ function getRefreshExtraPayload(normalization: unknown): Record<string, unknown>
     return {
       eventId: wtt.eventId,
       timeZoneId: wtt.timeZoneId,
+      categoryScope: wtt.categoryScope,
     };
   }
 
@@ -298,6 +320,13 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
     : null;
+}
+
+function resolveTeamMappingDisciplineSlug(disciplineSlug: string, normalization: unknown) {
+  const slug = disciplineSlug.trim().toLowerCase();
+  if (slug === "beachvolleyball") return resolveBeachVolleyballTeamMappingDisciplineSlug(slug, normalization);
+  if (slug === "tabletennis") return resolveTableTennisTeamMappingDisciplineSlug(slug, normalization);
+  return slug;
 }
 
 function buildParticipantDisplayLookup(
