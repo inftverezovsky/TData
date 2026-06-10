@@ -145,7 +145,7 @@ export async function importWttTournament(input: ImportWttTournamentInput) {
         startDate: parseDate(wttTournament.startDate),
         endDate: parseDate(wttTournament.endDate),
         location: wttTournament.location || null,
-        formatText: buildFormatText(wttTournament),
+        formatText: null,
         status: wttTournament.status,
         extractionStatus: normalizedStatus,
         normalization: metadata as Prisma.InputJsonValue,
@@ -157,7 +157,7 @@ export async function importWttTournament(input: ImportWttTournamentInput) {
         startDate: parseDate(wttTournament.startDate),
         endDate: parseDate(wttTournament.endDate),
         location: wttTournament.location || null,
-        formatText: buildFormatText(wttTournament),
+        formatText: null,
         status: wttTournament.status,
         extractionStatus: normalizedStatus,
         normalization: metadata as Prisma.InputJsonValue,
@@ -271,7 +271,7 @@ async function saveWttTournamentMatches(params: {
         hasPlaceholderTeams,
         matchDate,
         matchDateTime: match.startTimeMoscow === "TBD" ? null : match.startTimeMoscow,
-        format: inferWttFormat(match),
+        format: null,
         stage: match.stage || match.subEvent || null,
         round: match.round || null,
         court: match.court || null,
@@ -414,10 +414,6 @@ function buildDisplayName(tournament: WttTournamentEvent, categoryScope: TableTe
   return `${tournament.title} — ${getWttCategoryLabel(categoryScope)}`;
 }
 
-function buildFormatText(tournament: WttTournamentEvent) {
-  return ["Table Tennis", tournament.categoryName || tournament.tierName].filter(Boolean).join(" · ");
-}
-
 function buildWttMetadata(
   tournament: WttTournamentEvent,
   context: {
@@ -467,13 +463,6 @@ function buildRawMatchText(match: WttMatch) {
     `${match.teamA.name} vs ${match.teamB.name}`,
     match.rawText,
   ].filter(Boolean).join(" | ") || null;
-}
-
-function inferWttFormat(match: WttMatch) {
-  if (/doubles/i.test(match.subEvent)) return "Doubles";
-  if (/team/i.test(match.subEvent)) return "Team";
-  if (/singles/i.test(match.subEvent)) return "Singles";
-  return null;
 }
 
 function resolveWttImportStatus(savedMatchesCount: number): ImportStatus {

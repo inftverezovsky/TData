@@ -20,6 +20,7 @@ import { getTeamAliasKey } from "@/lib/teams/canonicalize";
 import type { TournamentSource } from "@/lib/utils/tournamentSource";
 import { isBeachVolleyballTournamentSource } from "@/lib/utils/tournamentSource";
 import { isBeachVolleyballScopeSlug } from "@/lib/sources/tbvolley/config";
+import { isTableTennisScopeSlug } from "@/lib/sources/tablet/config";
 import { Clock, LayoutGrid, CheckCircle2, TimerReset } from "lucide-react";
 
 type Match = {
@@ -116,7 +117,10 @@ export default function MatchList({
   const [groupByPrimary, setGroupByPrimary] = useState(false);
   const [hideUploaded, setHideUploaded] = useState(false);
   const [draftCourtByGroup, setDraftCourtByGroup] = useState<Record<string, string>>({});
-  const usesCourtGrouping = isBeachVolleyballScopeSlug(disciplineSlug) || isBeachVolleyballTournamentSource(source);
+  const usesCourtGrouping = isBeachVolleyballScopeSlug(disciplineSlug)
+    || isBeachVolleyballTournamentSource(source)
+    || isTableTennisScopeSlug(disciplineSlug)
+    || source === "wtt";
   const showCourtAdminDraftFields = usesCourtGrouping && groupByPrimary;
   const showAdminHeaderIdDraftFields = groupByPrimary;
 
