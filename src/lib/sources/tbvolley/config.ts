@@ -48,7 +48,16 @@ export function readBeachVolleyballGenderFromNormalization(normalization: unknow
   const volleyballWorld = asRecord(root?.volleyballWorld);
   const beachVolleyRu = asRecord(root?.beachVolleyRu);
   const germanBeachTour = asRecord(root?.germanBeachTour);
-  return volleyballWorld?.gender ?? beachVolleyRu?.gender ?? germanBeachTour?.gender ?? null;
+  const twelveNdr = asRecord(root?.twelveNdr);
+  const cbv = asRecord(root?.cbv);
+  const federvolley = asRecord(root?.federvolley);
+  return volleyballWorld?.gender
+    ?? beachVolleyRu?.gender
+    ?? germanBeachTour?.gender
+    ?? twelveNdr?.gender
+    ?? cbv?.gender
+    ?? federvolley?.gender
+    ?? null;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

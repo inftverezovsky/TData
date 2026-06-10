@@ -74,6 +74,62 @@ export const sourceProviders = [
     hostnames: ["beach.volleyball-verband.de"],
     fallbackPatterns: [/(^|\/\/)beach\.volleyball-verband\.de\//i],
   },
+  {
+    id: "twelvendroevv",
+    label: "Источник: 12ndr ÖVV",
+    supportsStageAnnouncements: true,
+    isBeachVolleyball: true,
+    hostnames: [],
+    fallbackPatterns: [
+      /(?:^|\/\/)fivb\.12ndr\.at\/(?:oevv|.*(?:international=oevv|12NDR-OEVV))/i,
+      /\[12NDR-OEVV:[^\]]+]/i,
+    ],
+  },
+  {
+    id: "twelvendrcsvp",
+    label: "Источник: 12ndr CSVP",
+    supportsStageAnnouncements: true,
+    isBeachVolleyball: true,
+    hostnames: [],
+    fallbackPatterns: [
+      /(?:^|\/\/)fivb\.12ndr\.at\//i,
+      /\[12NDR-CSVP:[^\]]+]/i,
+    ],
+  },
+  {
+    id: "cbv",
+    label: "Источник: CBV",
+    supportsStageAnnouncements: true,
+    isBeachVolleyball: true,
+    hostnames: ["evolleyball.cbv.com.br"],
+    fallbackPatterns: [
+      /(?:^|\/\/)evolleyball\.cbv\.com\.br\//i,
+      /\[CBV:[^\]]+]/i,
+    ],
+  },
+  {
+    id: "federvolley",
+    label: "Источник: Federvolley",
+    supportsStageAnnouncements: true,
+    isBeachVolleyball: true,
+    hostnames: ["beachvolley.federvolley.it", "srv.matchshare.it"],
+    fallbackPatterns: [
+      /(?:^|\/\/)beachvolley\.federvolley\.it\//i,
+      /(?:^|\/\/)srv\.matchshare\.it\/bvl_test\//i,
+      /\[FIPAV:[^\]]+]/i,
+    ],
+  },
+  {
+    id: "wtt",
+    label: "Источник: WTT",
+    supportsStageAnnouncements: true,
+    isBeachVolleyball: false,
+    hostnames: ["worldtabletennis.com", "www.worldtabletennis.com"],
+    fallbackPatterns: [
+      /(?:^|\/\/)(?:www\.)?worldtabletennis\.com\//i,
+      /\[WTT:\d+]/i,
+    ],
+  },
 ] as const satisfies readonly SourceProviderDefinition[];
 
 const sourceProviderById = new Map<TournamentSource, SourceProviderDefinition>(

@@ -131,7 +131,15 @@ export default async function TournamentWorkspacePage({
   const showTbvolleyGenderSwitcher = slug === "beachvolleyball"
     && isBeachVolleyballTournamentSource(source)
     && Boolean(tbvolleyGender)
-    && (source === "volleyballworld" || source === "beachvolleyru" || source === "germanbeachtour");
+    && (
+      source === "volleyballworld"
+      || source === "beachvolleyru"
+      || source === "germanbeachtour"
+      || source === "twelvendrcsvp"
+      || source === "twelvendroevv"
+      || source === "cbv"
+      || source === "federvolley"
+    );
 
   return (
     <div className="space-y-6">
@@ -242,6 +250,44 @@ function getRefreshExtraPayload(normalization: unknown): Record<string, unknown>
     return {
       tournamentId: germanBeachTour.tournamentId,
       gender: germanBeachTour.gender,
+    };
+  }
+
+  const twelveNdr = asRecord(root?.twelveNdr);
+  if (twelveNdr) {
+    return {
+      tcode: twelveNdr.tcode,
+      timezone: twelveNdr.timezone,
+      calendarMode: twelveNdr.calendarMode,
+      gender: twelveNdr.gender,
+    };
+  }
+
+  const cbv = asRecord(root?.cbv);
+  if (cbv) {
+    return {
+      campeonatoId: cbv.campeonatoId,
+      temporadaId: cbv.temporadaId,
+      etapaId: cbv.etapaId,
+      gender: cbv.gender,
+    };
+  }
+
+  const federvolley = asRecord(root?.federvolley);
+  if (federvolley) {
+    return {
+      federvolleyNodeId: federvolley.nodeId,
+      matchshareLid: federvolley.matchshareLid,
+      category: federvolley.category,
+      gender: federvolley.gender,
+    };
+  }
+
+  const wtt = asRecord(root?.wtt);
+  if (wtt) {
+    return {
+      eventId: wtt.eventId,
+      timeZoneId: wtt.timeZoneId,
     };
   }
 

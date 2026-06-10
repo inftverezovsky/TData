@@ -16,10 +16,10 @@ import { runDltv } from "../src/lib/sources/TCyber/dltv/queue";
 import { fetchFandomTournamentCargoEvents, makeFandomPageUrl } from "../src/lib/sources/TCyber/fandom/client";
 import { dedupeTournamentMatches } from "../src/lib/matches/dedupe";
 import { expandScheduleAnnouncementsForDiscipline, isDisplayableScheduleMatch, isUploadReadyScheduleMatch } from "../src/lib/matches/scheduleView";
-import { detectTournamentSource, type TournamentSource } from "../src/lib/utils/tournamentSource";
+import type { TournamentSource } from "../src/lib/utils/tournamentSource";
 import { buildEsportsParsingDiagnostics, type EsportsParsingDiagnostics } from "../src/lib/matches/parsingDiagnostics";
 
-type AuditSource = Exclude<TournamentSource, "volleyballworld" | "beachvolleyru" | "germanbeachtour">;
+type AuditSource = Extract<TournamentSource, "liquipedia" | "hltv" | "vlr" | "dltv" | "fandom">;
 type AuditSeverity = "critical" | "warning" | "info";
 
 type AuditCandidate = {
@@ -944,12 +944,11 @@ async function buildPlatformState(candidate: AuditCandidate, tournamentId: strin
     };
   }
 
-  const source = detectTournamentSource(tournament.sourceUrl || candidate.url);
   const matches = dedupeTournamentMatches(tournament.matches);
   const uploadReadyMatches = matches.filter(isUploadReadyScheduleMatch);
   const displayableMatches = matches.filter(isDisplayableScheduleMatch);
   const displayableOnlyMatches = displayableMatches.filter((match) => !isUploadReadyScheduleMatch(match));
-  const announcements = expandScheduleAnnouncementsForDiscipline(matches, candidate.disciplineSlug, source);
+  const announcements = expandScheduleAnnouncementsForDiscipline(matches, candidate.disciplineSlug, candidate.source);
   const normalization = tournament.normalization && typeof tournament.normalization === "object" && !Array.isArray(tournament.normalization)
     ? tournament.normalization as Record<string, unknown>
     : {};

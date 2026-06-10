@@ -15,7 +15,15 @@ const navItems = [
 const tbvolleyNavItems = [
   { href: "/tbvolley/volleyballworld", label: "VolleyballWorld" },
   { href: "/tbvolley/beachvolleyru", label: "beach.volley.ru" },
-  { href: "/tbvolley/germanbeachtour", label: "German Beach Tour" }
+  { href: "/tbvolley/germanbeachtour", label: "German Beach Tour" },
+  { href: "/tbvolley/twelvendrcsvp", label: "CSVP International" },
+  { href: "/tbvolley/twelvendroevv", label: "Austrian Beach Tour" },
+  { href: "/tbvolley/cbv", label: "CBV Brasil" },
+  { href: "/tbvolley/federvolley", label: "Italy Federvolley" }
+];
+
+const tabletNavItems = [
+  { href: "/tablet/wtt", label: "WTT" }
 ];
 
 function isActivePath(pathname: string, href: string) {
@@ -30,11 +38,16 @@ function isTbvolleyPath(pathname: string) {
   return isActivePath(pathname, "/tbvolley");
 }
 
+function isTableTPath(pathname: string) {
+  return isActivePath(pathname, "/tablet");
+}
+
 export function PlatformTabs() {
   const pathname = usePathname();
   const isTcyberActive = isTcyberPath(pathname);
   const isManualImportActive = isActivePath(pathname, "/manual-import");
   const isTbvolleyActive = isTbvolleyPath(pathname);
+  const isTableTActive = isTableTPath(pathname);
   const isSettingsActive = isActivePath(pathname, "/settings");
   const isSandboxActive = isActivePath(pathname, "/sandbox");
 
@@ -77,6 +90,19 @@ export function PlatformTabs() {
         <span className="relative z-10">TBvolley</span>
         {isTbvolleyActive && (
           <span className="absolute inset-x-3 bottom-1 h-0.5 rounded-full bg-emerald-600 animate-slide-in" />
+        )}
+      </Link>
+      <Link
+        href="/tablet/wtt"
+        className={`relative shrink-0 rounded-lg px-3 py-2 text-sm font-bold transition-all duration-200 active:scale-[0.95] will-change-transform ${
+          isTableTActive
+            ? "bg-cyan-50 text-cyan-700 ring-1 ring-cyan-100 shadow-sm"
+            : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+        }`}
+      >
+        <span className="relative z-10">TableT</span>
+        {isTableTActive && (
+          <span className="absolute inset-x-3 bottom-1 h-0.5 rounded-full bg-cyan-600 animate-slide-in" />
         )}
       </Link>
       <Link
@@ -133,6 +159,35 @@ export default function Navbar() {
               <span className="relative z-10">{item.label}</span>
               {isActive && (
                 <span className="absolute inset-x-3 bottom-1 h-0.5 rounded-full bg-emerald-600 animate-slide-in" />
+              )}
+            </Link>
+          );
+        })}
+      </nav>
+    );
+  }
+
+  if (isTableTPath(pathname)) {
+    return (
+      <nav
+        aria-label="Навигация TableT"
+        className="flex min-w-0 items-center gap-1 overflow-x-auto border-t border-slate-200/70 py-2"
+      >
+        {tabletNavItems.map((item) => {
+          const isActive = isActivePath(pathname, item.href);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`relative shrink-0 rounded-lg px-3 py-2 text-sm font-bold transition-all duration-200 active:scale-[0.95] will-change-transform ${
+                isActive
+                  ? "bg-cyan-50 text-cyan-700 ring-1 ring-cyan-100 shadow-sm"
+                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+              }`}
+            >
+              <span className="relative z-10">{item.label}</span>
+              {isActive && (
+                <span className="absolute inset-x-3 bottom-1 h-0.5 rounded-full bg-cyan-600 animate-slide-in" />
               )}
             </Link>
           );

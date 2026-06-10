@@ -3,8 +3,12 @@ import { prisma } from "@/lib/db/db";
 import { dedupeTournamentMatches } from "@/lib/matches/dedupe";
 import { getNormalizer } from "@/lib/normalizers/registry";
 import { importBeachVolleyRuTournament } from "@/lib/sources/tbvolley/beach.volley.ru/importTournament";
+import { importCBVTournament } from "@/lib/sources/tbvolley/CBV/importTournament";
+import { importFedervolleyTournament } from "@/lib/sources/tbvolley/Federvolley/importTournament";
 import { importGermanBeachTourTournament } from "@/lib/sources/tbvolley/GermanBeachTour/importTournament";
+import { importTwelveNdrTournament } from "@/lib/sources/tbvolley/TwelveNdr/importTournament";
 import { importVolleyballWorldTournament } from "@/lib/sources/tbvolley/VolleyballWorld/importTournament";
+import { importWttTournament } from "@/lib/sources/tablet/WTT/importTournament";
 import { importDltvTournament } from "@/lib/sources/TCyber/dltv/importTournament";
 import { importFandomTournament } from "@/lib/sources/TCyber/fandom/importTournament";
 import { importHltvTournament } from "@/lib/sources/TCyber/hltv/importTournament";
@@ -24,7 +28,12 @@ export type TournamentImportSource =
   | "fandom"
   | "volleyballworld"
   | "beachvolleyru"
-  | "germanbeachtour";
+  | "germanbeachtour"
+  | "twelvendrcsvp"
+  | "twelvendroevv"
+  | "cbv"
+  | "federvolley"
+  | "wtt";
 
 export type ImportTournamentRequestBody = {
   pageId?: unknown;
@@ -34,6 +43,16 @@ export type ImportTournamentRequestBody = {
   tournamentNo?: unknown;
   eventId?: unknown;
   tournamentId?: unknown;
+  tcode?: unknown;
+  timezone?: unknown;
+  calendarMode?: unknown;
+  campeonatoId?: unknown;
+  temporadaId?: unknown;
+  etapaId?: unknown;
+  federvolleyNodeId?: unknown;
+  matchshareLid?: unknown;
+  category?: unknown;
+  timeZoneId?: unknown;
   gender?: unknown;
   fromDate?: unknown;
   toDate?: unknown;
@@ -171,6 +190,89 @@ export async function dispatchTournamentImport(
       };
     } catch (error) {
       return sourceError(error, "Не удалось загрузить турнир German Beach Tour", slug !== "beachvolleyball" ? 400 : 500, true);
+    }
+  }
+
+  if (source === "twelvendrcsvp" || source === "twelvendroevv") {
+    try {
+      return {
+        body: await importTwelveNdrTournament({
+          slug,
+          disciplineId: discipline.id,
+          title,
+          pageUrl,
+          source,
+          calendarMode: stringValue(body.calendarMode),
+          tcode: stringOrNumber(body.tcode),
+          timezone: stringOrNumber(body.timezone),
+          gender: stringValue(body.gender),
+          force: body.force,
+        }),
+      };
+    } catch (error) {
+      const label = source === "twelvendroevv" ? "12ndr ÖVV" : "12ndr CSVP";
+      return sourceError(error, `Не удалось загрузить турнир ${label}`, slug !== "beachvolleyball" ? 400 : 500, true);
+    }
+  }
+
+  if (source === "cbv") {
+    try {
+      return {
+        body: await importCBVTournament({
+          slug,
+          disciplineId: discipline.id,
+          title,
+          pageUrl,
+          campeonatoId: stringOrNumber(body.campeonatoId),
+          temporadaId: stringOrNumber(body.temporadaId),
+          etapaId: stringOrNumber(body.etapaId),
+          gender: stringValue(body.gender),
+          force: body.force,
+        }),
+      };
+    } catch (error) {
+      return sourceError(error, "Не удалось загрузить турнир CBV", slug !== "beachvolleyball" ? 400 : 500, true);
+    }
+  }
+
+  if (source === "federvolley") {
+    try {
+      return {
+        body: await importFedervolleyTournament({
+          slug,
+          disciplineId: discipline.id,
+          title,
+          pageUrl,
+          federvolleyNodeId: stringOrNumber(body.federvolleyNodeId),
+          matchshareLid: stringOrNumber(body.matchshareLid),
+          category: stringValue(body.category),
+          gender: stringValue(body.gender),
+          force: body.force,
+        }),
+      };
+    } catch (error) {
+      return sourceError(error, "Не удалось загрузить турнир Federvolley", slug !== "beachvolleyball" ? 400 : 500, true);
+    }
+  }
+
+  if (source === "wtt") {
+    try {
+      return {
+        body: await importWttTournament({
+          slug,
+          disciplineId: discipline.id,
+          title,
+          pageUrl,
+          eventId: stringOrNumber(body.eventId),
+          timeZoneId: stringOrNumber(body.timeZoneId),
+          fromDate: stringValue(body.fromDate),
+          toDate: stringValue(body.toDate),
+          days: stringOrNumber(body.days),
+          force: body.force,
+        }),
+      };
+    } catch (error) {
+      return sourceError(error, "Не удалось загрузить турнир WTT", slug !== "tabletennis" ? 400 : 500, true);
     }
   }
 

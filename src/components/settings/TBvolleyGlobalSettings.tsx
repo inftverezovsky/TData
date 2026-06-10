@@ -13,6 +13,15 @@ const DEFAULT_SETTINGS = {
   tbvolley_germanbeachtour_calendar_url: "https://beach.volleyball-verband.de/public/tur.php",
   tbvolley_germanbeachtour_user_agent: "TData TBvolley/1.0 (+https://beach.volleyball-verband.de/public/tur.php)",
   tbvolley_germanbeachtour_window_months: "1",
+  tbvolley_twelvendr_calendar_url: "https://fivb.12ndr.at/scripts/calendar.php",
+  tbvolley_twelvendr_tournament_url: "https://fivb.12ndr.at/scripts/tournament.php",
+  tbvolley_twelvendr_user_agent: "TData TBvolley/1.0 (+https://fivb.12ndr.at)",
+  tbvolley_cbv_api_url: "https://evolleyball.cbv.com.br/eVolleyball/api",
+  tbvolley_cbv_user_agent: "TData TBvolley/1.0 (+https://evolleyball.cbv.com.br/#!/tabelas)",
+  tbvolley_federvolley_assoluto_url: "https://beachvolley.federvolley.it/index.php/campionato-assoluto/tornei/precedenti",
+  tbvolley_federvolley_serie_url: "https://beachvolley.federvolley.it/index.php/serie-beach/tornei/precedenti",
+  tbvolley_federvolley_matchshare_url: "https://srv.matchshare.it/bvl_test/rest_api/matches/json_for_bracket",
+  tbvolley_federvolley_user_agent: "TData TBvolley/1.0 (+https://beachvolley.federvolley.it)",
   tbvolley_admin_api_url: "",
   tbvolley_sport_id: BEACH_VOLLEYBALL_ADMIN_SPORT_ID,
 };
@@ -24,6 +33,9 @@ export default function TBvolleyGlobalSettings() {
   const [isSourceOpen, setIsSourceOpen] = useState(false);
   const [isBeachVolleyRuOpen, setIsBeachVolleyRuOpen] = useState(false);
   const [isGermanBeachTourOpen, setIsGermanBeachTourOpen] = useState(false);
+  const [isTwelveNdrOpen, setIsTwelveNdrOpen] = useState(false);
+  const [isCBVOpen, setIsCBVOpen] = useState(false);
+  const [isFedervolleyOpen, setIsFedervolleyOpen] = useState(false);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
@@ -208,6 +220,159 @@ export default function TBvolleyGlobalSettings() {
                 value={settings.tbvolley_germanbeachtour_window_months}
                 isEditing={isEditing}
                 onChange={(val) => setSettings({ ...settings, tbvolley_germanbeachtour_window_months: val.replace(/[^\d]/g, "") })}
+              />
+            </dl>
+          </div>
+        </div>
+      </section>
+
+      <section className="premium-card overflow-hidden transition-all duration-500">
+        <div
+          className="flex cursor-pointer items-center justify-between p-8 transition-colors hover:bg-slate-50/50"
+          onClick={() => !isEditing && setIsTwelveNdrOpen(!isTwelveNdrOpen)}
+        >
+          <div className="flex items-center gap-4">
+            <div className={`flex h-10 w-10 items-center justify-center rounded-2xl transition-all ${isTwelveNdrOpen ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" : "bg-slate-100 text-slate-400"}`}>
+              <svg className={`h-6 w-6 transition-transform duration-500 ${isTwelveNdrOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+            <div>
+              <h2 className="text-2xl font-black tracking-tight text-slate-900">TBvolley: 12ndr CSVP / ÖVV</h2>
+              <p className="mt-0.5 text-xs font-bold text-slate-500">Календарь CSVP International и Austrian Beach Tour на общей платформе 12ndr</p>
+            </div>
+          </div>
+
+          <EditActions isEditing={isEditing} saving={saving} onEdit={() => { setIsEditing(true); setIsTwelveNdrOpen(true); }} onCancel={() => setIsEditing(false)} onSave={handleSave} />
+        </div>
+
+        <div className={`overflow-hidden transition-all duration-500 ease-in-out ${isTwelveNdrOpen ? "max-h-[1200px] opacity-100" : "max-h-0 opacity-0"}`}>
+          <div className="space-y-6 p-8 pt-0">
+            <div className="mb-8 h-px bg-slate-100" />
+
+            <dl className="grid gap-6">
+              <SettingsRow
+                label="12ndr Calendar API"
+                name="tbvolley_twelvendr_calendar_url"
+                value={settings.tbvolley_twelvendr_calendar_url}
+                isEditing={isEditing}
+                onChange={(val) => setSettings({ ...settings, tbvolley_twelvendr_calendar_url: val })}
+              />
+              <SettingsRow
+                label="12ndr Tournament API"
+                name="tbvolley_twelvendr_tournament_url"
+                value={settings.tbvolley_twelvendr_tournament_url}
+                isEditing={isEditing}
+                onChange={(val) => setSettings({ ...settings, tbvolley_twelvendr_tournament_url: val })}
+              />
+              <SettingsRow
+                label="User-Agent"
+                name="tbvolley_twelvendr_user_agent"
+                value={settings.tbvolley_twelvendr_user_agent}
+                isEditing={isEditing}
+                onChange={(val) => setSettings({ ...settings, tbvolley_twelvendr_user_agent: val })}
+              />
+            </dl>
+          </div>
+        </div>
+      </section>
+
+      <section className="premium-card overflow-hidden transition-all duration-500">
+        <div
+          className="flex cursor-pointer items-center justify-between p-8 transition-colors hover:bg-slate-50/50"
+          onClick={() => !isEditing && setIsCBVOpen(!isCBVOpen)}
+        >
+          <div className="flex items-center gap-4">
+            <div className={`flex h-10 w-10 items-center justify-center rounded-2xl transition-all ${isCBVOpen ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" : "bg-slate-100 text-slate-400"}`}>
+              <svg className={`h-6 w-6 transition-transform duration-500 ${isCBVOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+            <div>
+              <h2 className="text-2xl font-black tracking-tight text-slate-900">TBvolley: CBV Brasil</h2>
+              <p className="mt-0.5 text-xs font-bold text-slate-500">JSON API eVolleyball CBV для взрослой серии CBVP ADULTO</p>
+            </div>
+          </div>
+
+          <EditActions isEditing={isEditing} saving={saving} onEdit={() => { setIsEditing(true); setIsCBVOpen(true); }} onCancel={() => setIsEditing(false)} onSave={handleSave} />
+        </div>
+
+        <div className={`overflow-hidden transition-all duration-500 ease-in-out ${isCBVOpen ? "max-h-[1200px] opacity-100" : "max-h-0 opacity-0"}`}>
+          <div className="space-y-6 p-8 pt-0">
+            <div className="mb-8 h-px bg-slate-100" />
+
+            <dl className="grid gap-6">
+              <SettingsRow
+                label="CBV API Base"
+                name="tbvolley_cbv_api_url"
+                value={settings.tbvolley_cbv_api_url}
+                isEditing={isEditing}
+                onChange={(val) => setSettings({ ...settings, tbvolley_cbv_api_url: val })}
+              />
+              <SettingsRow
+                label="User-Agent"
+                name="tbvolley_cbv_user_agent"
+                value={settings.tbvolley_cbv_user_agent}
+                isEditing={isEditing}
+                onChange={(val) => setSettings({ ...settings, tbvolley_cbv_user_agent: val })}
+              />
+            </dl>
+          </div>
+        </div>
+      </section>
+
+      <section className="premium-card overflow-hidden transition-all duration-500">
+        <div
+          className="flex cursor-pointer items-center justify-between p-8 transition-colors hover:bg-slate-50/50"
+          onClick={() => !isEditing && setIsFedervolleyOpen(!isFedervolleyOpen)}
+        >
+          <div className="flex items-center gap-4">
+            <div className={`flex h-10 w-10 items-center justify-center rounded-2xl transition-all ${isFedervolleyOpen ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" : "bg-slate-100 text-slate-400"}`}>
+              <svg className={`h-6 w-6 transition-transform duration-500 ${isFedervolleyOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+            <div>
+              <h2 className="text-2xl font-black tracking-tight text-slate-900">TBvolley: Federvolley Italy</h2>
+              <p className="mt-0.5 text-xs font-bold text-slate-500">Drupal-листинги Assoluto/Serie Beach и Matchshare bracket endpoint</p>
+            </div>
+          </div>
+
+          <EditActions isEditing={isEditing} saving={saving} onEdit={() => { setIsEditing(true); setIsFedervolleyOpen(true); }} onCancel={() => setIsEditing(false)} onSave={handleSave} />
+        </div>
+
+        <div className={`overflow-hidden transition-all duration-500 ease-in-out ${isFedervolleyOpen ? "max-h-[1400px] opacity-100" : "max-h-0 opacity-0"}`}>
+          <div className="space-y-6 p-8 pt-0">
+            <div className="mb-8 h-px bg-slate-100" />
+
+            <dl className="grid gap-6">
+              <SettingsRow
+                label="Assoluto Listing"
+                name="tbvolley_federvolley_assoluto_url"
+                value={settings.tbvolley_federvolley_assoluto_url}
+                isEditing={isEditing}
+                onChange={(val) => setSettings({ ...settings, tbvolley_federvolley_assoluto_url: val })}
+              />
+              <SettingsRow
+                label="Serie Beach Listing"
+                name="tbvolley_federvolley_serie_url"
+                value={settings.tbvolley_federvolley_serie_url}
+                isEditing={isEditing}
+                onChange={(val) => setSettings({ ...settings, tbvolley_federvolley_serie_url: val })}
+              />
+              <SettingsRow
+                label="Matchshare API"
+                name="tbvolley_federvolley_matchshare_url"
+                value={settings.tbvolley_federvolley_matchshare_url}
+                isEditing={isEditing}
+                onChange={(val) => setSettings({ ...settings, tbvolley_federvolley_matchshare_url: val })}
+              />
+              <SettingsRow
+                label="User-Agent"
+                name="tbvolley_federvolley_user_agent"
+                value={settings.tbvolley_federvolley_user_agent}
+                isEditing={isEditing}
+                onChange={(val) => setSettings({ ...settings, tbvolley_federvolley_user_agent: val })}
               />
             </dl>
           </div>

@@ -49,6 +49,10 @@ export async function getOrCreateDiscipline(slug: string) {
       name = "Beach Volleyball";
       baseApiUrl = "https://en.volleyballworld.com/api/v1/globalschedule";
       break;
+    case "tabletennis":
+      name = "Table Tennis";
+      baseApiUrl = "https://www.worldtabletennis.com/eventslist";
+      break;
     default:
       name = slug.charAt(0).toUpperCase() + slug.slice(1);
       baseApiUrl = `https://liquipedia.net/${normalizedSlug}/api.php`;

@@ -285,6 +285,10 @@ test("all sourced TBD-vs-TBD slots render as one stage announcement", () => {
     ["beachvolleyball", "volleyballworld"],
     ["beachvolleyball", "beachvolleyru"],
     ["beachvolleyball", "germanbeachtour"],
+    ["beachvolleyball", "twelvendrcsvp"],
+    ["beachvolleyball", "twelvendroevv"],
+    ["beachvolleyball", "cbv"],
+    ["beachvolleyball", "federvolley"],
   ] as const;
 
   for (const [disciplineSlug, source] of cases) {
@@ -350,7 +354,7 @@ test("VolleyballWorld winner/loser placeholders render as one stage announcement
 });
 
 test("beach volleyball winner placeholders with one known team render as stage announcements", () => {
-  for (const source of ["volleyballworld", "beachvolleyru", "germanbeachtour"] as const) {
+  for (const source of ["volleyballworld", "beachvolleyru", "germanbeachtour", "twelvendrcsvp", "twelvendroevv", "cbv", "federvolley"] as const) {
     const matches = [
       {
         id: `${source}-winner-team-b-row`,
@@ -995,6 +999,10 @@ test("Draw vs Draw rows render as stage announcements across stage-aware sources
     ["beachvolleyball", "volleyballworld"],
     ["beachvolleyball", "beachvolleyru"],
     ["beachvolleyball", "germanbeachtour"],
+    ["beachvolleyball", "twelvendrcsvp"],
+    ["beachvolleyball", "twelvendroevv"],
+    ["beachvolleyball", "cbv"],
+    ["beachvolleyball", "federvolley"],
   ] as const;
 
   for (const [disciplineSlug, source] of cases) {

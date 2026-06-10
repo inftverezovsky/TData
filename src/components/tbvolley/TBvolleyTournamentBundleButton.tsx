@@ -9,7 +9,7 @@ import { getLiquipediaUserMessage } from "@/lib/sources/TCyber/liquipedia/userFa
 type BundleItem = {
   title: string;
   pageUrl: string;
-  source: Extract<TournamentSource, "volleyballworld" | "beachvolleyru" | "germanbeachtour">;
+  source: Extract<TournamentSource, "volleyballworld" | "beachvolleyru" | "germanbeachtour" | "twelvendrcsvp" | "twelvendroevv" | "cbv" | "federvolley">;
   extraPayload?: Record<string, unknown>;
 };
 

@@ -22,6 +22,38 @@ test("TBvolley settings use one beach volleyball sport id for men and women scop
   }
 });
 
+test("TableT settings use isolated admin API and sport id", () => {
+  const settings = resolveAdminSettingsFromData(
+    "tabletennis",
+    null,
+    {
+      admin_api_url: "https://admin.test/global",
+      admin_sport_id: "999",
+      tablet_admin_api_url: "https://admin.test/tablet",
+      tablet_sport_id: "46",
+    },
+  );
+
+  assert.equal(settings.apiUrl, "https://admin.test/tablet");
+  assert.equal(settings.adminSportId, "46");
+});
+
+test("TableT settings leave sport id empty when unset", () => {
+  const settings = resolveAdminSettingsFromData(
+    "tabletennis",
+    null,
+    {
+      admin_api_url: "https://admin.test/global",
+      admin_sport_id: "999",
+      tablet_admin_api_url: "https://admin.test/tablet",
+      tablet_sport_id: "",
+    },
+  );
+
+  assert.equal(settings.apiUrl, "https://admin.test/tablet");
+  assert.equal(settings.adminSportId, null);
+});
+
 test("TBvolley tournament mapping scope follows beach volleyball source gender", () => {
   assert.equal(
     resolveTournamentTeamMappingDisciplineSlug("beachvolleyball", {
@@ -56,6 +88,24 @@ test("TBvolley tournament mapping scope follows beach volleyball source gender",
   assert.equal(
     resolveTournamentTeamMappingDisciplineSlug("beachvolleyball", {
       germanBeachTour: { gender: "women" },
+    }),
+    "beachvolleyball-women",
+  );
+  assert.equal(
+    resolveTournamentTeamMappingDisciplineSlug("beachvolleyball", {
+      twelveNdr: { gender: "men" },
+    }),
+    "beachvolleyball-men",
+  );
+  assert.equal(
+    resolveTournamentTeamMappingDisciplineSlug("beachvolleyball", {
+      cbv: { gender: "women" },
+    }),
+    "beachvolleyball-women",
+  );
+  assert.equal(
+    resolveTournamentTeamMappingDisciplineSlug("beachvolleyball", {
+      federvolley: { gender: "women" },
     }),
     "beachvolleyball-women",
   );
@@ -108,4 +158,76 @@ test("TBvolley cached gender switch groups German Beach Tour by visible tourname
   };
 
   assert.equal(selectCachedTBvolleyGenderTournament(current, [women], "women")?.id, "gbt-women");
+});
+
+test("TBvolley cached gender switch groups 12ndr by visible tournament", () => {
+  const current = {
+    id: "12ndr-men",
+    sourceTitle: "CSVP Lima — Men [12NDR-CSVP:M1CSVP26]",
+    sourceUrl: "https://fivb.12ndr.at/tournament?tcode=M1CSVP26&timezone=14",
+    name: "CSVP Lima — Мужчины",
+    startDate: "2026-05-03T00:00:00.000Z",
+    endDate: "2026-05-06T00:00:00.000Z",
+    location: "Lima",
+    formatText: "Beach Volleyball · CSVP",
+    normalization: { twelveNdr: { source: "twelvendrcsvp", tcode: "M1CSVP26", calendarMode: "csvp", gender: "men", type: "CSVP" } },
+  };
+  const women = {
+    ...current,
+    id: "12ndr-women",
+    sourceTitle: "CSVP Lima — Women [12NDR-CSVP:F1CSVP26]",
+    sourceUrl: "https://fivb.12ndr.at/tournament?tcode=F1CSVP26&timezone=14",
+    name: "CSVP Lima — Женщины",
+    normalization: { twelveNdr: { source: "twelvendrcsvp", tcode: "F1CSVP26", calendarMode: "csvp", gender: "women", type: "CSVP" } },
+  };
+
+  assert.equal(selectCachedTBvolleyGenderTournament(current, [women], "women")?.id, "12ndr-women");
+});
+
+test("TBvolley cached gender switch groups CBV by visible etapa", () => {
+  const current = {
+    id: "cbv-men",
+    sourceTitle: "CBVP ADULTO - Brasilia — Men [CBV:37:23:950]",
+    sourceUrl: "https://evolleyball.cbv.com.br/#!/tabelas?campeonatoId=37&temporadaId=23&etapaId=950",
+    name: "CBVP ADULTO - Brasilia — Мужчины",
+    startDate: "2026-04-02T00:00:00.000Z",
+    endDate: "2026-04-06T00:00:00.000Z",
+    location: "Brasilia/DF",
+    formatText: "Beach Volleyball · CBV · ADULTO",
+    normalization: { cbv: { campeonatoId: "37", temporadaId: "23", etapaId: "950", gender: "men", category: "ADULTO", championship: "CBVP ADULTO" } },
+  };
+  const women = {
+    ...current,
+    id: "cbv-women",
+    sourceTitle: "CBVP ADULTO - Brasilia — Women [CBV:38:23:951]",
+    sourceUrl: "https://evolleyball.cbv.com.br/#!/tabelas?campeonatoId=38&temporadaId=23&etapaId=951",
+    name: "CBVP ADULTO - Brasilia — Женщины",
+    normalization: { cbv: { campeonatoId: "38", temporadaId: "23", etapaId: "951", gender: "women", category: "ADULTO", championship: "CBVP ADULTO" } },
+  };
+
+  assert.equal(selectCachedTBvolleyGenderTournament(current, [women], "women")?.id, "cbv-women");
+});
+
+test("TBvolley cached gender switch groups Federvolley by visible tournament", () => {
+  const current = {
+    id: "fipav-men",
+    sourceTitle: "Campionato Italiano Assoluto - Finale - Caorle — Men [FIPAV:assoluto:66744:11518]",
+    sourceUrl: "https://beachvolley.federvolley.it/index.php/node/66744",
+    name: "Campionato Italiano Assoluto - Finale - Caorle — Мужчины",
+    startDate: "2026-09-04T00:00:00.000Z",
+    endDate: "2026-09-06T00:00:00.000Z",
+    location: "Caorle",
+    formatText: "Beach Volleyball · Federvolley · Campionato Assoluto",
+    normalization: { federvolley: { nodeId: "66744", matchshareLid: "11518", category: "assoluto", gender: "men" } },
+  };
+  const women = {
+    ...current,
+    id: "fipav-women",
+    sourceTitle: "Campionato Italiano Assoluto - Finale - Caorle — Women [FIPAV:assoluto:66745:11519]",
+    sourceUrl: "https://beachvolley.federvolley.it/index.php/node/66745",
+    name: "Campionato Italiano Assoluto - Finale - Caorle — Женщины",
+    normalization: { federvolley: { nodeId: "66745", matchshareLid: "11519", category: "assoluto", gender: "women" } },
+  };
+
+  assert.equal(selectCachedTBvolleyGenderTournament(current, [women], "women")?.id, "fipav-women");
 });

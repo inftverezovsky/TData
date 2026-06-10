@@ -586,7 +586,7 @@ function resolveTournamentStatus(startDate: string | null, endDate: string | nul
 
 function isGermanBeachTourTournamentInUpcomingWindow(tournament: GermanBeachTourTournament, window: GermanBeachTourUpcomingWindow) {
   if (!tournament.startDate) return false;
-  if (tournament.status !== "upcoming") return false;
+  if (tournament.endDate && tournament.endDate < window.fromDate) return false;
   return tournament.startDate >= window.fromDate && tournament.startDate <= window.toDate;
 }
 

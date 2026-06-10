@@ -10,6 +10,7 @@ type KnownDisciplineOption =
   | "leagueoflegends"
   | "beachvolleyball-men"
   | "beachvolleyball-women"
+  | "tabletennis"
   | "custom";
 
 const DISCIPLINE_OPTIONS: Array<{ value: KnownDisciplineOption; label: string }> = [
@@ -19,6 +20,7 @@ const DISCIPLINE_OPTIONS: Array<{ value: KnownDisciplineOption; label: string }>
   { value: "leagueoflegends", label: "League of Legends" },
   { value: "beachvolleyball-men", label: "Пляжный волейбол (м)" },
   { value: "beachvolleyball-women", label: "Пляжный волейбол (ж)" },
+  { value: "tabletennis", label: "Table Tennis" },
   { value: "custom", label: "Другая" },
 ];
 

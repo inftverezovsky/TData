@@ -3,6 +3,7 @@ import {
   BEACH_VOLLEYBALL_ADMIN_SPORT_ID,
   isBeachVolleyballScopeSlug,
 } from "@/lib/sources/tbvolley/config";
+import { isTableTennisScopeSlug } from "@/lib/sources/tablet/config";
 
 export interface ResolvedAdminSettings {
   apiUrl: string | null;
@@ -41,17 +42,20 @@ export function resolveAdminSettingsFromData(
   globalSettings: Record<string, string | null | undefined>,
 ): ResolvedAdminSettings {
   const isBeachVolleyball = isBeachVolleyballScopeSlug(disciplineSlug);
+  const isTableTennis = isTableTennisScopeSlug(disciplineSlug);
   const tbvolleySportId = cleanSetting(globalSettings.tbvolley_sport_id)
     || BEACH_VOLLEYBALL_ADMIN_SPORT_ID;
 
   return {
     apiUrl: cleanSetting(disciplineSettings?.apiUrl)
       || (isBeachVolleyball ? cleanSetting(globalSettings.tbvolley_admin_api_url) : null)
+      || (isTableTennis ? cleanSetting(globalSettings.tablet_admin_api_url) : null)
       || cleanSetting(globalSettings.admin_api_url)
       || null,
     adminSportId: cleanSetting(disciplineSettings?.adminSportId)
       || (isBeachVolleyball ? tbvolleySportId : null)
-      || cleanSetting(globalSettings.admin_sport_id)
+      || (isTableTennis ? cleanSetting(globalSettings.tablet_sport_id) || null : null)
+      || (isTableTennis ? null : cleanSetting(globalSettings.admin_sport_id))
       || null,
     adminMax: cleanSetting(disciplineSettings?.adminMax) || cleanSetting(globalSettings.admin_max) || '5000',
     defaultShapkaId: disciplineSettings?.defaultShapkaId || null,

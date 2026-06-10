@@ -41,21 +41,40 @@ export function selectCachedTBvolleyGenderTournament(
       return sameVisibleTournament(currentIdentity, candidateIdentity);
     }
 
+    if (currentIdentity.source === "twelvendrcsvp" || currentIdentity.source === "twelvendroevv") {
+      return sameVisibleTournament(currentIdentity, candidateIdentity);
+    }
+
+    if (currentIdentity.source === "cbv") {
+      return Boolean(currentIdentity.categoryKey && currentIdentity.categoryKey === candidateIdentity.categoryKey)
+        && sameVisibleTournament(currentIdentity, candidateIdentity);
+    }
+
+    if (currentIdentity.source === "federvolley") {
+      return Boolean(currentIdentity.categoryKey && currentIdentity.categoryKey === candidateIdentity.categoryKey)
+        && sameVisibleTournament(currentIdentity, candidateIdentity);
+    }
+
     return false;
   }) || null;
 }
 
 type TBvolleyCachedTournamentIdentity = {
-  source: Extract<TournamentSource, "volleyballworld" | "beachvolleyru" | "germanbeachtour">;
+  source: Extract<TournamentSource, "volleyballworld" | "beachvolleyru" | "germanbeachtour" | "twelvendrcsvp" | "twelvendroevv" | "cbv" | "federvolley">;
   gender: BeachVolleyballGender;
   titleKey: string;
   locationKey: string;
   startDateKey: string;
   endDateKey: string;
   formatKey: string;
+  categoryKey: string;
   eventId: string;
   tournamentId: string;
   tournamentNo: string;
+  tcode: string;
+  etapaId: string;
+  federvolleyNodeId: string;
+  matchshareLid: string;
 };
 
 function buildTBvolleyCachedTournamentIdentity(tournament: TBvolleyCachedTournament): TBvolleyCachedTournamentIdentity | null {
@@ -63,14 +82,23 @@ function buildTBvolleyCachedTournamentIdentity(tournament: TBvolleyCachedTournam
   const volleyballWorld = asRecord(root?.volleyballWorld);
   const beachVolleyRu = asRecord(root?.beachVolleyRu);
   const germanBeachTour = asRecord(root?.germanBeachTour);
-  const source = resolveSource(tournament, volleyballWorld, beachVolleyRu, germanBeachTour);
+  const twelveNdr = asRecord(root?.twelveNdr);
+  const cbv = asRecord(root?.cbv);
+  const federvolley = asRecord(root?.federvolley);
+  const source = resolveSource(tournament, volleyballWorld, beachVolleyRu, germanBeachTour, twelveNdr, cbv, federvolley);
   if (!source) return null;
 
   const sourceNormalization = source === "volleyballworld"
     ? volleyballWorld
     : source === "beachvolleyru"
       ? beachVolleyRu
-      : germanBeachTour;
+      : source === "germanbeachtour"
+        ? germanBeachTour
+        : source === "cbv"
+          ? cbv
+          : source === "federvolley"
+            ? federvolley
+            : twelveNdr;
   const gender = normalizeBeachVolleyballGender(sourceNormalization?.gender);
   if (!gender) return null;
 
@@ -82,9 +110,14 @@ function buildTBvolleyCachedTournamentIdentity(tournament: TBvolleyCachedTournam
     startDateKey: toDateKey(tournament.startDate),
     endDateKey: toDateKey(tournament.endDate),
     formatKey: normalizeText(readString(sourceNormalization?.subCompetitionType) || readString(sourceNormalization?.type) || readString(sourceNormalization?.kind) || tournament.formatText),
+    categoryKey: normalizeText(readString(sourceNormalization?.category) || readString(sourceNormalization?.championship) || readString(sourceNormalization?.calendarMode)),
     eventId: readString(beachVolleyRu?.eventId),
     tournamentId: readString(germanBeachTour?.tournamentId),
     tournamentNo: readString(volleyballWorld?.tournamentNo),
+    tcode: readString(twelveNdr?.tcode),
+    etapaId: readString(cbv?.etapaId),
+    federvolleyNodeId: readString(federvolley?.nodeId),
+    matchshareLid: readString(federvolley?.matchshareLid),
   };
 }
 
@@ -104,18 +137,35 @@ function resolveSource(
   volleyballWorld: Record<string, unknown> | null,
   beachVolleyRu: Record<string, unknown> | null,
   germanBeachTour: Record<string, unknown> | null,
+  twelveNdr: Record<string, unknown> | null,
+  cbv: Record<string, unknown> | null,
+  federvolley: Record<string, unknown> | null,
 ): TBvolleyCachedTournamentIdentity["source"] | null {
   const detected = detectTournamentSource(tournament.sourceUrl);
-  if (detected === "volleyballworld" || detected === "beachvolleyru" || detected === "germanbeachtour") return detected;
+  if ((detected === "twelvendrcsvp" || detected === "twelvendroevv") && twelveNdr) {
+    return readString(twelveNdr.source) === "twelvendroevv" ? "twelvendroevv" : "twelvendrcsvp";
+  }
+  if (
+    detected === "volleyballworld"
+    || detected === "beachvolleyru"
+    || detected === "germanbeachtour"
+    || detected === "twelvendrcsvp"
+    || detected === "twelvendroevv"
+    || detected === "cbv"
+    || detected === "federvolley"
+  ) return detected;
   if (volleyballWorld) return "volleyballworld";
   if (beachVolleyRu) return "beachvolleyru";
   if (germanBeachTour) return "germanbeachtour";
+  if (twelveNdr) return readString(twelveNdr.source) === "twelvendroevv" ? "twelvendroevv" : "twelvendrcsvp";
+  if (cbv) return "cbv";
+  if (federvolley) return "federvolley";
   return null;
 }
 
 function stripGenderSuffix(value: string | null | undefined) {
   return String(value || "")
-    .replace(/\s*\[(?:VW|BVRU|GBT):[^\]]+]\s*$/i, "")
+    .replace(/\s*\[(?:VW|BVRU|GBT|CBV|FIPAV|12NDR-(?:CSVP|OEVV)):[^\]]+]\s*$/i, "")
     .replace(/\s+—\s*(?:Men|Women|Мужчины|Женщины)\s*$/i, "")
     .trim();
 }

@@ -37,6 +37,26 @@ test("detectTournamentSource detects German Beach Tour URLs", () => {
   assert.equal(detectTournamentSource("https://beach.volleyball-verband.de/public/tur-show.php?id=14684"), "germanbeachtour");
 });
 
+test("detectTournamentSource detects 12ndr CSVP and ÖVV URLs", () => {
+  assert.equal(detectTournamentSource("https://fivb.12ndr.at/?season=2026&international=int"), "twelvendrcsvp");
+  assert.equal(detectTournamentSource("https://fivb.12ndr.at/oevv?season=2026"), "twelvendroevv");
+  assert.equal(detectTournamentSource("CSVP — Women [12NDR-CSVP:F3CSVP26]"), "twelvendrcsvp");
+  assert.equal(detectTournamentSource("ÖVV — Men [12NDR-OEVV:M1AUT26]"), "twelvendroevv");
+});
+
+test("detectTournamentSource detects CBV and Federvolley URLs", () => {
+  assert.equal(detectTournamentSource("https://evolleyball.cbv.com.br/#!/tabelas?etapaId=950"), "cbv");
+  assert.equal(detectTournamentSource("CBVP ADULTO [CBV:37:23:950]"), "cbv");
+  assert.equal(detectTournamentSource("https://beachvolley.federvolley.it/index.php/node/66744"), "federvolley");
+  assert.equal(detectTournamentSource("https://srv.matchshare.it/bvl_test/bracket.php?lid=11518&client_name=bvl_development"), "federvolley");
+  assert.equal(detectTournamentSource("Caorle [FIPAV:assoluto:66744:11518]"), "federvolley");
+});
+
+test("detectTournamentSource detects WTT URLs", () => {
+  assert.equal(detectTournamentSource("https://www.worldtabletennis.com/eventInfo?eventId=3031"), "wtt");
+  assert.equal(detectTournamentSource("WTT Contender [WTT:3031]"), "wtt");
+});
+
 test("detectTournamentSource defaults to Liquipedia", () => {
   assert.equal(detectTournamentSource("https://liquipedia.net/counterstrike/PGL/2026/Astana"), "liquipedia");
   assert.equal(detectTournamentSource(null), "liquipedia");
@@ -50,11 +70,16 @@ test("getTournamentSourceLabel returns user-facing labels", () => {
   assert.equal(getTournamentSourceLabel("volleyballworld"), "Источник: VolleyballWorld");
   assert.equal(getTournamentSourceLabel("beachvolleyru"), "Источник: beach.volley.ru");
   assert.equal(getTournamentSourceLabel("germanbeachtour"), "Источник: German Beach Tour");
+  assert.equal(getTournamentSourceLabel("twelvendrcsvp"), "Источник: 12ndr CSVP");
+  assert.equal(getTournamentSourceLabel("twelvendroevv"), "Источник: 12ndr ÖVV");
+  assert.equal(getTournamentSourceLabel("cbv"), "Источник: CBV");
+  assert.equal(getTournamentSourceLabel("federvolley"), "Источник: Federvolley");
+  assert.equal(getTournamentSourceLabel("wtt"), "Источник: WTT");
   assert.equal(getTournamentSourceLabel("liquipedia"), "Источник: Liquipedia");
 });
 
 test("supportsStageAnnouncements includes placeholder-slot sources", () => {
-  for (const source of ["liquipedia", "hltv", "vlr", "dltv", "fandom", "volleyballworld", "beachvolleyru", "germanbeachtour"] as const) {
+  for (const source of ["liquipedia", "hltv", "vlr", "dltv", "fandom", "volleyballworld", "beachvolleyru", "germanbeachtour", "twelvendrcsvp", "twelvendroevv", "cbv", "federvolley", "wtt"] as const) {
     assert.equal(supportsStageAnnouncements(source), true, source);
   }
   assert.equal(supportsStageAnnouncements(null), false);
@@ -63,7 +88,7 @@ test("supportsStageAnnouncements includes placeholder-slot sources", () => {
 test("source provider registry contains all known tournament sources", () => {
   assert.deepEqual(
     sourceProviders.map((provider) => provider.id),
-    ["liquipedia", "hltv", "vlr", "dltv", "fandom", "volleyballworld", "beachvolleyru", "germanbeachtour"],
+    ["liquipedia", "hltv", "vlr", "dltv", "fandom", "volleyballworld", "beachvolleyru", "germanbeachtour", "twelvendroevv", "twelvendrcsvp", "cbv", "federvolley", "wtt"],
   );
 
   for (const provider of sourceProviders) {

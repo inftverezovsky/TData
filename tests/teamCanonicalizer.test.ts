@@ -175,7 +175,7 @@ test("collectTournamentTeamNames exposes sourced stage announcements instead of 
 });
 
 test("collectTournamentTeamNames exposes beach placeholder stages instead of winner placeholders", () => {
-  for (const source of ["volleyballworld", "beachvolleyru", "germanbeachtour"] as const) {
+  for (const source of ["volleyballworld", "beachvolleyru", "germanbeachtour", "twelvendrcsvp", "twelvendroevv", "cbv", "federvolley"] as const) {
     const names = collectTournamentTeamNames({
       disciplineSlug: "beachvolleyball",
       source,

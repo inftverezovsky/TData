@@ -14,16 +14,24 @@ export type TournamentSource =
   | "fandom"
   | "volleyballworld"
   | "beachvolleyru"
-  | "germanbeachtour";
+  | "germanbeachtour"
+  | "twelvendrcsvp"
+  | "twelvendroevv"
+  | "cbv"
+  | "federvolley"
+  | "wtt";
 
 export function detectTournamentSource(pageUrl?: string | null): TournamentSource {
   if (!pageUrl) return "liquipedia";
+
+  const providerByText = findSourceProviderByUrlText(pageUrl);
+  if (providerByText) return providerByText.id;
 
   try {
     const host = new URL(pageUrl).hostname.toLowerCase();
     return findSourceProviderByHostname(host)?.id ?? "liquipedia";
   } catch {
-    return findSourceProviderByUrlText(pageUrl)?.id ?? "liquipedia";
+    return "liquipedia";
   }
 }
 
