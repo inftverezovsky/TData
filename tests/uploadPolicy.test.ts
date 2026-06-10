@@ -58,6 +58,14 @@ test("resolveUploadPolicyPreMappingSkip rejects non-uploadable rows before team 
     "finished-or-scored",
   );
 
+  assert.equal(
+    resolveUploadPolicyPreMappingSkip({
+      matchDate: "2026-06-01T10:00:00Z",
+      status: "Official",
+    })?.reason,
+    "finished-or-scored",
+  );
+
   assert.equal(resolveUploadPolicyPreMappingSkip({ matchDate: "2026-06-01T10:00:00Z" }), null);
 });
 

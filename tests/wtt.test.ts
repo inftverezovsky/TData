@@ -296,6 +296,57 @@ test("WTT schedule normalization extracts teams, stage, court and placeholders",
   assert.equal(schedule.summary.finished, 1);
 });
 
+test("WTT finished duplicate rows override stale scheduled rows", () => {
+  const schedule = normalizeWttSchedule(
+    [
+      {
+        Competition: {
+          Unit: [
+            {
+              Code: "DUP001",
+              StartDate: "2026-06-10T10:00:00",
+              ScheduleStatus: "Scheduled",
+              SubEvent: "Men's Singles",
+              VenueDescription: { LocationName: "Table 1" },
+              StartList: {
+                Start: [
+                  { SortOrder: 1, Competitor: { Description: { TeamName: "Alpha" } } },
+                  { SortOrder: 2, Competitor: { Description: { TeamName: "Beta" } } },
+                ],
+              },
+            },
+          ],
+        },
+      },
+      {
+        Competition: {
+          Unit: [
+            {
+              Code: "DUP001",
+              StartDate: "2026-06-10T10:00:00",
+              ScheduleStatus: "Official",
+              SubEvent: "Men's Singles",
+              VenueDescription: { LocationName: "Table 1" },
+              StartList: {
+                Start: [
+                  { SortOrder: 1, Competitor: { Description: { TeamName: "Alpha" } } },
+                  { SortOrder: 2, Competitor: { Description: { TeamName: "Beta" } } },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    ],
+    { eventId: 3240, timeZoneId: 49 },
+  );
+
+  assert.equal(schedule.matches.length, 1);
+  assert.equal(schedule.matches[0].status, "finished");
+  assert.equal(schedule.summary.upcoming, 0);
+  assert.equal(schedule.summary.finished, 1);
+});
+
 test("WTT scheduled rows stay upcoming even when actual timestamps are present", () => {
   const schedule = normalizeWttSchedule(
     [

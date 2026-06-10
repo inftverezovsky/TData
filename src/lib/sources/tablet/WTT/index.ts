@@ -802,8 +802,9 @@ function buildCompositionName(athletes: SourceWttAthlete[] | null | undefined) {
 function resolveWttMatchStatus(unit: SourceWttUnit): WttMatchStatus {
   const status = clean(unit.ScheduleStatus).toLowerCase();
   if (/\b(?:intermediate|live|running|in progress)\b/i.test(status)) return "live";
+  if (hasWttResult(unit.Result) || /\b(?:official|finished|complete|completed|result)\b/i.test(status)) return "finished";
   if (/\b(?:scheduled|getting_ready|not started|upcoming)\b/i.test(status)) return "upcoming";
-  if (unit.ActualEndDate || hasWttResult(unit.Result) || /\b(?:official|finished|complete|completed|result)\b/i.test(status)) return "finished";
+  if (unit.ActualEndDate) return "finished";
   return "upcoming";
 }
 
@@ -816,7 +817,20 @@ function hasWttResult(value: unknown): boolean {
 }
 
 function pickPreferredWttMatch(left: WttMatch, right: WttMatch) {
+  const statusDiff = getWttStatusPriority(right.status) - getWttStatusPriority(left.status);
+  if (statusDiff !== 0) return statusDiff > 0 ? right : left;
   return scoreWttMatch(right) > scoreWttMatch(left) ? right : left;
+}
+
+function getWttStatusPriority(status: WttMatchStatus) {
+  switch (status) {
+    case "finished":
+      return 3;
+    case "live":
+      return 2;
+    case "upcoming":
+      return 1;
+  }
 }
 
 function scoreWttMatch(match: WttMatch) {

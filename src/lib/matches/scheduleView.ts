@@ -23,6 +23,7 @@ export type ScheduleViewMatch = {
   sourceUrl?: string | null;
   scoreA?: number | null;
   scoreB?: number | null;
+  status?: string | null;
   teamAName?: string | null;
   teamBName?: string | null;
   hasPlaceholderTeams?: boolean | null;
@@ -70,7 +71,7 @@ export function isGeneratedScheduleMatrixRow(match: ScheduleViewMatch) {
 export function isUploadReadyScheduleMatch(match: ScheduleViewMatch) {
   if (isGeneratedScheduleMatrixRow(match)) return false;
   if (!hasExactMatchTime(match)) return false;
-  if (hasScore(match)) return false;
+  if (isFinishedScheduleMatch(match)) return false;
 
   const teamA = getScheduleTeamState(match.teamAName);
   const teamB = getScheduleTeamState(match.teamBName);
@@ -84,7 +85,7 @@ export function isUploadReadyScheduleMatch(match: ScheduleViewMatch) {
 export function isDisplayableScheduleMatch(match: ScheduleViewMatch) {
   if (isUploadReadyScheduleMatch(match)) return true;
   if (isGeneratedScheduleMatrixRow(match)) return false;
-  if (hasScore(match)) return false;
+  if (isFinishedScheduleMatch(match)) return false;
   if (!resolveDisplayMatchDate(match)) return false;
 
   const teamA = getScheduleTeamState(match.teamAName);
@@ -120,7 +121,7 @@ export function isScheduleMatchInUpcomingWindow(
 
 export function isUploadableScheduleEntry(match: ScheduleViewMatch, options: ScheduleViewOptions = {}) {
   if (isGeneratedScheduleMatrixRow(match)) return false;
-  if (hasScore(match)) return false;
+  if (isFinishedScheduleMatch(match)) return false;
   if (!hasExactMatchTime(match)) return false;
   if (resolveStageSlotAnnouncement(match, options)) return true;
 
@@ -136,7 +137,7 @@ export function isUploadableScheduleEntry(match: ScheduleViewMatch, options: Sch
 
 export function isAnnouncementScheduleMatch(match: ScheduleViewMatch, options: ScheduleViewOptions = {}) {
   if (isGeneratedScheduleMatrixRow(match)) return false;
-  if (hasScore(match)) return false;
+  if (isFinishedScheduleMatch(match)) return false;
   if (!hasExactMatchTime(match)) return false;
 
   const stageAnnouncement = resolveStageSlotAnnouncement(match, options);
@@ -171,7 +172,7 @@ export function parseScheduleSelectionId(selectionId: string): { matchId: string
 
 export function getUploadableTbdAnnouncementSides(match: ScheduleViewMatch, options: ScheduleViewOptions = {}): TbdAnnouncementSide[] {
   if (isGeneratedScheduleMatrixRow(match)) return [];
-  if (hasScore(match)) return [];
+  if (isFinishedScheduleMatch(match)) return [];
   if (!hasExactMatchTime(match)) return [];
   if (resolveStageSlotAnnouncement(match, options)) return ["stage"];
 
@@ -285,6 +286,11 @@ export function buildScheduleCourtGroups<T extends ScheduleViewMatch>(matches: T
 
 function hasScore(match: ScheduleViewMatch) {
   return match.scoreA != null || match.scoreB != null;
+}
+
+function isFinishedScheduleMatch(match: ScheduleViewMatch) {
+  const status = String(match.status || "").toLowerCase();
+  return hasScore(match) || /\b(?:finished|completed|official)\b/.test(status);
 }
 
 function getScheduleTeamState(name: string | null | undefined) {

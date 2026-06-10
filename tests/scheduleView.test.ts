@@ -53,6 +53,25 @@ test("date-only schedule rows are visible but not uploadable", () => {
   assert.equal(isUploadableScheduleEntry(match), false);
 });
 
+test("finished schedule rows are hidden from display and upload", () => {
+  const match = {
+    id: "finished-1",
+    matchDate: new Date("2026-06-10T10:00:00.000Z"),
+    matchDateTime: "10.06.2026 13:00:00",
+    rawText: "Alpha vs Beta",
+    scoreA: null,
+    scoreB: null,
+    status: "Official",
+    teamAName: "Alpha",
+    teamBName: "Beta",
+  };
+
+  assert.equal(isDisplayableScheduleMatch(match), false);
+  assert.equal(isUploadReadyScheduleMatch(match), false);
+  assert.equal(isAnnouncementScheduleMatch(match), false);
+  assert.equal(isUploadableScheduleEntry(match), false);
+});
+
 test("date-only placeholder announcements stay hidden until exact time appears", () => {
   const match = {
     id: "date-only-placeholder",

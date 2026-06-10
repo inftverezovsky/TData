@@ -86,8 +86,7 @@ export function resolveUploadPolicyPreMappingSkip(match: UploadPolicyMatch): Upl
     match.scoreA !== undefined ||
     match.scoreB !== null &&
     match.scoreB !== undefined ||
-    match.status?.toLowerCase().includes("finished") ||
-    match.status?.toLowerCase().includes("completed")
+    /\b(?:finished|completed|official)\b/.test(match.status?.toLowerCase() || "")
   ) {
     return {
       reason: "finished-or-scored",
