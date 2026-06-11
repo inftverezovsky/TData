@@ -120,7 +120,7 @@ test("Federvolley Matchshare parser extracts matches and set scores", () => {
   ]);
 });
 
-test("Federvolley tournament fetch treats Matchshare 500 as unpublished bracket", async () => {
+test("Federvolley tournament fetch treats Matchshare HTTP errors as unavailable bracket", async () => {
   const originalFetch = globalThis.fetch;
   const html = `
     <div class="field field--name-title">Campionato Italiano Assoluto - Tappa - Falconara</div>
@@ -130,24 +130,26 @@ test("Federvolley tournament fetch treats Matchshare 500 as unpublished bracket"
     <a href="https://srv.matchshare.it/bvl_test/bracket.php?lid=11518&client_name=bvl_development">Vai al tabellone</a>
   `;
 
-  globalThis.fetch = async (input: RequestInfo | URL) => {
-    const url = String(input);
-    if (url.includes("json_for_bracket")) {
-      return new Response("<html><title>Slim Application Error</title></html>", { status: 500 });
-    }
-    return new Response(html, { status: 200, headers: { "content-type": "text/html" } });
-  };
-
   try {
-    const tournament = await fetchFedervolleyTournament({
-      federvolleyNodeId: "66727",
-      category: "assoluto",
-      gender: "men",
-    });
+    for (const status of [403, 429, 500]) {
+      globalThis.fetch = async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("json_for_bracket")) {
+          return new Response("<html><title>Matchshare unavailable</title></html>", { status });
+        }
+        return new Response(html, { status: 200, headers: { "content-type": "text/html" } });
+      };
 
-    assert.equal(tournament.matchshareLid, "11518");
-    assert.equal(tournament.matches?.length, 0);
-    assert.equal(tournament.matchCount, 0);
+      const tournament = await fetchFedervolleyTournament({
+        federvolleyNodeId: "66727",
+        category: "assoluto",
+        gender: "men",
+      });
+
+      assert.equal(tournament.matchshareLid, "11518");
+      assert.equal(tournament.matches?.length, 0);
+      assert.equal(tournament.matchCount, 0);
+    }
   } finally {
     globalThis.fetch = originalFetch;
   }

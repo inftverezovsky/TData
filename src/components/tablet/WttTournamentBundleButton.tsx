@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { dispatchTournamentDataUpdated } from "@/lib/utils/clientEvents";
-import { getLiquipediaUserMessage } from "@/lib/sources/TCyber/liquipedia/userFacingErrors";
+import { getTournamentImportUserMessage } from "@/lib/imports/userFacingErrors";
 import type { TableTennisCategoryScope } from "@/lib/sources/tablet/config";
 
 type BundleItem = {
@@ -69,7 +69,11 @@ export default function WttTournamentBundleButton({
         };
 
         if (!response.ok || !data.tournament?.id) {
-          throw new Error(data.userMessage || getLiquipediaUserMessage(data.errorClass, data.error ?? "Не удалось загрузить турнир"));
+          throw new Error(getTournamentImportUserMessage(
+            "wtt",
+            data.errorClass,
+            data.userMessage ?? data.error ?? "Не удалось загрузить турнир",
+          ));
         }
 
         importedIds.push(data.tournament.id);
@@ -86,7 +90,9 @@ export default function WttTournamentBundleButton({
       if (err instanceof Error && err.name === "AbortError") {
         setError("Импорт длится больше 3 минут. Попробуйте повторить обновление.");
       } else {
-        setError(getLiquipediaUserMessage(null, err instanceof Error ? err.message : "Неизвестная ошибка"));
+        setError(err instanceof Error
+          ? err.message
+          : getTournamentImportUserMessage("wtt", null, "Неизвестная ошибка"));
       }
     } finally {
       clearTimeout(timeoutId);

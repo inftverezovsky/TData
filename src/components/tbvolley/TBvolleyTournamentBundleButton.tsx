@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { detectTournamentSource, type TournamentSource } from "@/lib/utils/tournamentSource";
 import { dispatchTournamentDataUpdated } from "@/lib/utils/clientEvents";
-import { getLiquipediaUserMessage } from "@/lib/sources/TCyber/liquipedia/userFacingErrors";
+import { getTournamentImportUserMessage } from "@/lib/imports/userFacingErrors";
 
 type BundleItem = {
   title: string;
@@ -41,13 +41,14 @@ export default function TBvolleyTournamentBundleButton({
       const importedIds: string[] = [];
 
       for (const item of items) {
+        const itemSource = item.source ?? detectTournamentSource(item.pageUrl);
         const response = await fetch(`/api/${disciplineSlug}/import-tournament`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             title: item.title,
             pageUrl: item.pageUrl,
-            source: item.source ?? detectTournamentSource(item.pageUrl),
+            source: itemSource,
             force: true,
             ...(item.extraPayload || {}),
           }),
@@ -62,7 +63,11 @@ export default function TBvolleyTournamentBundleButton({
         };
 
         if (!response.ok || !data.tournament?.id) {
-          throw new Error(data.userMessage || getLiquipediaUserMessage(data.errorClass, data.error ?? "Не удалось загрузить турнир"));
+          throw new Error(getTournamentImportUserMessage(
+            itemSource,
+            data.errorClass,
+            data.userMessage ?? data.error ?? "Не удалось загрузить турнир",
+          ));
         }
 
         importedIds.push(data.tournament.id);
@@ -79,7 +84,9 @@ export default function TBvolleyTournamentBundleButton({
       if (err instanceof Error && err.name === "AbortError") {
         setError("Импорт длится больше 3 минут. Попробуйте повторить обновление.");
       } else {
-        setError(getLiquipediaUserMessage(null, err instanceof Error ? err.message : "Неизвестная ошибка"));
+        setError(err instanceof Error
+          ? err.message
+          : getTournamentImportUserMessage(null, null, "Неизвестная ошибка"));
       }
     } finally {
       clearTimeout(timeoutId);

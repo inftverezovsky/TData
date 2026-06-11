@@ -492,11 +492,15 @@ async function fetchFedervolleyMatches(input: {
     if (!trimmed || /^Tabellone non pubblicato/i.test(trimmed)) return [];
     return parseFedervolleyMatchshareBracket(JSON.parse(trimmed), input);
   } catch (error) {
-    if (error instanceof Error && /Tabellone non pubblicato|Federvolley Matchshare HTTP (?:400|500)/i.test(error.message)) {
+    if (error instanceof Error && isRecoverableMatchshareError(error.message)) {
       return [];
     }
     throw error;
   }
+}
+
+function isRecoverableMatchshareError(message: string) {
+  return /Tabellone non pubblicato|Federvolley Matchshare HTTP [45]\d{2}/i.test(message);
 }
 
 async function fetchFedervolleyText(url: string, accept: string) {
