@@ -64,7 +64,10 @@ export default function CBVTournamentSearch() {
       }));
 
       const first = searches[0];
-      const tournaments = searches.flatMap((search) => search.tournaments).sort(compareCBVTournaments);
+      const tournaments = searches
+        .flatMap((search) => search.tournaments)
+        .filter(isUpcomingCBVTournament)
+        .sort(compareCBVTournaments);
       const tournamentGroups = groupCBVTournaments(tournaments);
 
       setData({
@@ -319,6 +322,24 @@ function compareCBVTournaments(left: CBVTournament, right: CBVTournament) {
   return compareDateText(left.startDate, right.startDate)
     || left.title.localeCompare(right.title)
     || compareGender(left.gender, right.gender);
+}
+
+function isUpcomingCBVTournament(tournament: CBVTournament) {
+  if (tournament.status === "finished") return false;
+  const endDate = tournament.endDate || tournament.startDate;
+  if (!endDate) return false;
+  return endDate >= getTodayDateKey();
+}
+
+function getTodayDateKey() {
+  const parts = new Intl.DateTimeFormat("en", {
+    timeZone: "Europe/Moscow",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
 }
 
 function compareDateText(left: string | null | undefined, right: string | null | undefined) {

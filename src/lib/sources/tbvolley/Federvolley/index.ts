@@ -183,7 +183,9 @@ export async function searchFedervolleyTournaments(input: {
     const html = await fetchFedervolleyText(sourceUrl, "text/html,application/xhtml+xml");
     return parseFedervolleyListing(html, { category: item, gender, year, query });
   }));
-  const tournaments = listings.flat().sort(compareFedervolleyTournaments);
+  const tournaments = filterFedervolleyUpcomingTournaments(
+    listings.flat().sort(compareFedervolleyTournaments),
+  );
 
   return {
     ok: true,
@@ -450,6 +452,29 @@ export function extractMatchshareLid(value: unknown) {
   const text = clean(value);
   return clean(text.match(/\[FIPAV:[^:\]]+:[^:\]]+:([^\]]+)]/i)?.[1])
     || clean(text.match(/[?&]lid=(\d+)/i)?.[1]);
+}
+
+export function filterFedervolleyUpcomingTournaments(tournaments: FedervolleyTournament[], now = new Date()) {
+  return tournaments.filter((tournament) => isFedervolleyUpcomingTournament(tournament, now));
+}
+
+export function isFedervolleyUpcomingTournament(
+  tournament: Pick<FedervolleyTournament, "status" | "startDate" | "endDate">,
+  now = new Date(),
+) {
+  if (tournament.status === "finished") return false;
+  const today = formatMoscowDate(now);
+  const endDate = tournament.endDate || tournament.startDate;
+  if (!endDate) return false;
+  return endDate >= today;
+}
+
+export function isActiveFedervolleyMatch(match: Pick<FedervolleyMatch, "status" | "startTimeUtc">, now = new Date()) {
+  if (match.status === "finished") return false;
+  if (!match.startTimeUtc) return true;
+  const start = new Date(match.startTimeUtc);
+  if (Number.isNaN(start.getTime())) return true;
+  return formatMoscowDate(start) >= formatMoscowDate(now);
 }
 
 async function fetchFedervolleyMatches(input: {

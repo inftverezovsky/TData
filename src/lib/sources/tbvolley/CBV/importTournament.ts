@@ -10,6 +10,7 @@ import {
   extractCBVEtapaId,
   extractCBVTemporadaId,
   fetchCBVTournament,
+  isActiveCBVMatch,
   normalizeCBVGender,
   type CBVGender,
   type CBVMatch,
@@ -215,7 +216,8 @@ async function saveCBVTournamentMatches(params: {
   matches: CBVMatch[];
   force?: boolean;
 }): Promise<{ savedCount: number }> {
-  const candidates = params.matches.map((match): PersistableCBVMatch => {
+  const activeMatches = params.matches.filter((match) => isActiveCBVMatch(match));
+  const candidates = activeMatches.map((match): PersistableCBVMatch => {
     const teamAName = match.teamA.name || "TBD";
     const teamBName = match.teamB.name || "TBD";
     const hasPlaceholderTeams = isPlaceholderTeam(teamAName) || isPlaceholderTeam(teamBName);
@@ -303,7 +305,7 @@ async function saveCBVTournamentMatches(params: {
   }));
 
   const teamByName = new Map<string, CBVTeam>();
-  for (const match of params.matches) {
+  for (const match of activeMatches) {
     for (const team of [match.teamA, match.teamB]) {
       if (!team.name || isPlaceholderTeam(team.name)) continue;
       if (!teamByName.has(team.name)) teamByName.set(team.name, team);

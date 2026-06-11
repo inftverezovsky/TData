@@ -193,12 +193,14 @@ export async function searchCBVTournaments(input: {
   if (!season?.id) throw new Error(`CBV season ${year} не найден`);
 
   const etapas = await fetchCBVEtapas(clean(championship.id), clean(season.id));
-  const tournaments = parseCBVEtapas(etapas, {
-    gender,
-    query,
-    fallbackCampeonatoId: clean(championship.id),
-    fallbackTemporadaId: clean(season.id),
-  });
+  const tournaments = filterCBVUpcomingTournaments(
+    parseCBVEtapas(etapas, {
+      gender,
+      query,
+      fallbackCampeonatoId: clean(championship.id),
+      fallbackTemporadaId: clean(season.id),
+    }),
+  );
 
   return {
     ok: true,
@@ -414,6 +416,29 @@ export function extractCBVTemporadaId(value: unknown) {
 export function extractCBVEtapaId(value: unknown) {
   return clean(String(value ?? "").match(/\[CBV:[^:\]]+:[^:\]]+:([^\]]+)]/i)?.[1])
     || clean(String(value ?? "").match(/[?&]etapaId=([^&#\s]+)/i)?.[1]);
+}
+
+export function filterCBVUpcomingTournaments(tournaments: CBVTournament[], now = new Date()) {
+  return tournaments.filter((tournament) => isCBVUpcomingTournament(tournament, now));
+}
+
+export function isCBVUpcomingTournament(
+  tournament: Pick<CBVTournament, "status" | "startDate" | "endDate">,
+  now = new Date(),
+) {
+  if (tournament.status === "finished") return false;
+  const today = formatMoscowDate(now);
+  const endDate = tournament.endDate || tournament.startDate;
+  if (!endDate) return false;
+  return endDate >= today;
+}
+
+export function isActiveCBVMatch(match: Pick<CBVMatch, "status" | "startTimeUtc">, now = new Date()) {
+  if (match.status === "finished") return false;
+  if (!match.startTimeUtc) return true;
+  const start = new Date(match.startTimeUtc);
+  if (Number.isNaN(start.getTime())) return true;
+  return formatMoscowDate(start) >= formatMoscowDate(now);
 }
 
 async function findAdultChampionship(gender: CBVGender) {

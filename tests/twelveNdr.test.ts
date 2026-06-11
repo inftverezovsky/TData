@@ -4,6 +4,7 @@ import {
   buildTournamentPageUrl,
   extractTwelveNdrTcode,
   extractTwelveNdrTimezone,
+  filterTwelveNdrUpcomingTournaments,
   isActiveTwelveNdrMatch,
   parseTwelveNdrCalendarJson,
   parseTwelveNdrTournamentPage,
@@ -101,4 +102,42 @@ test("12ndr helpers resolve source ids and upcoming state", () => {
     status: "upcoming",
     startTimeUtc: "2026-05-03T14:30:00.000Z",
   }, new Date("2026-05-01T00:00:00.000Z")), true);
+  assert.equal(isActiveTwelveNdrMatch({
+    status: "finished",
+    startTimeUtc: "2026-05-03T14:30:00.000Z",
+  }, new Date("2026-05-01T00:00:00.000Z")), false);
+  assert.equal(isActiveTwelveNdrMatch({
+    status: "upcoming",
+    startTimeUtc: "2026-05-03T14:30:00.000Z",
+  }, new Date("2026-06-11T00:00:00.000Z")), false);
+});
+
+test("12ndr tournament filter drops completed tournaments", () => {
+  const json = JSON.stringify([
+    {
+      Name: "CSVP Old",
+      Men: '<a href="/tournament?tcode=MOLD26&timezone=14">03.05. - 06.05.</a>',
+      TournamentType: "CSV",
+      Federation: "CSV",
+      Country: "Peru",
+    },
+    {
+      Name: "CSVP Future",
+      Men: '<a href="/tournament?tcode=MFUT26&timezone=14">12.06. - 14.06.</a>',
+      TournamentType: "CSV",
+      Federation: "CSV",
+      Country: "Peru",
+    },
+  ]);
+  const tournaments = parseTwelveNdrCalendarJson(json, {
+    source: "twelvendrcsvp",
+    calendarMode: "csvp",
+    season: 2026,
+    gender: "men",
+  });
+
+  assert.deepEqual(
+    filterTwelveNdrUpcomingTournaments(tournaments, new Date("2026-06-11T00:00:00.000Z")).map((tournament) => tournament.tcode),
+    ["MFUT26"],
+  );
 });

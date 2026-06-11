@@ -5,6 +5,8 @@ import {
   extractFedervolleyNodeId,
   extractMatchshareLid,
   fetchFedervolleyTournament,
+  filterFedervolleyUpcomingTournaments,
+  isActiveFedervolleyMatch,
   parseFedervolleyListing,
   parseFedervolleyMatchshareBracket,
   parseFedervolleyTournamentPage,
@@ -155,4 +157,73 @@ test("Federvolley helpers resolve source ids", () => {
   assert.equal(extractFedervolleyNodeId("https://beachvolley.federvolley.it/index.php/node/66744"), "66744");
   assert.equal(extractMatchshareLid("Campionato Italiano [FIPAV:assoluto:66744:11518]"), "11518");
   assert.equal(buildFedervolleySourceTitle("Campionato Italiano Assoluto - Finale - Caorle", "men", "assoluto", "66744", "11518"), "Campionato Italiano Assoluto - Finale - Caorle — Men [FIPAV:assoluto:66744:11518]");
+});
+
+test("Federvolley filters drop completed tournaments and matches", () => {
+  const html = `
+    <div class="torneitable-summary-row-1 container-fluid">
+      <div class="row">
+        <div class="col-9 col-md-10">
+          <div class="container-fluid p-0 border-0">
+            <div class="row border-0 my-3 my-md-0">
+              <div class="col-6 col-sm-4 col-md-5 col-lg-4 px-1 text-align-center">Campionato Italiano Assoluto - Old</div>
+              <div class="col-6 col-sm-4 col-md-4 col-lg-2 d-none d-sm-block text-align-center">Roma<br>LAZIO</div>
+              <div class="col-6 col-sm-4 col-md-3 col-lg-2 py-2 px-1 px-sm-3">
+                <div class="float-left text-align-center">MAG<br><span class="badge bg-color-primary torneo-day">01</span><br>2026</div>
+                <div class="float-right text-align-center">MAG<br><span class="badge bg-color-primary torneo-day">03</span><br>2026</div>
+              </div>
+              <div class="col-6 col-md-2 d-none d-lg-block text-align-center">maschile</div>
+              <div class="col-6 col-md-2 d-none d-lg-block text-align-center">€0.00</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-sm-1 d-none d-lg-block text-align-center">
+          <a href="/index.php/node/66701">open</a>
+        </div>
+      </div>
+    </div>
+    <div class="torneitable-summary-row-2 container-fluid">
+      <div class="row">
+        <div class="col-9 col-md-10">
+          <div class="container-fluid p-0 border-0">
+            <div class="row border-0 my-3 my-md-0">
+              <div class="col-6 col-sm-4 col-md-5 col-lg-4 px-1 text-align-center">Campionato Italiano Assoluto - Future</div>
+              <div class="col-6 col-sm-4 col-md-4 col-lg-2 d-none d-sm-block text-align-center">Caorle<br>VENETO</div>
+              <div class="col-6 col-sm-4 col-md-3 col-lg-2 py-2 px-1 px-sm-3">
+                <div class="float-left text-align-center">SET<br><span class="badge bg-color-primary torneo-day">04</span><br>2026</div>
+                <div class="float-right text-align-center">SET<br><span class="badge bg-color-primary torneo-day">06</span><br>2026</div>
+              </div>
+              <div class="col-6 col-md-2 d-none d-lg-block text-align-center">maschile</div>
+              <div class="col-6 col-md-2 d-none d-lg-block text-align-center">€0.00</div>
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-sm-1 d-none d-lg-block text-align-center">
+          <a href="/index.php/node/66744">open</a>
+        </div>
+      </div>
+    </div>
+  `;
+  const tournaments = parseFedervolleyListing(html, {
+    category: "assoluto",
+    gender: "men",
+    year: 2026,
+  });
+
+  assert.deepEqual(
+    filterFedervolleyUpcomingTournaments(tournaments, new Date("2026-06-11T00:00:00.000Z")).map((tournament) => tournament.nodeId),
+    ["66744"],
+  );
+  assert.equal(isActiveFedervolleyMatch({
+    status: "finished",
+    startTimeUtc: "2026-09-04T08:00:00.000Z",
+  }, new Date("2026-06-11T00:00:00.000Z")), false);
+  assert.equal(isActiveFedervolleyMatch({
+    status: "upcoming",
+    startTimeUtc: "2026-06-10T08:00:00.000Z",
+  }, new Date("2026-06-11T00:00:00.000Z")), false);
+  assert.equal(isActiveFedervolleyMatch({
+    status: "upcoming",
+    startTimeUtc: "2026-09-04T08:00:00.000Z",
+  }, new Date("2026-06-11T00:00:00.000Z")), true);
 });

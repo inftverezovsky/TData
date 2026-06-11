@@ -613,8 +613,9 @@ function resolveTournamentStatus(startDate: string | null, endDate: string | nul
 
 function isGermanBeachTourTournamentInUpcomingWindow(tournament: GermanBeachTourTournament, window: GermanBeachTourUpcomingWindow) {
   if (!tournament.startDate) return false;
-  if (tournament.endDate && tournament.endDate < window.fromDate) return false;
-  return tournament.startDate >= window.fromDate && tournament.startDate <= window.toDate;
+
+  const endDate = tournament.endDate || tournament.startDate;
+  return tournament.startDate <= window.toDate && endDate >= window.fromDate;
 }
 
 function buildTournamentTitle(type: string, city: string) {

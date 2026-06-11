@@ -5,6 +5,8 @@ import {
   extractCBVCampeonatoId,
   extractCBVEtapaId,
   extractCBVTemporadaId,
+  filterCBVUpcomingTournaments,
+  isActiveCBVMatch,
   normalizeCBVMatch,
   parseCBVEtapa,
   parseCBVEtapas,
@@ -81,4 +83,47 @@ test("CBV helpers resolve source ids", () => {
   assert.equal(extractCBVCampeonatoId("CBVP ADULTO [CBV:37:23:950]"), "37");
   assert.equal(extractCBVTemporadaId("https://evolleyball.cbv.com.br/#!/tabelas?campeonatoId=37&temporadaId=23&etapaId=950"), "23");
   assert.equal(extractCBVEtapaId(buildCBVSourceTitle("CBVP ADULTO - Brasilia", "women", "38", "23", "951")), "951");
+});
+
+test("CBV filters drop completed tournaments and matches", () => {
+  const tournaments = parseCBVEtapas([
+    {
+      id: 950,
+      nome: "Brasilia Open",
+      status: "E",
+      dataInicioEtapa: "2026-04-02",
+      dataFimEtapa: "2026-04-06",
+      campeonato: { id: 37, nome: "CBVP ADULTO" },
+      temporada: { id: 23, nome: "2026" },
+    },
+    {
+      id: 951,
+      nome: "Saquarema Open",
+      dataInicioEtapa: "2026-06-12",
+      dataFimEtapa: "2026-06-14",
+      campeonato: { id: 37, nome: "CBVP ADULTO" },
+      temporada: { id: 23, nome: "2026" },
+    },
+  ], {
+    gender: "men",
+    fallbackCampeonatoId: "37",
+    fallbackTemporadaId: "23",
+  });
+
+  assert.deepEqual(
+    filterCBVUpcomingTournaments(tournaments, new Date("2026-06-11T00:00:00.000Z")).map((tournament) => tournament.etapaId),
+    ["951"],
+  );
+  assert.equal(isActiveCBVMatch({
+    status: "finished",
+    startTimeUtc: "2026-06-12T13:00:00.000Z",
+  }, new Date("2026-06-11T00:00:00.000Z")), false);
+  assert.equal(isActiveCBVMatch({
+    status: "upcoming",
+    startTimeUtc: "2026-06-10T13:00:00.000Z",
+  }, new Date("2026-06-11T00:00:00.000Z")), false);
+  assert.equal(isActiveCBVMatch({
+    status: "upcoming",
+    startTimeUtc: "2026-06-12T13:00:00.000Z",
+  }, new Date("2026-06-11T00:00:00.000Z")), true);
 });

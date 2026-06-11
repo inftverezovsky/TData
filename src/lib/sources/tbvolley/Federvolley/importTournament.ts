@@ -9,6 +9,7 @@ import {
   extractFedervolleyNodeId,
   extractMatchshareLid,
   fetchFedervolleyTournament,
+  isActiveFedervolleyMatch,
   normalizeFedervolleyCategory,
   normalizeFedervolleyGender,
   type FedervolleyCategory,
@@ -224,7 +225,8 @@ async function saveFedervolleyTournamentMatches(params: {
   matches: FedervolleyMatch[];
   force?: boolean;
 }): Promise<{ savedCount: number }> {
-  const candidates = params.matches.map((match): PersistableFedervolleyMatch => {
+  const activeMatches = params.matches.filter((match) => isActiveFedervolleyMatch(match));
+  const candidates = activeMatches.map((match): PersistableFedervolleyMatch => {
     const teamAName = match.teamA.name || "TBD";
     const teamBName = match.teamB.name || "TBD";
     const hasPlaceholderTeams = isPlaceholderTeam(teamAName) || isPlaceholderTeam(teamBName);
@@ -312,7 +314,7 @@ async function saveFedervolleyTournamentMatches(params: {
   }));
 
   const teamByName = new Map<string, FedervolleyTeam>();
-  for (const match of params.matches) {
+  for (const match of activeMatches) {
     for (const team of [match.teamA, match.teamB]) {
       if (!team.name || isPlaceholderTeam(team.name)) continue;
       if (!teamByName.has(team.name)) teamByName.set(team.name, team);
