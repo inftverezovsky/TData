@@ -4,7 +4,7 @@
 
 :root {
   --primary: 79, 70, 229;
-  --bg-color: transparent;
+  --bg-color: #f5f7fa;
   --card-bg: rgba(255, 255, 255, 0.98);
   --card-border: rgba(226, 232, 240, 0.6);
   --text-main: #0f172a;
@@ -20,7 +20,9 @@
 }
 
 body {
-  background-color: transparent;
+  background:
+    linear-gradient(180deg, #f8fafc 0%, #f3f6f9 42%, #eef2f6 100%);
+  background-attachment: fixed;
   color: var(--text-main);
   font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   min-height: 100vh;
@@ -33,7 +35,7 @@ body {
   overflow-x: hidden;
 }
 
-/* body::before removed — background handled by DynamicTechBackground SVG */
+/* Page background is intentionally static and neutral. */
 
 /* Shimmer Animation */
 @keyframes shimmer {
@@ -61,9 +63,8 @@ body {
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 14px 36px rgba(15, 23, 42, 0.07);
 }
 
-/* ===== GLOBAL GLASSMORPHISM OVERRIDE =====
-   All section/card containers become glass — background SVG shows through everywhere.
-   This overrides Tailwind's bg-white on all panel-style containers. */
+/* ===== GLOBAL PANEL OVERRIDE =====
+   Keep panel surfaces solid and readable on the neutral page background. */
 
 /* Settings & discipline page section blocks */
 section.rounded-3xl,

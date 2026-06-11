@@ -2,8 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import "./globals.css";
 import Navbar, { PlatformTabs } from "@/components/layout/Navbar";
-import DynamicTechBackground from "@/components/ui/DynamicTechBackground";
-import { ClientErrorBoundary } from "@/components/ui/ClientErrorBoundary";
 
 export const metadata: Metadata = {
   title: "TData",
@@ -15,14 +13,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="ru">
       <body className="text-slate-900 selection:bg-indigo-100">
         <div className="flex min-h-screen flex-col relative z-0">
-          {/* Dynamic dynamic circuit grid background */}
-          <ClientErrorBoundary
-            title="Фоновая анимация отключена"
-            className="hidden"
-          >
-            <DynamicTechBackground />
-          </ClientErrorBoundary>
-
           <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/95 shadow-sm">
             <div className="mx-auto max-w-7xl px-4 md:px-6">
               <div className="flex flex-col gap-3 py-3 md:flex-row md:items-center md:justify-between">
