@@ -153,7 +153,7 @@ export function buildAutoMappingPreviewFromData({
     }
 
     if (existingMapping?.isLockedFromAutoMapping) {
-      const conflict = getLockedMappingConflict(name, existingMapping, adminTeams);
+      const conflict = getLockedMappingConflict(name, existingMapping, candidateIndex);
       if (conflict) {
         preview.conflicts.push(conflict);
       } else if (existingMapping.platformId) {
@@ -249,16 +249,16 @@ export function autoMappingSelectionKey(liquipediaName: string, platformId: stri
 function getLockedMappingConflict(
   name: string,
   existingMapping: AutoMappingSourceMapping,
-  adminTeams: AutoMappingAdminTeam[]
+  candidateIndex: AutoMappingCandidateIndex
 ): AutoMappingPreviewItem | null {
-  if (!existingMapping.platformId || adminTeams.length === 0) return null;
+  if (!existingMapping.platformId || candidateIndex.candidates.length === 0) return null;
 
   const decision = getTeamAutoMappingDecision(
     {
       liquipediaName: name,
       liquipediaNormalizedName: normalizeTeamName(name),
     },
-    buildAutoMappingCandidateIndex(adminTeams)
+    candidateIndex
   );
 
   if (

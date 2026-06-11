@@ -8,7 +8,7 @@ import {
   type AutoMappingPreviewItem,
   type AutoMappingSelection,
 } from "@/lib/teams/autoMappingPreview";
-import { MappingStatus } from "@prisma/client";
+import { MappingStatus, Prisma, type TeamMapping } from "@prisma/client";
 
 export {
   buildAutoMappingPreviewFromData,
@@ -143,8 +143,18 @@ export async function applyAutoMappingForDiscipline({
     ? new Set(selections.map((selection) => autoMappingSelectionKey(selection.liquipediaName, selection.platformId)))
     : new Set(preview.auto.map((item) => autoMappingSelectionKey(item.liquipediaName, item.platformId || "")));
   const toApply = selectable.filter((item) => item.platformId && selectedKeys.has(autoMappingSelectionKey(item.liquipediaName, item.platformId)));
-  const appliedMappings = [];
+  const appliedMappings: TeamMapping[] = [];
   const skipped: AutoMappingPreviewItem[] = [];
+  const existingMappings = toApply.length > 0
+    ? await prisma.teamMapping.findMany({
+        where: {
+          disciplineSlug: slug,
+          liquipediaName: { in: toApply.map((item) => item.liquipediaName) },
+        },
+      })
+    : [];
+  const existingByName = new Map(existingMappings.map((mapping) => [mapping.liquipediaName, mapping]));
+  const writes: Prisma.PrismaPromise<unknown>[] = [];
 
   for (const item of toApply) {
     if (!item.platformId || !item.adminName) {
@@ -152,14 +162,7 @@ export async function applyAutoMappingForDiscipline({
       continue;
     }
 
-    const existing = await prisma.teamMapping.findUnique({
-      where: {
-        disciplineSlug_liquipediaName: {
-          disciplineSlug: slug,
-          liquipediaName: item.liquipediaName,
-        },
-      },
-    });
+    const existing = existingByName.get(item.liquipediaName);
 
     if (existing?.isLockedFromAutoMapping && existing.platformId && existing.platformId !== item.platformId && !replaceConflicts) {
       skipped.push({ ...item, existingPlatformId: existing.platformId, reason: "manual_mapping_conflict" });
@@ -167,7 +170,7 @@ export async function applyAutoMappingForDiscipline({
     }
     const confirmedConflictReplacement = replaceConflicts && item.reason === "manual_mapping_conflict";
 
-    const saved = await prisma.teamMapping.upsert({
+    writes.push(prisma.teamMapping.upsert({
       where: {
         disciplineSlug_liquipediaName: {
           disciplineSlug: slug,
@@ -195,14 +198,18 @@ export async function applyAutoMappingForDiscipline({
         isManual: confirmedConflictReplacement ? true : false,
         isLockedFromAutoMapping: confirmedConflictReplacement ? true : false,
       },
-    });
-
-    await prisma.tournamentParticipant.updateMany({
+    }));
+    writes.push(prisma.tournamentParticipant.updateMany({
       where: { name: item.liquipediaName, tournament: { disciplineSlug: slug } },
       data: { platformId: item.platformId },
-    });
+    }));
+  }
 
-    appliedMappings.push(saved);
+  if (writes.length > 0) {
+    const results = await prisma.$transaction(writes);
+    for (let index = 0; index < results.length; index += 2) {
+      appliedMappings.push(results[index] as TeamMapping);
+    }
   }
 
   return {

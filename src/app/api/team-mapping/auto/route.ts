@@ -11,43 +11,50 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   // API remains callable directly; password gate is UI-only for settings visibility.
+  try {
+    const body = await request.json();
+    const { disciplineSlug, liquipediaName, teamNames, apply, selectedMappings, replaceConflicts } = body as {
+      disciplineSlug: string;
+      liquipediaName?: string;
+      teamNames?: unknown;
+      dryRun?: boolean;
+      apply?: boolean;
+      selectedMappings?: unknown;
+      replaceConflicts?: boolean;
+    };
+    const slug = String(disciplineSlug || "").trim().toLowerCase();
 
-  const body = await request.json();
-  const { disciplineSlug, liquipediaName, teamNames, apply, selectedMappings, replaceConflicts } = body as {
-    disciplineSlug: string;
-    liquipediaName?: string;
-    teamNames?: unknown;
-    dryRun?: boolean;
-    apply?: boolean;
-    selectedMappings?: unknown;
-    replaceConflicts?: boolean;
-  };
-  const slug = String(disciplineSlug || "").trim().toLowerCase();
-  
-  if (!slug) {
-    return NextResponse.json({ error: "disciplineSlug обязателен" }, { status: 400 });
-  }
+    if (!slug) {
+      return NextResponse.json({ error: "disciplineSlug обязателен" }, { status: 400 });
+    }
 
-  const names = resolveRequestedNames(teamNames, liquipediaName);
+    const names = resolveRequestedNames(teamNames, liquipediaName);
 
-  if (apply) {
-    const ensureResult = await ensureTeamMappingsForNames(names, slug);
-    const result = await applyAutoMappingForDiscipline({
-      disciplineSlug: slug,
+    if (apply) {
+      const ensureResult = await ensureTeamMappingsForNames(names, slug);
+      const result = await applyAutoMappingForDiscipline({
+        disciplineSlug: slug,
+        liquipediaNames: names.length > 0 ? names : undefined,
+        selections: readSelectedMappings(selectedMappings),
+        replaceConflicts: Boolean(replaceConflicts),
+      });
+      const identitySync = queueIdentitySync(`team-mapping:auto:${slug}`);
+      return NextResponse.json({ success: true, result: { ...result, ...ensureResult }, identitySync });
+    }
+
+    const preview = await buildAutoMappingPreviewForDiscipline(slug, {
       liquipediaNames: names.length > 0 ? names : undefined,
-      selections: readSelectedMappings(selectedMappings),
-      replaceConflicts: Boolean(replaceConflicts),
+      includeAutoMapped: Boolean(liquipediaName),
     });
-    const identitySync = queueIdentitySync(`team-mapping:auto:${slug}`);
-    return NextResponse.json({ success: true, result: { ...result, ...ensureResult }, identitySync });
+
+    return NextResponse.json({ success: true, preview });
+  } catch (error) {
+    console.error("[Team Mapping Auto] Error:", error);
+    return NextResponse.json({
+      success: false,
+      error: error instanceof Error ? error.message : "Ошибка авто-маппинга",
+    }, { status: 500 });
   }
-
-  const preview = await buildAutoMappingPreviewForDiscipline(slug, {
-    liquipediaNames: names.length > 0 ? names : undefined,
-    includeAutoMapped: Boolean(liquipediaName),
-  });
-
-  return NextResponse.json({ success: true, preview });
 }
 
 function resolveRequestedNames(teamNames: unknown, liquipediaName?: string) {
