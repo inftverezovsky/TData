@@ -4,6 +4,10 @@ This project is named `TData` and is stored locally at:
 
 `C:\Users\Sa1z1ngr0z\Desktop\TData`
 
+Public production domain:
+
+`https://www.tdata.info/`
+
 Canonical GitHub repository:
 
 `https://github.com/inftverezovsky/TData.git`

@@ -175,13 +175,15 @@ export async function searchTwelveNdrTournaments(input: {
   const query = normalizeSearch(input.query || "");
   const sourceUrl = buildCalendarUrl(input.calendarMode, season);
   const text = await fetchTwelveNdrText(sourceUrl, "application/json,text/html,*/*");
-  const tournaments = parseTwelveNdrCalendarJson(text, {
-    source: input.source,
-    calendarMode: input.calendarMode,
-    season,
-    gender,
-    query,
-  });
+  const tournaments = filterTwelveNdrUpcomingTournaments(
+    parseTwelveNdrCalendarJson(text, {
+      source: input.source,
+      calendarMode: input.calendarMode,
+      season,
+      gender,
+      query,
+    }),
+  );
 
   return {
     ok: true,
@@ -426,6 +428,21 @@ export function isActiveTwelveNdrMatch(match: Pick<TwelveNdrMatch, "status" | "s
   const start = new Date(match.startTimeUtc);
   if (Number.isNaN(start.getTime())) return true;
   return formatMoscowDate(start) >= formatMoscowDate(now);
+}
+
+export function filterTwelveNdrUpcomingTournaments(tournaments: TwelveNdrTournament[], now = new Date()) {
+  return tournaments.filter((tournament) => isTwelveNdrUpcomingTournament(tournament, now));
+}
+
+export function isTwelveNdrUpcomingTournament(
+  tournament: Pick<TwelveNdrTournament, "status" | "startDate" | "endDate">,
+  now = new Date(),
+) {
+  if (tournament.status === "finished") return false;
+  const today = formatMoscowDate(now);
+  const endDate = tournament.endDate || tournament.startDate;
+  if (!endDate) return false;
+  return endDate >= today;
 }
 
 function parseTwelveNdrMatchRow(

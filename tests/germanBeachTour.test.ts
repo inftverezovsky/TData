@@ -143,6 +143,43 @@ test("German Beach Tour match parser extracts teams, scores, and Moscow time", (
   ]);
 });
 
+test("German Beach Tour parser keeps 0:0 empty-result rows upcoming", () => {
+  const html = `
+    <div class="content"><center>
+      <div class="sectionheader">Viertelfinale</div>
+      <div>Spiele</div>
+      <table width="100%">
+        <tr class="bez2">
+          <td>Spiel</td><td>Tag</td><td>Zeit</td><td>Court</td><td>Team 1</td><td>vs</td><td>Team 2</td>
+          <td>Schiedsrichter</td><td>Ergebnis</td><td>Dauer</td><td>Platz</td><td></td>
+        </tr>
+        <tr>
+          <td align="right">1</td>
+          <td>11.06.2026</td>
+          <td align="right">15:30</td>
+          <td align="center">1</td>
+          <td><a href="team.php?id=60165">Bungert - Wüst (4)</a></td>
+          <td>:</td>
+          <td><a href="team.php?id=61233">Kaminski - Sambale (5)</a></td>
+          <td>Müller Heike Grothe Theresa Vorspiel</td>
+          <td><a href="tur-spiel.php?id=14686&feld=2&spiel=1">0:0 ()</a></td>
+          <td></td>
+          <td>Verl. 5</td>
+          <td></td>
+        </tr>
+      </table>
+    </center></div>
+  `;
+
+  const matches = parseGermanBeachTourMatches(html, { tournamentId: "14686", gender: "men", field: "qualification" });
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0].status, "upcoming");
+  assert.equal(matches[0].score.teamA, null);
+  assert.equal(matches[0].score.teamB, null);
+  assert.deepEqual(matches[0].score.sets, []);
+  assert.equal(matches[0].startTimeMoscow, "11.06.2026 16:30:00");
+});
+
 test("German Beach Tour active match filter drops finished and out-of-window matches", () => {
   const window = { fromDate: "2026-05-27", toDate: "2026-06-27", windowDays: 31 };
 

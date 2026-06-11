@@ -420,7 +420,7 @@ function parseGermanBeachTourMatchRow(
   const sourceUrl = absoluteGermanBeachTourUrl(clean(resultAnchor?.attr("href"))) || buildTournamentScheduleUrl(options.tournamentId, options.field);
   const startDate = parseBerlinDateTime(dateText, timeText);
   const score = parseResultScore(resultText);
-  const hasResult = score.teamA !== null || score.teamB !== null || Boolean(resultText);
+  const hasResult = isCompletedGermanBeachTourResult(resultText, score);
   const id = extractMatchIdFromUrl(sourceUrl) || `${options.tournamentId}-${options.field}-${matchNo}`;
   const court = clean(cells[options.indexes.court]?.text());
 
@@ -470,19 +470,46 @@ function parseTeamCell($cell: cheerio.Cheerio<any> | undefined): GermanBeachTour
 }
 
 function parseResultScore(resultText: string) {
-  const matchScore = clean(resultText).match(/^(\d+)\s*:\s*(\d+)/);
+  const normalized = clean(resultText);
+  const matchScore = normalized.match(/^(\d+)\s*:\s*(\d+)/);
   const setsText = clean(resultText.match(/\(([^)]+)\)/)?.[1]);
   const sets = Array.from(setsText.matchAll(/(\d+)\s*:\s*(\d+)/g)).map((match, index) => ({
     no: index + 1,
     teamA: Number(match[1]),
     teamB: Number(match[2]),
   }));
+  const isPlaceholderScore = isGermanBeachTourPlaceholderResult(normalized, matchScore, sets.length);
 
   return {
-    teamA: matchScore ? Number(matchScore[1]) : null,
-    teamB: matchScore ? Number(matchScore[2]) : null,
+    teamA: matchScore && !isPlaceholderScore ? Number(matchScore[1]) : null,
+    teamB: matchScore && !isPlaceholderScore ? Number(matchScore[2]) : null,
     sets,
   };
+}
+
+function isCompletedGermanBeachTourResult(
+  resultText: string,
+  score: ReturnType<typeof parseResultScore>,
+) {
+  const normalized = clean(resultText);
+  if (!normalized) return false;
+  if (score.teamA !== null || score.teamB !== null || score.sets.length > 0) return true;
+  const matchScore = normalized.match(/^(\d+)\s*:\s*(\d+)/);
+  return !isGermanBeachTourPlaceholderResult(normalized, matchScore, score.sets.length);
+}
+
+function isGermanBeachTourPlaceholderResult(
+  normalizedResultText: string,
+  matchScore: RegExpMatchArray | null,
+  setCount: number,
+) {
+  return Boolean(
+    matchScore
+      && Number(matchScore[1]) === 0
+      && Number(matchScore[2]) === 0
+      && setCount === 0
+      && /^0\s*:\s*0\s*(?:\(\s*\))?$/.test(normalizedResultText),
+  );
 }
 
 function readDetailMap($: cheerio.CheerioAPI) {

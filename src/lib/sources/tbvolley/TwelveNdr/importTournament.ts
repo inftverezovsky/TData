@@ -9,6 +9,7 @@ import {
   extractTwelveNdrTcode,
   extractTwelveNdrTimezone,
   fetchTwelveNdrTournament,
+  isActiveTwelveNdrMatch,
   normalizeTwelveNdrGender,
   type TwelveNdrCalendarMode,
   type TwelveNdrGender,
@@ -220,7 +221,8 @@ async function saveTwelveNdrTournamentMatches(params: {
   matches: TwelveNdrMatch[];
   force?: boolean;
 }): Promise<{ savedCount: number }> {
-  const candidates = params.matches
+  const activeMatches = params.matches.filter((match) => isActiveTwelveNdrMatch(match));
+  const candidates = activeMatches
     .map((match): PersistableTwelveNdrMatch => {
       const teamAName = match.teamA.name || "TBD";
       const teamBName = match.teamB.name || "TBD";
@@ -307,7 +309,7 @@ async function saveTwelveNdrTournamentMatches(params: {
   }));
 
   const teamByName = new Map<string, TwelveNdrTeam>();
-  for (const match of params.matches) {
+  for (const match of activeMatches) {
     for (const team of [match.teamA, match.teamB]) {
       if (!team.name || isPlaceholderTeam(team.name)) continue;
       if (!teamByName.has(team.name)) teamByName.set(team.name, team);
