@@ -344,6 +344,24 @@ const WTT_CATEGORY_NAMES_BY_ID: Record<string, string> = {
   "81": "WTT Feeder",
 };
 
+const WTT_TIME_ZONE_TEXT_FALLBACKS: Array<{ pattern: RegExp; timeZone: string }> = [
+  { pattern: /\b(?:zagreb|croatia|arena zagreb)\b/i, timeZone: "Europe/Zagreb" },
+  { pattern: /\b(?:ljubljana|slovenia|hala tivoli)\b/i, timeZone: "Europe/Ljubljana" },
+  { pattern: /\b(?:hong kong)\b/i, timeZone: "Asia/Hong_Kong" },
+  { pattern: /\b(?:yokohama|tokyo|japan)\b/i, timeZone: "Asia/Tokyo" },
+  { pattern: /\b(?:macao|macau)\b/i, timeZone: "Asia/Macau" },
+  { pattern: /\b(?:doha|qatar)\b/i, timeZone: "Asia/Qatar" },
+  { pattern: /\b(?:singapore)\b/i, timeZone: "Asia/Singapore" },
+  { pattern: /\b(?:incheon|seoul|korea)\b/i, timeZone: "Asia/Seoul" },
+  { pattern: /\b(?:bangkok|thailand)\b/i, timeZone: "Asia/Bangkok" },
+  { pattern: /\b(?:muscat|oman)\b/i, timeZone: "Asia/Muscat" },
+  { pattern: /\b(?:frankfurt|germany)\b/i, timeZone: "Europe/Berlin" },
+  { pattern: /\b(?:london|united kingdom|england)\b/i, timeZone: "Europe/London" },
+  { pattern: /\b(?:malmo|halmstad|sweden)\b/i, timeZone: "Europe/Stockholm" },
+  { pattern: /\b(?:montpellier|france)\b/i, timeZone: "Europe/Paris" },
+  { pattern: /\b(?:tunis|tunisia)\b/i, timeZone: "Africa/Tunis" },
+];
+
 export function getDefaultWttFromDate() {
   return formatMoscowDate(new Date());
 }
@@ -539,7 +557,10 @@ export function parseWttLocalDateTime(value: string | null | undefined, timeZone
 
 export function getWttTimeZoneCode(timeZoneId: string | number | null | undefined) {
   const key = clean(timeZoneId);
-  return key ? WTT_TIME_ZONE_CODES[key] || null : null;
+  if (!key) return null;
+
+  const normalized = normalizeWttUtcOffsetCode(key);
+  return normalized || WTT_TIME_ZONE_CODES[key] || null;
 }
 
 export function buildWttEventUrl(eventId: string | number) {
@@ -561,14 +582,16 @@ function normalizeWttTournamentEvent(event: SourceWttEvent): WttTournamentEvent 
 
   const titleDates = parseDatesFromEventTitle(rawTitle);
   const title = stripTitleDateRange(rawTitle);
-  const timeZoneId = clean(event.timeZoneId ?? event.TimeZoneId) || null;
-  const timeZoneCode = getWttTimeZoneCode(timeZoneId);
-  const startDate = toMoscowIsoDateKey(event.startDateTime ?? event.StartDateTime, timeZoneId) || titleDates.startDate;
-  const endDate = toMoscowIsoDateKey(event.endDateTime ?? event.EndDateTime, timeZoneId) || titleDates.endDate;
   const countryName = clean(event.countryName ?? event.Country);
   const countryCode = clean(event.countryCode ?? event.CountryCode);
   const city = clean(event.city ?? event.City);
   const venueName = clean(event.venueName ?? event.VenueName);
+  const sourceTimeZoneId = clean(event.timeZoneId ?? event.TimeZoneId) || null;
+  const inferredTimeZoneId = inferWttTimeZoneFromText({ title, city, countryName, countryCode, venueName, dateKey: titleDates.startDate });
+  const timeZoneId = getWttTimeZoneCode(sourceTimeZoneId) ? sourceTimeZoneId : inferredTimeZoneId;
+  const timeZoneCode = getWttTimeZoneCode(timeZoneId);
+  const startDate = toMoscowIsoDateKey(event.startDateTime ?? event.StartDateTime, timeZoneId) || titleDates.startDate;
+  const endDate = toMoscowIsoDateKey(event.endDateTime ?? event.EndDateTime, timeZoneId) || titleDates.endDate;
   const tournamentCategoryId = clean(event.tournamentCategoryId ?? event.TournamentCategoryId) || null;
   const categoryName = clean(event.tournamentCategoryName ?? event.categoryName ?? event.Name)
     || (tournamentCategoryId ? WTT_CATEGORY_NAMES_BY_ID[tournamentCategoryId] : "")
@@ -973,6 +996,86 @@ function parseWttUtcOffsetMinutes(timeZoneCode: string) {
 
   const minutes = Number(match[2]) * 60 + Number(match[3]);
   return match[1] === "-" ? -minutes : minutes;
+}
+
+function normalizeWttUtcOffsetCode(value: string) {
+  const normalized = value.trim().toUpperCase();
+  if (normalized === "UTC") return "UTC";
+
+  const match = normalized.match(/^UTC([+-])(\d{1,2})(?::?(\d{2}))?$/);
+  if (!match) return null;
+
+  const hours = Number(match[2]);
+  const minutes = Number(match[3] || "0");
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes) || hours > 14 || minutes >= 60) return null;
+
+  return `UTC${match[1]}${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function inferWttTimeZoneFromText(input: {
+  title: string;
+  city: string;
+  countryName: string;
+  countryCode: string;
+  venueName: string;
+  dateKey: string | null;
+}) {
+  const haystack = [
+    input.title,
+    input.city,
+    input.countryName,
+    input.countryCode,
+    input.venueName,
+  ].filter(Boolean).join(" ");
+
+  if (!haystack) return null;
+
+  const fallback = WTT_TIME_ZONE_TEXT_FALLBACKS.find((item) => item.pattern.test(haystack));
+  if (!fallback) return null;
+
+  return getUtcOffsetCodeForIanaTimeZone(fallback.timeZone, input.dateKey);
+}
+
+function getUtcOffsetCodeForIanaTimeZone(timeZone: string, dateKey: string | null) {
+  const baseDate = parseApiDate(dateKey || "") || new Date();
+  const probe = new Date(Date.UTC(baseDate.getUTCFullYear(), baseDate.getUTCMonth(), baseDate.getUTCDate(), 12, 0, 0));
+
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(probe);
+    const byType = new Map(parts.map((part) => [part.type, part.value]));
+    const localAsUtc = Date.UTC(
+      Number(byType.get("year")),
+      Number(byType.get("month")) - 1,
+      Number(byType.get("day")),
+      Number(byType.get("hour")),
+      Number(byType.get("minute")),
+      Number(byType.get("second")),
+    );
+    const offsetMinutes = Math.round((localAsUtc - probe.getTime()) / 60_000);
+    return formatUtcOffsetCode(offsetMinutes);
+  } catch {
+    return null;
+  }
+}
+
+function formatUtcOffsetCode(offsetMinutes: number) {
+  if (!Number.isFinite(offsetMinutes)) return null;
+  if (offsetMinutes === 0) return "UTC";
+
+  const sign = offsetMinutes < 0 ? "-" : "+";
+  const absolute = Math.abs(offsetMinutes);
+  const hours = Math.floor(absolute / 60);
+  const minutes = absolute % 60;
+  return `UTC${sign}${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
 }
 
 async function fetchJson<T>(url: string, userAgent: string): Promise<T> {

@@ -247,7 +247,7 @@ test("WTT search recovers title-only fallback tournament details before import",
           eventId: 9998,
           eventName: "WTT Contender Recovered 2099 (10 Jun 2099 - 12 Jun 2099)",
           timeZoneId: null,
-          venueName: "Arena Zagreb",
+          venueName: "Recovery Arena",
         },
       ]), { status: 200, headers: { "content-type": "application/octet-stream" } });
     }
@@ -293,6 +293,73 @@ test("WTT search recovers title-only fallback tournament details before import",
     assert.equal(tournament.timeZoneId, "49");
     assert.equal(tournament.timeZoneCode, "UTC+02:00");
     assert.equal(tournament.matchCount, 1);
+    assert.deepEqual(tournament.categories.map((category) => [category.scope, category.matchCount]), [["men", 1]]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("WTT search infers timezone from title-only city fallback when primary list is unavailable", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const requestUrl = String(url);
+
+    if (requestUrl.includes("wtt_upcoming_only_events_list.json")) {
+      return new Response("temporary failure", { status: 503 });
+    }
+
+    if (requestUrl.includes("wtt_all_events_only_name.json")) {
+      return new Response(JSON.stringify([
+        {
+          eventId: 9997,
+          eventName: "WTT Contender Zagreb 2099 (10 Jun 2099 - 12 Jun 2099)",
+          timeZoneId: null,
+          venueName: "Arena Zagreb",
+        },
+      ]), { status: 200, headers: { "content-type": "application/octet-stream" } });
+    }
+
+    if (requestUrl.includes("/websitecacheddata/9997/schedule/")) {
+      return new Response(JSON.stringify([
+        {
+          Competition: {
+            Unit: [
+              {
+                Code: "CITY001",
+                StartDate: "2099-06-11T10:00:00",
+                ScheduleStatus: "Scheduled",
+                SubEvent: "Men's Singles",
+                Round: "R16",
+                VenueDescription: { LocationName: "Table 1", VenueName: "Arena Zagreb" },
+                StartList: {
+                  Start: [
+                    { SortOrder: 1, Competitor: { Description: { TeamName: "Alpha" } } },
+                    { SortOrder: 2, Competitor: { Description: { TeamName: "Beta" } } },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      ]), { status: 200, headers: { "content-type": "application/json" } });
+    }
+
+    if (requestUrl.includes("GetEventSchedule/9997")) {
+      return new Response("not found", { status: 404 });
+    }
+
+    return new Response("not found", { status: 404 });
+  };
+
+  try {
+    const search = await searchWttTournaments({ fromDate: "2099-06-10", days: 7 });
+    const tournament = search.tournaments[0];
+
+    assert.equal(tournament.eventId, "9997");
+    assert.equal(tournament.timeZoneId, "UTC+02:00");
+    assert.equal(tournament.timeZoneCode, "UTC+02:00");
+    assert.equal(tournament.matchCount, 1);
+    assert.equal(tournament.firstMatchTimeMoscow, "11.06.2099 11:00:00");
     assert.deepEqual(tournament.categories.map((category) => [category.scope, category.matchCount]), [["men", 1]]);
   } finally {
     globalThis.fetch = originalFetch;
