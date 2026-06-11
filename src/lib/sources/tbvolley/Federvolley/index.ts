@@ -229,7 +229,7 @@ export async function fetchFedervolleyTournament(input: {
     matchshareLid: clean(input.matchshareLid),
   });
 
-  const matches = detail.matchshareLid
+  const matchshareMatches = detail.matchshareLid
     ? await fetchFedervolleyMatches({
         matchshareLid: detail.matchshareLid,
         nodeId: detail.nodeId,
@@ -240,6 +240,16 @@ export async function fetchFedervolleyTournament(input: {
         endDate: detail.endDate,
       })
     : [];
+  const htmlMatches = matchshareMatches.length > 0
+    ? []
+    : parseFedervolleyTournamentPageMatches(html, {
+        nodeId: detail.nodeId,
+        matchshareLid: detail.matchshareLid,
+        gender: detail.gender,
+        category: detail.category,
+        pageUrl: detail.pageUrl,
+      });
+  const matches = matchshareMatches.length > 0 ? matchshareMatches : htmlMatches;
 
   return {
     ...detail,
@@ -404,6 +414,76 @@ export function parseFedervolleyMatchshareBracket(
   return matches
     .filter((match) => match.teamA.name || match.teamB.name)
     .sort(compareFedervolleyMatches);
+}
+
+export function parseFedervolleyTournamentPageMatches(
+  html: string,
+  options: {
+    nodeId: string;
+    matchshareLid?: string | null;
+    gender: FedervolleyGender;
+    category: Exclude<FedervolleyCategory, "all">;
+    pageUrl: string;
+  },
+): FedervolleyMatch[] {
+  const $ = cheerio.load(html);
+  const matches: FedervolleyMatch[] = [];
+  const matchshareLid = clean(options.matchshareLid);
+
+  $(".tabella-risultati-tappa .risultato-wrapper").each((index, element) => {
+    const $match = $(element);
+    const $header = $match.find(".intestazione-tabella-nera").first();
+    const dateText = clean($header.find(".border-bottom-yellow").eq(0).text());
+    const metaText = clean($header.find(".border-bottom-yellow").eq(1).text());
+    const roundText = clean($header.find("span").not(".border-bottom-yellow").first().text());
+    const matchNo = parseFedervolleyHtmlMatchNo(metaText) || String(index + 1);
+    const startDate = parseFedervolleyHtmlDateTime(dateText);
+    const score = parseFedervolleyHtmlScore($match.find(".punteggio-match").first().text());
+    const teamBadges = $match.find(".badge-warning");
+    const teamA = parseFedervolleyTeam(clean(teamBadges.eq(0).text()), {
+      id: clean($match.attr("data-hteam")),
+    });
+    const teamB = parseFedervolleyTeam(clean(teamBadges.eq(1).text()), {
+      id: clean($match.attr("data-vteam")),
+    });
+    const stage = normalizeFedervolleyHtmlStage(roundText);
+    const round = parseFedervolleyHtmlRound(roundText) || inferRoundFromMatchNo(matchNo, stage);
+    const court = parseFedervolleyHtmlCourt(metaText);
+
+    if (!dateText && !matchNo && !teamBadges.length) return;
+
+    matches.push({
+      id: `${matchshareLid || options.nodeId}-html-${matchNo}`,
+      nodeId: options.nodeId,
+      matchshareLid,
+      gender: options.gender,
+      category: options.category,
+      stage,
+      round,
+      court,
+      startTimeUtc: startDate ? startDate.toISOString() : null,
+      startTimeMoscow: startDate ? formatMoscowDateTime(startDate) : "",
+      dateKey: startDate ? formatMoscowDate(startDate) : "",
+      status: score.teamA !== null || score.teamB !== null || score.sets.length > 0 ? "finished" : "upcoming",
+      teamA,
+      teamB,
+      score,
+      sourceUrl: `${options.pageUrl}#risultati`,
+      rawText: [
+        stage,
+        round,
+        matchNo ? `Match ${matchNo}` : null,
+        court || null,
+        startDate ? formatMoscowDateTime(startDate) : null,
+        `${teamA.name} vs ${teamB.name}`,
+        metaText || null,
+        score.teamA !== null || score.teamB !== null ? `${score.teamA}-${score.teamB}` : null,
+        options.pageUrl,
+      ].filter(Boolean).join(" | "),
+    });
+  });
+
+  return matches.sort(compareFedervolleyMatches);
 }
 
 export function buildFedervolleySourceTitle(
@@ -745,6 +825,59 @@ function parseFedervolleyTeam(value: unknown, ref: MatchshareTeamRef | undefined
     name: name || "TBD",
     rawName,
     seed,
+  };
+}
+
+function parseFedervolleyHtmlDateTime(value: string) {
+  const match = clean(value).match(/^(\d{1,2})-(\d{1,2})-(20\d{2})\s+(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+
+  const parsed = DateTime.fromObject({
+    year: Number(match[3]),
+    month: Number(match[2]),
+    day: Number(match[1]),
+    hour: Number(match[4]),
+    minute: Number(match[5]),
+  }, { zone: "Europe/Rome" });
+
+  if (!parsed.isValid) return null;
+  return parsed.toUTC().toJSDate();
+}
+
+function parseFedervolleyHtmlCourt(value: string) {
+  const court = clean(value.match(/Campo:\s*([^-]+)/i)?.[1]);
+  return court ? `Court ${court}` : "";
+}
+
+function parseFedervolleyHtmlMatchNo(value: string) {
+  return clean(value.match(/Gara\s+n\.?\s*([A-Za-z0-9]+)/i)?.[1]);
+}
+
+function normalizeFedervolleyHtmlStage(value: string) {
+  const normalized = normalizeSearch(value);
+  if (normalized.includes("qualific")) return "Qualification";
+  if (normalized.includes("main draw") || normalized.includes("tabellone")) return "Main Draw";
+  return clean(value.split(",")[0]) || "Main Draw";
+}
+
+function parseFedervolleyHtmlRound(value: string) {
+  const text = clean(value);
+  if (!text) return "";
+  const afterComma = clean(text.split(",").pop());
+  return afterComma && afterComma !== text ? afterComma : text;
+}
+
+function parseFedervolleyHtmlScore(value: string) {
+  const scores = Array.from(clean(value).matchAll(/(\d+)\s*[-:]\s*(\d+)/g))
+    .map((match) => ({ teamA: Number(match[1]), teamB: Number(match[2]) }));
+  const matchScore = scores[0] || null;
+  const sets = scores.slice(1).map((set, index) => ({ no: index + 1, ...set }));
+  const hasPlayedScore = Boolean(matchScore && (sets.length > 0 || matchScore.teamA !== 0 || matchScore.teamB !== 0));
+
+  return {
+    teamA: hasPlayedScore ? matchScore?.teamA ?? null : null,
+    teamB: hasPlayedScore ? matchScore?.teamB ?? null : null,
+    sets,
   };
 }
 

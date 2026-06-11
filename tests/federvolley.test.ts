@@ -10,6 +10,7 @@ import {
   parseFedervolleyListing,
   parseFedervolleyMatchshareBracket,
   parseFedervolleyTournamentPage,
+  parseFedervolleyTournamentPageMatches,
 } from "../src/lib/sources/tbvolley/Federvolley";
 
 test("Federvolley listing parser extracts Assoluto rows", () => {
@@ -120,6 +121,58 @@ test("Federvolley Matchshare parser extracts matches and set scores", () => {
   ]);
 });
 
+test("Federvolley tournament page parser extracts result cards as upcoming schedule", () => {
+  const html = `
+    <div class="tabella-risultati-tappa">
+      <div class="tabella-desktop">
+        <div class="risultato-wrapper" data-hteam="45419" data-vteam="751" data-day="1" data-season="43237">
+          <div class="intestazione-tabella-nera text-center intestazione-qualificazione">
+            <span class="border-bottom-yellow">12-06-2026 09:00</span>
+            &nbsp;-&nbsp;<span class="border-bottom-yellow">Campo: 2 - Gara n.1</span>
+            <br/>
+            <span>Qualificazioni Campionato Italiano Assoluto - Tappa - Falconara Marittima 12 June m 2026, PERCORSO PRIMA COPPIA QUALIFICATA</span>
+          </div>
+          <div class="row">
+            <div class="elemento-riga-risultato col-12 col-md-5 text-center text-md-right vincitore">
+              ---
+              <br><span class="badge badge-warning"><a href="/index.php/node/15308">MUSSA FABRIZIO</a> - <a href="/index.php/node/15938">LUISETTO MICHELE</a></span>
+            </div>
+            <div class="elemento-riga-risultato punteggio-match col-12 col-md-2 text-center">0 -0
+              <div class="row"></div>
+            </div>
+            <div class="elemento-riga-risultato col-12 col-md-5 text-center text-md-left sconfitto">
+              ---
+              <br><span class="badge badge-warning"><a href="/index.php/node/36361">DELLA LUNGA DORE</a> - <a href="/index.php/node/15997">GIULIANI ANDREA</a></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const matches = parseFedervolleyTournamentPageMatches(html, {
+    nodeId: "66727",
+    matchshareLid: "11518",
+    gender: "men",
+    category: "assoluto",
+    pageUrl: "https://beachvolley.federvolley.it/index.php/node/66727",
+  });
+
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0].id, "11518-html-1");
+  assert.equal(matches[0].teamA.name, "MUSSA FABRIZIO / LUISETTO MICHELE");
+  assert.equal(matches[0].teamB.name, "DELLA LUNGA DORE / GIULIANI ANDREA");
+  assert.equal(matches[0].teamA.id, "45419");
+  assert.equal(matches[0].teamB.id, "751");
+  assert.equal(matches[0].court, "Court 2");
+  assert.equal(matches[0].stage, "Qualification");
+  assert.equal(matches[0].round, "PERCORSO PRIMA COPPIA QUALIFICATA");
+  assert.equal(matches[0].status, "upcoming");
+  assert.equal(matches[0].startTimeMoscow, "12.06.2026 10:00:00");
+  assert.equal(matches[0].score.teamA, null);
+  assert.equal(matches[0].score.teamB, null);
+});
+
 test("Federvolley tournament fetch treats Matchshare HTTP errors as unavailable bracket", async () => {
   const originalFetch = globalThis.fetch;
   const html = `
@@ -150,6 +203,52 @@ test("Federvolley tournament fetch treats Matchshare HTTP errors as unavailable 
       assert.equal(tournament.matches?.length, 0);
       assert.equal(tournament.matchCount, 0);
     }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Federvolley tournament fetch falls back to page result cards when Matchshare is unavailable", async () => {
+  const originalFetch = globalThis.fetch;
+  const html = `
+    <div class="field field--name-title">Campionato Italiano Assoluto - Tappa - Falconara</div>
+    <div class="field field--name-field-sesso-torneo">Maschile</div>
+    <div class="field field--name-field-data-inizio"><time datetime="2026-06-12T00:00:00+02:00">12 Giugno 2026</time></div>
+    <div class="field field--name-field-data-fine"><time datetime="2026-06-14T00:00:00+02:00">14 Giugno 2026</time></div>
+    <a href="https://srv.matchshare.it/bvl_test/bracket.php?lid=11518&client_name=bvl_development">Vai al tabellone</a>
+    <div class="tabella-risultati-tappa">
+      <div class="risultato-wrapper" data-hteam="45419" data-vteam="751">
+        <div class="intestazione-tabella-nera text-center intestazione-qualificazione">
+          <span class="border-bottom-yellow">12-06-2026 09:00</span>
+          <span class="border-bottom-yellow">Campo: 2 - Gara n.1</span>
+          <span>Qualificazioni Campionato Italiano Assoluto - Tappa - Falconara Marittima 12 June m 2026, PERCORSO PRIMA COPPIA QUALIFICATA</span>
+        </div>
+        <div class="elemento-riga-risultato"><span class="badge badge-warning">MUSSA FABRIZIO - LUISETTO MICHELE</span></div>
+        <div class="punteggio-match">0 -0</div>
+        <div class="elemento-riga-risultato"><span class="badge badge-warning">DELLA LUNGA DORE - GIULIANI ANDREA</span></div>
+      </div>
+    </div>
+  `;
+
+  try {
+    globalThis.fetch = async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("json_for_bracket")) {
+        return new Response("<html><title>Matchshare unavailable</title></html>", { status: 500 });
+      }
+      return new Response(html, { status: 200, headers: { "content-type": "text/html" } });
+    };
+
+    const tournament = await fetchFedervolleyTournament({
+      federvolleyNodeId: "66727",
+      category: "assoluto",
+      gender: "men",
+    });
+
+    assert.equal(tournament.matchshareLid, "11518");
+    assert.equal(tournament.matches?.length, 1);
+    assert.equal(tournament.matchCount, 1);
+    assert.equal(tournament.matches?.[0].status, "upcoming");
   } finally {
     globalThis.fetch = originalFetch;
   }
