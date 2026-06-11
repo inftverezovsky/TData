@@ -213,6 +213,92 @@ test("WTT tournament search uses API fallback for future schedule days", async (
   }
 });
 
+test("WTT search recovers title-only fallback tournament details before import", async () => {
+  const originalFetch = globalThis.fetch;
+  let primaryEventListCalls = 0;
+
+  globalThis.fetch = async (url) => {
+    const requestUrl = String(url);
+
+    if (requestUrl.includes("wtt_upcoming_only_events_list.json")) {
+      primaryEventListCalls += 1;
+      if (primaryEventListCalls === 1) {
+        return new Response("temporary failure", { status: 503 });
+      }
+
+      return new Response(JSON.stringify([
+        {
+          eventId: 9998,
+          eventName: "WTT Contender Recovered 2099",
+          startDateTime: "2099-06-10T00:00:00",
+          endDateTime: "2099-06-12T00:00:00",
+          city: "Zagreb",
+          countryName: "Croatia",
+          timeZoneId: 49,
+          tournamentCategoryId: 34,
+          subEvents: JSON.stringify([{ subEventName: "Men's Singles", subEventCode: "MS", numberOfTotalMatches: 1 }]),
+        },
+      ]), { status: 200, headers: { "content-type": "application/octet-stream" } });
+    }
+
+    if (requestUrl.includes("wtt_all_events_only_name.json")) {
+      return new Response(JSON.stringify([
+        {
+          eventId: 9998,
+          eventName: "WTT Contender Recovered 2099 (10 Jun 2099 - 12 Jun 2099)",
+          timeZoneId: null,
+          venueName: "Arena Zagreb",
+        },
+      ]), { status: 200, headers: { "content-type": "application/octet-stream" } });
+    }
+
+    if (requestUrl.includes("/websitecacheddata/9998/schedule/")) {
+      return new Response(JSON.stringify([
+        {
+          Competition: {
+            Unit: [
+              {
+                Code: "RECOVERED001",
+                StartDate: "2099-06-11T10:00:00",
+                ScheduleStatus: "Scheduled",
+                SubEvent: "Men's Singles",
+                Round: "R16",
+                VenueDescription: { LocationName: "Table 1" },
+                StartList: {
+                  Start: [
+                    { SortOrder: 1, Competitor: { Description: { TeamName: "Alpha" } } },
+                    { SortOrder: 2, Competitor: { Description: { TeamName: "Beta" } } },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+      ]), { status: 200, headers: { "content-type": "application/json" } });
+    }
+
+    if (requestUrl.includes("GetEventSchedule/9998")) {
+      return new Response("not found", { status: 404 });
+    }
+
+    return new Response("not found", { status: 404 });
+  };
+
+  try {
+    const search = await searchWttTournaments({ fromDate: "2099-06-10", days: 7 });
+    const tournament = search.tournaments[0];
+
+    assert.equal(primaryEventListCalls, 2);
+    assert.equal(tournament.eventId, "9998");
+    assert.equal(tournament.timeZoneId, "49");
+    assert.equal(tournament.timeZoneCode, "UTC+02:00");
+    assert.equal(tournament.matchCount, 1);
+    assert.deepEqual(tournament.categories.map((category) => [category.scope, category.matchCount]), [["men", 1]]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("WTT schedule normalization extracts teams, stage, court and placeholders", () => {
   const schedule = normalizeWttSchedule(
     [

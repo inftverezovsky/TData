@@ -24,17 +24,19 @@ export default function WttTournamentBundleButton({
   items,
   disciplineSlug,
   targetBasePath = "/tablet/tournament",
+  disabledReason,
 }: {
   items: BundleItem[];
   disciplineSlug: string;
   targetBasePath?: string;
+  disabledReason?: string | null;
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function loadBundle() {
-    if (loading || items.length === 0) return;
+    if (loading || disabledReason || items.length === 0) return;
 
     setLoading(true);
     setError(null);
@@ -97,11 +99,12 @@ export default function WttTournamentBundleButton({
       <button
         type="button"
         onClick={loadBundle}
-        disabled={loading || items.length === 0}
+        disabled={loading || Boolean(disabledReason) || items.length === 0}
         className="flex min-h-11 w-full min-w-0 items-center justify-center rounded-xl border border-slate-200/50 bg-slate-500/5 px-4 py-2.5 text-center text-sm font-medium text-slate-600 backdrop-blur-sm transition-all hover:bg-slate-500/10 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto sm:px-5"
       >
-        {loading ? "Загружаю сетки..." : "Загрузить данные"}
+        {loading ? "Загружаю сетки..." : disabledReason ? "Недоступно" : "Загрузить данные"}
       </button>
+      {!error && disabledReason ? <p className="max-w-56 text-xs text-red-600">{disabledReason}</p> : null}
       {error ? <p className="max-w-56 text-xs text-red-600">{error}</p> : null}
     </div>
   );

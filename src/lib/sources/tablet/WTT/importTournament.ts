@@ -8,6 +8,7 @@ import {
   buildWttEventUrl,
   fetchWttSchedule,
   getWttCategoryLabel,
+  getWttTimeZoneCode,
   isActiveWttMatch,
   inferWttCategoryScope,
   normalizeWttSchedule,
@@ -100,6 +101,10 @@ export async function importWttTournament(input: ImportWttTournamentInput) {
     }
 
     const timeZoneId = clean(input.timeZoneId) || clean(wttTournament.timeZoneId);
+    if (!getWttTimeZoneCode(timeZoneId)) {
+      throw new Error(`WTT не отдал валидный часовой пояс для eventId=${wttTournament.eventId}. Обновите список турниров и попробуйте снова.`);
+    }
+
     const schedule = normalizeWttSchedule(
       await fetchWttSchedule(wttTournament.eventId, { allowApiFallback: true }),
       { eventId: wttTournament.eventId, timeZoneId },

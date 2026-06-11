@@ -4,7 +4,6 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { CalendarDays, ExternalLink, Loader2, MapPin, RefreshCw, Search, Table2, Trophy, UsersRound } from "lucide-react";
 import WttTournamentBundleButton from "@/components/tablet/WttTournamentBundleButton";
 import type { WttTournamentEvent, WttTournamentSearch as WttTournamentSearchResult } from "@/lib/sources/tablet/WTT";
-import type { TableTennisCategoryScope } from "@/lib/sources/tablet/config";
 
 const TABLE_TENNIS_SLUG = "tabletennis";
 
@@ -194,6 +193,9 @@ function TournamentCard({
   fromDate: string;
   days: string;
 }) {
+  const loadUnavailableReason = getWttLoadUnavailableReason(tournament);
+  const bundleItems = loadUnavailableReason ? [] : resolveTournamentBundleItems(tournament, fromDate, days);
+
   return (
     <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-colors hover:border-cyan-200 hover:bg-cyan-500/[0.025]">
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
@@ -272,7 +274,8 @@ function TournamentCard({
           <WttTournamentBundleButton
             disciplineSlug={TABLE_TENNIS_SLUG}
             targetBasePath="/tablet/tournament"
-            items={resolveTournamentBundleItems(tournament, fromDate, days)}
+            items={bundleItems}
+            disabledReason={loadUnavailableReason}
           />
         </div>
       </div>
@@ -281,14 +284,7 @@ function TournamentCard({
 }
 
 function resolveTournamentBundleItems(tournament: WttTournamentEvent, fromDate: string, days: string) {
-  const categories = tournament.categories.length > 0
-    ? tournament.categories
-    : [{
-      scope: "men" as TableTennisCategoryScope,
-      label: "Мужчины",
-      matchCount: tournament.matchCount,
-      firstMatchTimeMoscow: tournament.firstMatchTimeMoscow,
-    }];
+  const categories = tournament.categories;
 
   return categories.map((category) => ({
     title: `${tournament.title} — ${category.label} [WTT:${tournament.eventId}:${category.scope}]`,
@@ -301,6 +297,18 @@ function resolveTournamentBundleItems(tournament: WttTournamentEvent, fromDate: 
       days,
     },
   }));
+}
+
+function getWttLoadUnavailableReason(tournament: WttTournamentEvent) {
+  if (!tournament.timeZoneId || !tournament.timeZoneCode) {
+    return "WTT не отдал часовой пояс. Обновите список позже.";
+  }
+
+  if (tournament.matchCount <= 0 || tournament.categories.length === 0) {
+    return "Нет актуальных матчей для загрузки.";
+  }
+
+  return null;
 }
 
 function Metric({ label, value }: { label: string; value: number }) {

@@ -364,8 +364,7 @@ export function resolveWttDateRange(input: { fromDate?: string | null; toDate?: 
 
 export async function fetchWttEvents(): Promise<SourceWttEvent[]> {
   try {
-    const payload = await fetchJson<unknown>(WTT_EVENTS_ENDPOINT, "TData TableT/WTT (+https://www.worldtabletennis.com/eventslist)");
-    const events = unwrapRows(payload);
+    const events = await fetchWttPrimaryEvents();
     if (events.length > 0) return events as SourceWttEvent[];
   } catch {
     // Fall through to the title-only WTT blob. The caller still gets a useful tournament list.
@@ -376,6 +375,11 @@ export async function fetchWttEvents(): Promise<SourceWttEvent[]> {
     `${WTT_EVENTS_TITLE_FALLBACK_ENDPOINT}?q=${encodeURIComponent(dateKey)}`,
     "TData TableT/WTT (+https://www.worldtabletennis.com/eventslist)",
   );
+  return unwrapRows(payload) as SourceWttEvent[];
+}
+
+async function fetchWttPrimaryEvents(): Promise<SourceWttEvent[]> {
+  const payload = await fetchJson<unknown>(WTT_EVENTS_ENDPOINT, "TData TableT/WTT (+https://www.worldtabletennis.com/eventslist)");
   return unwrapRows(payload) as SourceWttEvent[];
 }
 
@@ -601,26 +605,47 @@ function normalizeWttTournamentEvent(event: SourceWttEvent): WttTournamentEvent 
 
 async function enrichWttTournamentsWithScheduleSummaries(tournaments: WttTournamentEvent[]) {
   return Promise.all(tournaments.map(async (tournament, index) => {
-    if (index >= SCHEDULE_SUMMARY_LIMIT || !tournament.timeZoneId) return tournament;
+    if (index >= SCHEDULE_SUMMARY_LIMIT) return tournament;
+
+    const enrichedTournament = getWttTimeZoneCode(tournament.timeZoneId)
+      ? tournament
+      : await recoverWttTournamentDetails(tournament);
+    if (!getWttTimeZoneCode(enrichedTournament.timeZoneId)) return enrichedTournament;
 
     try {
       const schedule = normalizeWttSchedule(
-        await fetchWttSchedule(tournament.eventId, { allowApiFallback: true }),
-        { eventId: tournament.eventId, timeZoneId: tournament.timeZoneId },
+        await fetchWttSchedule(enrichedTournament.eventId, { allowApiFallback: true }),
+        { eventId: enrichedTournament.eventId, timeZoneId: enrichedTournament.timeZoneId },
       );
       const activeMatches = schedule.matches.filter((match) => isActiveWttMatch(match));
       const categories = summarizeWttMatchCategories(activeMatches);
       return {
-        ...tournament,
-        matchCount: activeMatches.length || tournament.matchCount,
-        firstMatchTimeMoscow: activeMatches[0]?.startTimeMoscow || tournament.firstMatchTimeMoscow,
-        categories: categories.length > 0 ? categories : tournament.categories,
-        status: activeMatches.some((match) => match.status === "live") ? "ongoing" : tournament.status,
+        ...enrichedTournament,
+        matchCount: activeMatches.length || enrichedTournament.matchCount,
+        firstMatchTimeMoscow: activeMatches[0]?.startTimeMoscow || enrichedTournament.firstMatchTimeMoscow,
+        categories: categories.length > 0 ? categories : enrichedTournament.categories,
+        status: activeMatches.some((match) => match.status === "live") ? "ongoing" : enrichedTournament.status,
       };
     } catch {
-      return tournament;
+      return enrichedTournament;
     }
   }));
+}
+
+async function recoverWttTournamentDetails(tournament: WttTournamentEvent): Promise<WttTournamentEvent> {
+  try {
+    const events = normalizeWttTournamentEvents(await fetchWttPrimaryEvents());
+    const fullEvent = events.find((event) => event.eventId === tournament.eventId);
+    if (!fullEvent || !getWttTimeZoneCode(fullEvent.timeZoneId)) return tournament;
+
+    return {
+      ...tournament,
+      ...fullEvent,
+      pageUrl: tournament.pageUrl || fullEvent.pageUrl,
+    };
+  } catch {
+    return tournament;
+  }
 }
 
 function normalizeWttUnit(unit: SourceWttUnit, context: { eventId: string; timeZoneId: string; timeZoneCode: string }): WttMatch | null {
