@@ -245,6 +245,57 @@ test("auto mapping expands Chinese pinyin initials in beach volleyball pairs", (
   assert.equal(preview.diagnostics.fuzzyCandidateComparisons, 0);
 });
 
+test("auto mapping uses surname-only pair index for reversed full-name beach volleyball pairs", () => {
+  const preview = buildAutoMappingPreviewFromData({
+    teamNames: ["BERNASCONI GIORGIA / MENICONI BEATRICE"],
+    mappings: [],
+    adminTeams: [
+      {
+        platformId: "904274",
+        platformName: "Меницони/Бернаскони",
+        platformNameEn: "Meniconi/Bernasconi",
+        normalizedName: "меницони бернаскони",
+        normalizedNameEn: "meniconi bernasconi",
+      },
+    ],
+  });
+
+  assert.equal(preview.auto.length, 1);
+  assert.equal(preview.auto[0].platformId, "904274");
+  assert.equal(preview.auto[0].matchMethod, "pair_exact");
+  assert.equal(preview.diagnostics.exactIndexHits, 1);
+  assert.equal(preview.diagnostics.fuzzyCandidateComparisons, 0);
+});
+
+test("auto mapping finds surname-only beach pairs in large admin lists without full scans", () => {
+  const decoys = Array.from({ length: 1200 }, (_, index) => ({
+    platformId: `decoy-${index}`,
+    platformName: `Unrelated Beach Pair ${index}/Other Pair ${index}`,
+    normalizedName: `unrelated beach pair ${index} other pair ${index}`,
+  }));
+  const preview = buildAutoMappingPreviewFromData({
+    teamNames: ["BERNASCONI GIORGIA / MENICONI BEATRICE"],
+    mappings: [],
+    adminTeams: [
+      ...decoys,
+      {
+        platformId: "904274",
+        platformName: "Меницони/Бернаскони",
+        platformNameEn: "Meniconi/Bernasconi",
+        normalizedName: "меницони бернаскони",
+        normalizedNameEn: "meniconi bernasconi",
+      },
+    ],
+  });
+
+  assert.equal(preview.auto.length, 1);
+  assert.equal(preview.auto[0].platformId, "904274");
+  assert.equal(preview.auto[0].matchMethod, "pair_exact");
+  assert.equal(preview.diagnostics.exactIndexHits, 1);
+  assert.equal(preview.diagnostics.candidatePoolFallbacks, 0);
+  assert.equal(preview.diagnostics.fuzzyCandidateComparisons, 0);
+});
+
 test("auto mapping caps fuzzy beach pairs when only one surname matches", () => {
   const preview = buildAutoMappingPreviewFromData({
     teamNames: ["Jiang K. Y./Yan X."],

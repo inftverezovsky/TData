@@ -1,5 +1,6 @@
 import { isKnownStageAnnouncementLabel } from "@/lib/matches/scheduleView";
 import {
+  getFuzzyNameVariants,
   getNameMatchDetails,
   getPlatformTeamSearchNames,
   normalizeFuzzyName,
@@ -93,6 +94,11 @@ type ExactIndexKey = {
   key: string;
   method: PlatformTeamMatchMethod;
   specificity: number;
+};
+
+type IndexNameVariant = {
+  value: string;
+  method: PlatformTeamMatchMethod;
 };
 
 type AutoMappingCandidateIndex = {
@@ -376,7 +382,7 @@ function buildAutoMappingCandidateIndex(adminTeams: AutoMappingAdminTeam[]): Aut
   const index: AutoMappingCandidateIndex = {
     candidates: adminTeams.map((admin) => ({
       admin,
-      searchNames: getPlatformTeamSearchNames(admin),
+      searchNames: getAutoMappingSearchNames(admin),
     })),
     exact: new Map(),
     tokenBuckets: new Map(),
@@ -426,9 +432,13 @@ function getExactIndexedDecision(sourceName: string, index: AutoMappingCandidate
     entries = new Map<string, ExactIndexEntry>();
     for (const exactKey of sourceKeys.filter((key) => key.specificity === specificity)) {
       for (const entry of index.exact.get(exactKey.key) ?? []) {
+        const method = getCombinedExactMatchMethod(exactKey.method, entry.matchMethod);
         const existing = entries.get(entry.candidate.admin.platformId);
-        if (!existing || getMatchMethodPriority(entry.matchMethod) < getMatchMethodPriority(existing.matchMethod)) {
-          entries.set(entry.candidate.admin.platformId, entry);
+        if (!existing || getMatchMethodPriority(method) < getMatchMethodPriority(existing.matchMethod)) {
+          entries.set(entry.candidate.admin.platformId, {
+            ...entry,
+            matchMethod: method,
+          });
         }
       }
     }
@@ -590,43 +600,115 @@ function shouldUseFullCandidateFallback(index: AutoMappingCandidateIndex) {
 }
 
 function getExactIndexKeys(value: string) {
-  const normalized = normalizeFuzzyName(value);
-  const keys: ExactIndexKey[] = [];
+  const keys = new Map<string, ExactIndexKey>();
 
-  if (normalized) {
-    keys.push({ key: `name:${normalized}`, method: "exact", specificity: 10_000 + normalized.length });
+  const add = (item: ExactIndexKey) => {
+    const existing = keys.get(item.key);
+    if (!existing || item.specificity > existing.specificity || getMatchMethodPriority(item.method) < getMatchMethodPriority(existing.method)) {
+      keys.set(item.key, item);
+    }
+  };
+
+  for (const variant of getIndexNameVariants(value)) {
+    const normalized = normalizeFuzzyName(variant.value);
+    if (normalized) {
+      add({ key: `name:${normalized}`, method: variant.method, specificity: 10_000 + normalized.length });
+    }
+
+    const compact = getCompactNameKey(normalized);
+    if (compact && compact !== normalized && compact.length >= 4) {
+      add({
+        key: `compact:${compact}`,
+        method: getDerivedExactMatchMethod(variant.method),
+        specificity: 9_000 + compact.length,
+      });
+    }
+
+    for (const pairKey of getPairPersonKeys(variant.value)) {
+      add({
+        key: `pair:${pairKey.key}`,
+        method: variant.method === "translit_fuzzy" ? "translit_fuzzy" : "pair_exact",
+        specificity: 20_000 + pairKey.specificity,
+      });
+    }
   }
 
-  const compact = getCompactNameKey(normalized);
-  if (compact && compact !== normalized && compact.length >= 4) {
-    keys.push({ key: `compact:${compact}`, method: "alias_exact", specificity: 9_000 + compact.length });
-  }
-
-  for (const pairKey of getPairPersonKeys(value)) {
-    keys.push({ key: `pair:${pairKey.key}`, method: "pair_exact", specificity: 1_000 + pairKey.specificity });
-  }
-
-  return keys;
+  return Array.from(keys.values());
 }
 
 function getCandidateBucketTokens(value: string) {
-  const normalized = normalizeFuzzyName(value);
-  const tokens = new Set(
-    normalized
-      .split(" ")
-      .map((token) => token.trim())
-      .filter((token) => token.length >= 2)
-  );
+  const tokens = new Set<string>();
 
-  for (const personKey of getPairPersonPartKeys(value)) {
-    const [family, ...givenParts] = personKey.split(":");
-    if (family?.length >= 2) tokens.add(family);
-    for (const part of givenParts) {
-      if (part.length >= 2) tokens.add(part);
+  for (const variant of getIndexNameVariants(value)) {
+    const normalized = normalizeFuzzyName(variant.value);
+    for (const token of normalized.split(" ")) {
+      if (token.trim().length >= 2) tokens.add(token.trim());
+    }
+
+    for (const personKey of getPairPersonPartKeys(variant.value)) {
+      const [family, ...givenParts] = personKey.split(":");
+      if (family?.length >= 2) tokens.add(family);
+      for (const part of givenParts) {
+        if (part.length >= 2) tokens.add(part);
+      }
     }
   }
 
   return Array.from(tokens);
+}
+
+function getAutoMappingSearchNames(admin: AutoMappingAdminTeam) {
+  return expandIndexNameVariants(getPlatformTeamSearchNames(admin)).map((variant) => variant.value);
+}
+
+function getIndexNameVariants(value: string) {
+  return expandIndexNameVariants([value]);
+}
+
+function expandIndexNameVariants(values: string[]): IndexNameVariant[] {
+  const variants = new Map<string, IndexNameVariant>();
+  const add = (value: string, method: PlatformTeamMatchMethod) => {
+    const normalized = normalizeFuzzyName(value);
+    if (!normalized) return;
+    const existing = variants.get(normalized);
+    if (!existing || getMatchMethodPriority(method) < getMatchMethodPriority(existing.method)) {
+      variants.set(normalized, { value, method });
+    }
+  };
+
+  for (const value of values) {
+    const raw = String(value || "").trim();
+    if (!raw) continue;
+    const rawHasCyrillic = containsCyrillic(raw);
+    add(raw, "exact");
+    const normalized = normalizeFuzzyName(raw);
+    if (normalized) add(normalized, "exact");
+    for (const fuzzyVariant of getFuzzyNameVariants(raw)) {
+      if (!fuzzyVariant) continue;
+      add(
+        fuzzyVariant,
+        rawHasCyrillic && !containsCyrillic(fuzzyVariant)
+          ? "translit_fuzzy"
+          : getDerivedExactMatchMethod("exact")
+      );
+    }
+  }
+  return Array.from(variants.values());
+}
+
+function containsCyrillic(value: string) {
+  return /\p{Script=Cyrillic}/u.test(value);
+}
+
+function getCombinedExactMatchMethod(left: PlatformTeamMatchMethod, right: PlatformTeamMatchMethod) {
+  if (left === "pair_exact" || right === "pair_exact") return "pair_exact";
+  if (left === "translit_fuzzy" || right === "translit_fuzzy") return "translit_fuzzy";
+  if (left === "alias_exact" || right === "alias_exact") return "alias_exact";
+  return "exact";
+}
+
+function getDerivedExactMatchMethod(method: PlatformTeamMatchMethod) {
+  return method === "translit_fuzzy" ? "translit_fuzzy" : "alias_exact";
 }
 
 function getPairPersonKeys(value: string) {
@@ -679,6 +761,8 @@ function getPersonPartKeyOptions(value: string) {
   const keys = new Map<string, number>();
   const leadingInitials = tokens.slice(0, -1);
   const trailingInitials = tokens.slice(1);
+  addFamilyOnlyPersonKey(keys, tokens[0]);
+  addFamilyOnlyPersonKey(keys, tokens[tokens.length - 1]);
 
   if (leadingInitials.length > 0 && leadingInitials.every(isInitialLikeToken)) {
     addPersonKeyOptions(keys, tokens[tokens.length - 1], leadingInitials);
@@ -694,6 +778,11 @@ function getPersonPartKeyOptions(value: string) {
   return Array.from(keys.entries())
     .map(([key, specificity]) => ({ key, specificity }))
     .sort((left, right) => right.specificity - left.specificity);
+}
+
+function addFamilyOnlyPersonKey(keys: Map<string, number>, family: string) {
+  if (!family || family.length < 2) return;
+  keys.set(family, Math.max(keys.get(family) ?? 0, Math.max(1, family.length * 5 - 2)));
 }
 
 function addPersonKeyOptions(keys: Map<string, number>, family: string, givenTokens: string[]) {
