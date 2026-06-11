@@ -274,6 +274,25 @@ test("auto mapping caps fuzzy beach pairs when only one surname matches", () => 
   assert.equal(preview.unmapped[0].liquipediaName, "Jiang K. Y./Yan X.");
 });
 
+test("auto mapping skips expensive full scans for large unmatched admin lists", () => {
+  const adminTeams = Array.from({ length: 1000 }, (_, index) => ({
+    platformId: `team-${index}`,
+    platformName: `Unrelated Beach Pair ${index}`,
+    normalizedName: `unrelated beach pair ${index}`,
+  }));
+  const preview = buildAutoMappingPreviewFromData({
+    teamNames: ["MUSSA FABRIZIO / LUISETTO MICHELE"],
+    mappings: [],
+    adminTeams,
+  });
+
+  assert.equal(preview.auto.length, 0);
+  assert.equal(preview.unmapped.length, 1);
+  assert.equal(preview.unmapped[0].reason, "score_below_threshold");
+  assert.equal(preview.diagnostics.candidatePoolFallbacks, 1);
+  assert.equal(preview.diagnostics.fuzzyCandidateComparisons, 0);
+});
+
 test("auto mapping preview reports manual locked ID conflicts instead of overwriting", () => {
   const preview = buildAutoMappingPreviewFromData({
     teamNames: ["Liquid"],

@@ -12,6 +12,7 @@ import { isPlaceholderTeam, normalizeTeamName } from "@/lib/teams/teams";
 const AUTO_MAP_MIN_SCORE = 85;
 const AUTO_MAP_SUGGESTED_MIN_SCORE = 75;
 const MANUAL_CONFLICT_MIN_SCORE = 92;
+const MAX_FULL_SCAN_CANDIDATES = 800;
 
 export type AutoMappingAdminTeam = {
   platformId: string;
@@ -303,7 +304,11 @@ function getTeamAutoMappingDecision(
   let pool = selectCandidatePool(mapping.liquipediaName, index);
   let scoredPool = scoreCandidatePool(mapping.liquipediaName, liqName, pool.candidates);
 
-  if (!pool.usedFallback && scoredPool.bestScore < AUTO_MAP_SUGGESTED_MIN_SCORE) {
+  if (
+    !pool.usedFallback
+    && scoredPool.bestScore < AUTO_MAP_SUGGESTED_MIN_SCORE
+    && shouldUseFullCandidateFallback(index)
+  ) {
     pool = { candidates: index.candidates, usedFallback: true };
     const fallbackScoredPool = scoreCandidatePool(mapping.liquipediaName, liqName, pool.candidates);
     scoredPool = {
@@ -562,7 +567,10 @@ function selectCandidatePool(sourceName: string, index: AutoMappingCandidateInde
   }
 
   if (hits.size === 0) {
-    return { candidates: index.candidates, usedFallback: true };
+    return {
+      candidates: shouldUseFullCandidateFallback(index) ? index.candidates : [],
+      usedFallback: true,
+    };
   }
 
   const minimumHits = sourceTokens.length >= 4 ? 2 : 1;
@@ -575,6 +583,10 @@ function selectCandidatePool(sourceName: string, index: AutoMappingCandidateInde
     candidates,
     usedFallback: false,
   };
+}
+
+function shouldUseFullCandidateFallback(index: AutoMappingCandidateIndex) {
+  return index.candidates.length <= MAX_FULL_SCAN_CANDIDATES;
 }
 
 function getExactIndexKeys(value: string) {
