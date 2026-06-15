@@ -99,8 +99,8 @@ test("CBV filters drop completed tournaments and matches", () => {
     {
       id: 951,
       nome: "Saquarema Open",
-      dataInicioEtapa: "2026-06-12",
-      dataFimEtapa: "2026-06-14",
+      dataInicioEtapa: "2026-06-16",
+      dataFimEtapa: "2026-06-18",
       campeonato: { id: 37, nome: "CBVP ADULTO" },
       temporada: { id: 23, nome: "2026" },
     },

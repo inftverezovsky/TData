@@ -536,6 +536,41 @@ test("WTT scheduled rows stay upcoming even when actual timestamps are present",
   assert.equal(schedule.summary.finished, 0);
 });
 
+test("WTT start list rows stay upcoming even when actual timestamps are present", () => {
+  const schedule = normalizeWttSchedule(
+    [
+      {
+        Competition: {
+          Unit: [
+            {
+              Code: "STARTLIST001",
+              StartDate: "2026-06-16T18:10:00",
+              ScheduleStatus: "Start List",
+              ActualStartDate: "2026-06-16T23:20:00",
+              ActualEndDate: "2026-06-16T23:55:00",
+              SubEvent: "Women's Singles",
+              Round: "RND2",
+              VenueDescription: { LocationName: "Table 1" },
+              StartList: {
+                Start: [
+                  { SortOrder: 1, Competitor: { Description: { TeamName: "Alpha" } } },
+                  { SortOrder: 2, Competitor: { Description: { TeamName: "Beta" } } },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    ],
+    { eventId: 3241, timeZoneId: "UTC+02:00" },
+  );
+
+  assert.equal(schedule.matches[0].status, "upcoming");
+  assert.equal(schedule.matches[0].categoryScope, "women");
+  assert.equal(schedule.summary.upcoming, 1);
+  assert.equal(schedule.summary.finished, 0);
+});
+
 test("WTT local tournament time converts to Moscow time", () => {
   const date = parseWttLocalDateTime("2026-06-10T18:20:00", 49);
 
@@ -552,6 +587,16 @@ test("WTT schedule fails on unknown time zone id", () => {
 });
 
 test("WTT category normalization splits singles, doubles and mixed", () => {
+  assert.equal(inferWttCategoryScope("MS"), "men");
+  assert.equal(inferWttCategoryScope("WS"), "women");
+  assert.equal(inferWttCategoryScope("MD"), "men-doubles");
+  assert.equal(inferWttCategoryScope("WD"), "women-doubles");
+  assert.equal(inferWttCategoryScope("XD"), "mixed");
+  assert.equal(inferWttCategoryScope("TTEMSINGLES-----------RND1000100--"), "men");
+  assert.equal(inferWttCategoryScope("TTEWSINGLES-----------RND1000100--"), "women");
+  assert.equal(inferWttCategoryScope("TTEMDOUBLES-----------RND1000100--"), "men-doubles");
+  assert.equal(inferWttCategoryScope("TTEWDOUBLES-----------RND1000100--"), "women-doubles");
+  assert.equal(inferWttCategoryScope("TTEXDOUBLES-----------RND1000100--"), "mixed");
   assert.equal(inferWttCategoryScope("MSINGLES"), "men");
   assert.equal(inferWttCategoryScope("Women's Singles"), "women");
   assert.equal(inferWttCategoryScope("MDOUBLES"), "men-doubles");

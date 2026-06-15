@@ -682,7 +682,7 @@ function normalizeWttUnit(unit: SourceWttUnit, context: { eventId: string; timeZ
   const teamB = normalizeWttCompetitor(starts[1]);
   const itemDescription = getLocalizedValue(unit.ItemDescription);
   const subEvent = clean(unit.SubEvent);
-  const categoryScope = inferWttCategoryScope(subEvent, unit.EventCategory);
+  const categoryScope = inferWttCategoryScope(subEvent, unit.EventCategory, code);
   const round = clean(itemDescription) || clean(unit.Round);
   const stage = [subEvent, normalizeRoundLabel(unit.Round, unit.Draw)].filter(Boolean).join(" · ");
   const court = clean(unit.VenueDescription?.LocationName) || clean(unit.Location);
@@ -729,6 +729,11 @@ export function inferWttCategoryScope(...values: Array<unknown>): TableTennisCat
     if (direct) return direct;
 
     const normalized = text.toLowerCase().replace(/[_-]+/g, " ");
+    if (/\b(?:ms|m singles|men singles)\b/i.test(normalized) || /\bttemsingles\b/i.test(normalized)) return "men";
+    if (/\b(?:ws|w singles|women singles)\b/i.test(normalized) || /\bttewsingles\b/i.test(normalized)) return "women";
+    if (/\b(?:md|m doubles|men doubles)\b/i.test(normalized) || /\bttemdoubles\b/i.test(normalized)) return "men-doubles";
+    if (/\b(?:wd|w doubles|women doubles)\b/i.test(normalized) || /\bttewdoubles\b/i.test(normalized)) return "women-doubles";
+    if (/\b(?:xd|x doubles|mixed doubles)\b/i.test(normalized) || /\bttexdoubles\b/i.test(normalized)) return "mixed";
     if (/\b(?:x|mixed)\s*doubles\b/i.test(normalized) || /\bxdoubles\b/i.test(normalized)) return "mixed";
     if (/\bmen'?s?\s*doubles\b/i.test(normalized) || /\bmdoubles\b/i.test(normalized)) return "men-doubles";
     if (/\bwomen'?s?\s*doubles\b/i.test(normalized) || /\bwdoubles\b/i.test(normalized)) return "women-doubles";
@@ -851,7 +856,7 @@ function resolveWttMatchStatus(unit: SourceWttUnit): WttMatchStatus {
   const status = clean(unit.ScheduleStatus).toLowerCase();
   if (/\b(?:intermediate|live|running|in progress)\b/i.test(status)) return "live";
   if (hasWttResult(unit.Result) || /\b(?:official|finished|complete|completed|result)\b/i.test(status)) return "finished";
-  if (/\b(?:scheduled|getting_ready|not started|upcoming)\b/i.test(status)) return "upcoming";
+  if (/\b(?:scheduled|getting_ready|not started|upcoming|start\s*list)\b/i.test(status)) return "upcoming";
   if (unit.ActualEndDate) return "finished";
   return "upcoming";
 }

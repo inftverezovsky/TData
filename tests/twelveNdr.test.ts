@@ -123,7 +123,7 @@ test("12ndr tournament filter drops completed tournaments", () => {
     },
     {
       Name: "CSVP Future",
-      Men: '<a href="/tournament?tcode=MFUT26&timezone=14">12.06. - 14.06.</a>',
+      Men: '<a href="/tournament?tcode=MFUT26&timezone=14">16.06. - 18.06.</a>',
       TournamentType: "CSV",
       Federation: "CSV",
       Country: "Peru",
