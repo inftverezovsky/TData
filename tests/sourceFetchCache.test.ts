@@ -1,11 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildSourceFetchCacheKey } from "../src/lib/utils/sourceFetchCache";
+import { buildSourceFetchCacheKey } from "../backend/src/utils/sourceFetchCache";
 import {
   computeMatchSetQuality,
   hasPlaceholderTeams,
   shouldKeepPreviousMatches,
-} from "../src/lib/matches/quality";
+} from "../backend/src/matches/quality";
 
 test("buildSourceFetchCacheKey normalizes source resource identity", () => {
   assert.equal(

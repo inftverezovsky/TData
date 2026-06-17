@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { maskProxyUrl, parseProxyList } from "../src/lib/proxy/proxyPoolService";
+import { maskProxyUrl, parseProxyList } from "../backend/src/proxy/proxyPoolService";
 
 test("parseProxyList accepts common proxy formats through one parser", () => {
   const parsed = parseProxyList([

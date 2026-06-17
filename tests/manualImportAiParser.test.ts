@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseManualMatchesWithAi } from "../src/lib/manualImport/aiParser";
+import { parseManualMatchesWithAi } from "../backend/src/manualImport/aiParser";
 
 test("manual import parse mode text does not run OCR or AI", async () => {
   const previousApiKey = process.env.ARCCODEX_API_KEY;

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatMoscowDateTime } from "../src/lib/matches/scheduleOffset";
+import { formatMoscowDateTime } from "../backend/src/matches/scheduleOffset";
 import {
   fetchWttSchedule,
   inferWttCategoryScope,
@@ -9,7 +9,7 @@ import {
   parseWttLocalDateTime,
   searchWttTournaments,
   summarizeWttMatchCategories,
-} from "../src/lib/sources/tablet/WTT";
+} from "../backend/src/sources/tablet/WTT";
 
 test("WTT event normalization excludes Youth and U-age tournaments", () => {
   const tournaments = normalizeWttTournamentEvents([
@@ -67,7 +67,7 @@ test("WTT search range excludes undated legacy rows", async () => {
   ]), { status: 200, headers: { "content-type": "application/json" } });
 
   try {
-    const { searchWttTournaments } = await import("../src/lib/sources/tablet/WTT");
+    const { searchWttTournaments } = await import("../backend/src/sources/tablet/WTT");
     const search = await searchWttTournaments({ fromDate: "2026-06-10", days: 14 });
 
     assert.deepEqual(search.tournaments.map((event) => event.eventId), ["3240"]);

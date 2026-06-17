@@ -1,0 +1,34 @@
+import { NextResponse } from "next/server";
+import { runHltvScript } from "@backend/sources/tdata/hltv/scraper";
+import { classifyParserError } from "@backend/proxy/parserErrors";
+
+export const dynamic = "force-dynamic";
+
+export async function GET(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const force = searchParams.get("force") === "true";
+
+    const data = await runHltvScript('health', undefined, { noCache: force });
+    return NextResponse.json({
+      ok: true,
+      status: 'online',
+      title: data.title,
+      cacheHit: !!data.cacheHit,
+      cacheLayer: data.cacheLayer || null,
+      stale: !!data.stale,
+      warning: data.warning || null,
+      errorClass: data.errorClass || null,
+    });
+  } catch (error: any) {
+    const errorClass = classifyParserError({ message: error.message });
+    console.error('[HLTV Health API] Error:', error);
+    return NextResponse.json({ 
+      ok: false, 
+      status: 'error', 
+      error: error.message,
+      errorClass,
+      isCloudflare: errorClass === "cloudflare_block"
+    }, { status: 500 });
+  }
+}

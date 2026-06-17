@@ -8,7 +8,7 @@ import {
   isActiveTwelveNdrMatch,
   parseTwelveNdrCalendarJson,
   parseTwelveNdrTournamentPage,
-} from "../src/lib/sources/tbvolley/TwelveNdr";
+} from "../backend/src/sources/tbvolley/TwelveNdr";
 
 test("12ndr calendar parser keeps CSVP rows and extracts tcode", () => {
   const json = JSON.stringify([

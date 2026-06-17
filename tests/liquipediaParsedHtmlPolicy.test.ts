@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { shouldFetchParsedHtmlForDiscipline } from "../src/lib/config/env";
+import { shouldFetchParsedHtmlForDiscipline } from "../backend/src/config/env";
 
 test("Liquipedia import always fetches parsed HTML for disciplines that need generated schedules", () => {
   assert.equal(shouldFetchParsedHtmlForDiscipline("valorant", true), true);

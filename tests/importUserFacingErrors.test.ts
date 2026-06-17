@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getTournamentImportUserMessage } from "../src/lib/imports/userFacingErrors";
+import { getTournamentImportUserMessage } from "../backend/src/imports/userFacingErrors";
 
 test("Federvolley import errors keep the Federvolley source label", () => {
   const message = getTournamentImportUserMessage(

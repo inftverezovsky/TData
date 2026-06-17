@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildEsportsParsingDiagnostics } from "../src/lib/matches/parsingDiagnostics";
+import { buildEsportsParsingDiagnostics } from "../backend/src/matches/parsingDiagnostics";
 
 test("diagnostics treat finished=true template flags as finished results", () => {
   const diagnostics = buildEsportsParsingDiagnostics({

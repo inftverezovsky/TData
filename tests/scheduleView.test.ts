@@ -16,7 +16,7 @@ import {
   isUploadReadyScheduleMatch,
   parseScheduleSelectionId,
   resolveStageSlotAnnouncement,
-} from "../src/lib/matches/scheduleView";
+} from "../backend/src/matches/scheduleView";
 
 test("exact-time matches are upload-ready and not announcements", () => {
   const match = {

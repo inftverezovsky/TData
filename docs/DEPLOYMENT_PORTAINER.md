@@ -48,9 +48,10 @@ If Portainer shows a webhook URL for the stack, save it. Future deploys can be t
 
 The app requires these runtime paths inside the `web` container:
 
-- `/app/public` for homepage images.
+- `/app/frontend/public` for homepage images.
+- `/app/backend/prisma` for Prisma schema and migrations.
 - `/app/scripts/hltv_playwright.mjs` for HLTV scraping.
-- Playwright Chromium under `/root/.cache/ms-playwright`.
+- Playwright Chromium under `/ms-playwright`.
 
 The Dockerfile copies and installs these. If HLTV says Playwright browser is missing, rebuild the image instead of only recreating the container.
 

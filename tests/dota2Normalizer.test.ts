@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { normalizeDota2Tournament } from "../src/lib/normalizers/dota2Tournament";
-import { resolveExactMatchDate } from "../src/lib/matches/time";
+import { normalizeDota2Tournament } from "../backend/src/normalizers/dota2Tournament";
+import { resolveExactMatchDate } from "../backend/src/matches/time";
 
 test("Dota2 normalizer preserves empty TBD playoff slots", () => {
   const html = `

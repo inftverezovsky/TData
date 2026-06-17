@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { validateOutboundUrl } from "../src/lib/http/outboundPolicy";
+import { validateOutboundUrl } from "../backend/src/http/outboundPolicy";
 
 test("validateOutboundUrl rejects production HTTP unless explicitly allowed", async () => {
   await withEnv({ NODE_ENV: "production" }, async () => {

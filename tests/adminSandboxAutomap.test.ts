@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { buildSandboxAutoMappingPreviewFromRows, parseSourceNamesText } from "../src/lib/adminTeams/sandboxAutomap";
-import { looksLikeHtml, readAdminTeamRowsFromSpreadsheetSource } from "../src/lib/adminTeams/spreadsheetSource";
-import { POST } from "../src/app/api/admin/sandbox/automap/route";
+import { buildSandboxAutoMappingPreviewFromRows, parseSourceNamesText } from "../backend/src/adminTeams/sandboxAutomap";
+import { looksLikeHtml, readAdminTeamRowsFromSpreadsheetSource } from "../backend/src/adminTeams/spreadsheetSource";
+import { POST } from "../frontend/src/app/api/admin/sandbox/automap/route";
 
 test("sandbox automap parses admin rows and separates preview buckets", () => {
   const result = buildSandboxAutoMappingPreviewFromRows(
@@ -95,11 +95,11 @@ test("spreadsheet source detects html responses from Google Sheets", () => {
 });
 
 test("sandbox automap route stays database-free", () => {
-  const routeSource = readFileSync(new URL("../src/app/api/admin/sandbox/automap/route.ts", import.meta.url), "utf8");
-  const automapSource = readFileSync(new URL("../src/lib/adminTeams/sandboxAutomap.ts", import.meta.url), "utf8");
+  const routeSource = readFileSync(new URL("../frontend/src/app/api/admin/sandbox/automap/route.ts", import.meta.url), "utf8");
+  const automapSource = readFileSync(new URL("../backend/src/adminTeams/sandboxAutomap.ts", import.meta.url), "utf8");
 
-  assert.equal(routeSource.includes("@/lib/db/db"), false);
+  assert.equal(routeSource.includes("@backend/db/db"), false);
   assert.equal(/\bprisma\b/.test(routeSource), false);
-  assert.equal(automapSource.includes("@/lib/db/db"), false);
-  assert.equal(automapSource.includes("@/lib/teams/mapping"), false);
+  assert.equal(automapSource.includes("@backend/db/db"), false);
+  assert.equal(automapSource.includes("@backend/teams/mapping"), false);
 });

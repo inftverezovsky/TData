@@ -11,7 +11,7 @@ import {
   parseFedervolleyMatchshareBracket,
   parseFedervolleyTournamentPage,
   parseFedervolleyTournamentPageMatches,
-} from "../src/lib/sources/tbvolley/Federvolley";
+} from "../backend/src/sources/tbvolley/Federvolley";
 
 test("Federvolley listing parser extracts Assoluto rows", () => {
   const html = `

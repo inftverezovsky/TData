@@ -4,7 +4,7 @@ import {
   normalizeAdminTeamsImportScopeSlug,
   resolveAdminTeamsImportDisciplineSlug,
   toGoogleSheetsExportUrl,
-} from "../src/app/api/admin-teams/import/route";
+} from "../frontend/src/app/api/admin-teams/import/route";
 
 test("toGoogleSheetsExportUrl converts edit URLs and preserves gid", () => {
   assert.equal(

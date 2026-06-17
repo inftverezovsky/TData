@@ -9,8 +9,8 @@ ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 COPY package*.json ./
 RUN npm ci
 
-COPY prisma ./prisma
-RUN npx prisma generate
+COPY backend/prisma ./backend/prisma
+RUN npx prisma generate --schema backend/prisma/schema.prisma
 
 FROM deps AS builder
 
@@ -28,9 +28,10 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 ENV PORT=3010
 
-COPY --from=builder /app/next.config.mjs ./
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/public ./public
+COPY --from=builder /app/frontend/next.config.mjs ./frontend/next.config.mjs
+COPY --from=builder /app/frontend/.next ./frontend/.next
+COPY --from=builder /app/frontend/public ./frontend/public
+COPY --from=builder /app/backend/prisma ./backend/prisma
 COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/data/tessdata ./data/tessdata
 

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { clearCacheFiles } from "../src/lib/cache/cacheMaintenance";
+import { clearCacheFiles } from "../backend/src/cache/cacheMaintenance";
 
 test("clearCacheFiles respects source and discipline scope", () => {
   const liqScoped = path.join(process.cwd(), "cache", "liquipedia", "testscope");

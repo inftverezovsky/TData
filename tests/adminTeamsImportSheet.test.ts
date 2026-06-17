@@ -5,7 +5,7 @@ import {
   normalizeImportedAdminTeamId,
   normalizeImportedAdminTeamName,
   parseAdminTeamImportRows,
-} from "../src/lib/adminTeams/importSpreadsheet";
+} from "../backend/src/adminTeams/importSpreadsheet";
 
 test("inferAdminTeamImportLayout recognizes headerless team sheets", () => {
   const layout = inferAdminTeamImportLayout([

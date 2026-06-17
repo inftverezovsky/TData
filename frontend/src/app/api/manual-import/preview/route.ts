@@ -1,0 +1,55 @@
+import { NextResponse } from "next/server";
+import { toAdminFixtPayloadEnvelope } from "@backend/adminUpload/fixtPayloadFormat";
+import { phpSerialize } from "@backend/adminUpload/phpSerialize";
+import { toPhpString } from "@backend/adminUpload/utils";
+import { buildManualFixtPayload } from "@backend/manualImport/buildManualFixtPayload";
+import { getManualImportDiscipline, resolveManualImportDisciplineSlug } from "@backend/manualImport/config";
+
+export const dynamic = "force-dynamic";
+
+export async function POST(request: Request) {
+  // API remains callable directly; password gate is UI-only for settings visibility.
+
+  try {
+    const body = await request.json().catch(() => ({}));
+    const shapkaId = typeof body.shapkaId === "string" || typeof body.shapkaId === "number" ? String(body.shapkaId).trim() : "";
+    const disciplineId = typeof body.disciplineId === "string" || typeof body.disciplineId === "number" ? String(body.disciplineId).trim() : "";
+    const disciplineSlug = resolveManualImportDisciplineSlug({ disciplineId, disciplineSlug: body.disciplineSlug });
+    const matches = Array.isArray(body.matches) ? body.matches : [];
+
+    const discipline = getManualImportDiscipline(disciplineSlug);
+    if (!discipline) {
+      return NextResponse.json({ ok: false, error: "Unsupported discipline" }, { status: 400 });
+    }
+
+    const buildResult = await buildManualFixtPayload({
+      matches,
+      disciplineSlug,
+      shapkaId,
+      disciplineId,
+    });
+
+    const adminPayload = buildResult.payload ? toAdminFixtPayloadEnvelope(buildResult.payload) : null;
+    const serialized = adminPayload ? phpSerialize(adminPayload) : "";
+    const phpArrayText = adminPayload ? toPhpString(adminPayload) : "";
+
+    return NextResponse.json({
+      ok: true,
+      discipline,
+      phpArray: adminPayload,
+      phpArrayText,
+      serialized,
+      postBody: serialized ? `fixt=${serialized}` : "",
+      readyMatchesCount: buildResult.readyMatchesCount,
+      skippedMatches: buildResult.skippedMatches,
+      warnings: buildResult.warnings,
+      mappedMatches: buildResult.mappedMatches,
+    });
+  } catch (error) {
+    console.error("[Manual Import Preview] Error:", error);
+    return NextResponse.json(
+      { ok: false, error: error instanceof Error ? error.message : "Manual preview failed" },
+      { status: 500 }
+    );
+  }
+}

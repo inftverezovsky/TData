@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { matchesToCsv } from "../src/lib/exporters/tournament";
+import { matchesToCsv } from "../backend/src/exporters/tournament";
 
 test("matchesToCsv exports normalized Moscow datetime with discipline lead", () => {
   const csv = matchesToCsv({

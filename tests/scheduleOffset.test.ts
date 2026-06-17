@@ -5,7 +5,7 @@ import {
   applyDisciplineScheduleLead,
   formatMoscowDateTime,
   getDisciplineScheduleLeadMinutes,
-} from "../src/lib/matches/scheduleOffset";
+} from "../backend/src/matches/scheduleOffset";
 
 test("schedule lead minutes are discipline-specific", () => {
   assert.equal(getDisciplineScheduleLeadMinutes("counterstrike"), 5);

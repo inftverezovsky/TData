@@ -3,8 +3,8 @@ import test from "node:test";
 import {
   extractFandomCargoScheduleMatches,
   normalizeFandomLeagueOfLegendsTournament,
-} from "../src/lib/sources/TCyber/fandom/leagueoflegends";
-import { expandScheduleAnnouncementsForDiscipline } from "../src/lib/matches/scheduleView";
+} from "../backend/src/sources/tdata/fandom/leagueoflegends";
+import { expandScheduleAnnouncementsForDiscipline } from "../backend/src/matches/scheduleView";
 
 const fandomInfobox = `
 {{Infobox Tournament

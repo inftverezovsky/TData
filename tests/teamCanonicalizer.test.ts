@@ -5,15 +5,15 @@ import {
   canonicalizeMatchTeams,
   canonicalizeParticipants,
   getTeamAliasKey,
-} from "../src/lib/teams/canonicalize";
-import { collectTournamentTeamNames } from "../src/lib/teams/tournamentTeamNames";
-import { buildTeamMappingLookup, findTeamMapping } from "../src/lib/teams/mappingLookup";
-import { isPlaceholderTeam } from "../src/lib/teams/teams";
+} from "../backend/src/teams/canonicalize";
+import { collectTournamentTeamNames } from "../backend/src/teams/tournamentTeamNames";
+import { buildTeamMappingLookup, findTeamMapping } from "../backend/src/teams/mappingLookup";
+import { isPlaceholderTeam } from "../backend/src/teams/teams";
 import {
   findClosestPlatformTeamFromCandidates,
   getNameMatchDetails,
   getNameMatchScore,
-} from "../src/lib/teams/fuzzyMatch";
+} from "../backend/src/teams/fuzzyMatch";
 
 test("G2 is treated as a real team, not a bracket seed", () => {
   assert.equal(isPlaceholderTeam("G2"), false);

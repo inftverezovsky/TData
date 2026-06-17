@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 test("home page exposes discipline navigation", async ({ page }) => {
   await page.goto("/");
 
-  await expect(page.getByRole("heading", { name: /оперативная панель tcyber/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /оперативная панель tdata/i })).toBeVisible();
 
   for (const slug of ["dota2", "counterstrike", "leagueoflegends", "valorant"]) {
     await expect(page.locator(`a[href="/${slug}"]`).first()).toBeVisible();
@@ -40,9 +40,9 @@ test("settings password gate rejects bad password and unlocks with configured pa
   await page.getByRole("button", { name: /разблокировать/i }).click();
 
   await expect(page.getByRole("heading", { name: /настройки/i })).toBeVisible();
-  await page.getByRole("button", { name: /tcyber/i }).click();
-  await expect(page.getByRole("heading", { name: /tcyber: liquipedia/i })).toBeVisible();
-  await expect(page.getByRole("heading", { name: /tcyber: заливка/i })).toBeVisible();
+  await page.getByRole("button", { name: /tdata/i }).click();
+  await expect(page.getByRole("heading", { name: /tdata: liquipedia/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /tdata: заливка/i })).toBeVisible();
 
   await page.getByRole("button", { name: /менеджер прокси-пула/i }).click();
   await expect(page.getByText(/пул пуст/i)).toBeVisible();

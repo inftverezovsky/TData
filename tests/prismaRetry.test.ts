@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isRetryablePrismaConnectionError } from "../src/lib/db/retry";
+import { isRetryablePrismaConnectionError } from "../backend/src/db/retry";
 
 test("isRetryablePrismaConnectionError detects closed PostgreSQL connections", () => {
   assert.equal(

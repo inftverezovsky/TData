@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { filterHltvEventsByQuery } from "../src/lib/sources/TCyber/hltv/searchFallback";
+import { filterHltvEventsByQuery } from "../backend/src/sources/tdata/hltv/searchFallback";
 
 test("HLTV search fallback finds current events by title tokens", () => {
   const events = [

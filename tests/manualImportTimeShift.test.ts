@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { shiftManualImportDate, shiftManualImportMatchDates } from "../src/lib/manualImport/timeShift";
+import { shiftManualImportDate, shiftManualImportMatchDates } from "../backend/src/manualImport/timeShift";
 
 test("shiftManualImportDate adds minutes and normalizes seconds", () => {
   assert.equal(shiftManualImportDate("24.05.2026 11:50", 60), "24.05.2026 12:50:00");

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildDuplicateAnnouncementSecondOffsets, formatUploadDate } from "../src/lib/adminUpload/buildFixtPayload";
+import { buildDuplicateAnnouncementSecondOffsets, formatUploadDate } from "../backend/src/adminUpload/buildFixtPayload";
 
 test("duplicate admin announcements at the same time get stable second offsets", () => {
   const uploadDate = new Date("2026-05-30T12:00:00.000Z");

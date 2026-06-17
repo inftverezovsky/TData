@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getAdminHttpClientOptions } from "../src/lib/adminUpload/adminHttpClient";
+import { getAdminHttpClientOptions } from "../backend/src/adminUpload/adminHttpClient";
 
 test("admin HTTP client fails closed for auth none in production", () => {
   withEnv({ NODE_ENV: "production", ADMIN_AUTH_MODE: "none", ADMIN_MTLS_ENABLED: "false", ADMIN_AUTH_ALLOW_NONE: undefined }, () => {

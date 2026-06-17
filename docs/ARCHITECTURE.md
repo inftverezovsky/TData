@@ -2,10 +2,10 @@
 
 TData is a tournament operations platform. The codebase is organized around clear runtime boundaries:
 
-- `src/app` contains Next.js routes, pages, and API handlers. API routes should stay thin: validate input, call domain services, and return HTTP responses.
-- `src/components` contains React UI only. Components may call browser APIs and fetch app endpoints, but should not read Prisma, filesystem, or server-only configuration directly.
-- `src/lib` contains domain logic, integrations, and pure utilities. Shared algorithms live here so they can be reused by API routes, UI sandboxes, scripts, and tests.
-- `prisma` owns database schema, migrations, and seed data.
+- `frontend/src/app` contains Next.js routes, pages, layouts, and API adapter handlers. API routes should stay thin: validate input, call backend services, and return HTTP responses.
+- `frontend/src/components` contains React UI only. Components may call browser APIs and fetch app endpoints, but should not read Prisma, filesystem, or server-only configuration directly.
+- `backend/src` contains domain logic, integrations, infrastructure services, and pure utilities. Backend modules are imported by API adapters, scripts, tests, and server components.
+- `backend/prisma` owns database schema, migrations, and seed data.
 - `scripts` contains intentional operational tooling such as deploy helpers, audits, imports, and maintenance commands.
 - `tests` mirrors domain behavior and integration surfaces. New cross-module behavior should be covered here before deployment.
 
@@ -15,7 +15,7 @@ TData is a tournament operations platform. The codebase is organized around clea
 - `adminTeams`: admin team import parsing, spreadsheet loading, and sandbox dry-runs.
 - `teams`: canonicalization, fuzzy matching, mapping lookup, and pure automapping preview.
 - `matches`: schedule display policy, date/time handling, dedupe, quality, and announcement offsets.
-- `sources`: external source clients, parsers, and import adapters. Cyber source adapters currently live under the legacy `sources/TCyber` namespace; volleyball sources live under `sources/tbvolley`.
+- `sources`: external source clients, parsers, and import adapters. Cyber source adapters live under the `sources/tdata` namespace; volleyball sources live under `sources/tbvolley`.
 - `imports`: tournament import dispatch/orchestration that keeps API routes thin while preserving public route URLs.
 - `normalizers`: Liquipedia wikitext/html normalization by discipline.
 - `settings`, `auth`, `proxy`, `sync`, `http`, `cache`, `db`: infrastructure and platform services.
@@ -23,22 +23,38 @@ TData is a tournament operations platform. The codebase is organized around clea
 ## Source Layout
 
 ```text
-src/lib/sources/
-  TCyber/
-    liquipedia/
-    hltv/
-    dltv/
-    vlr/
-    fandom/
-  tbvolley/
-    VolleyballWorld/
-    beach.volley.ru/
-    GermanBeachTour/
-    config.ts
-    genderSwitchCache.ts
+TData/
+  frontend/
+    src/app/
+      api/                 # Thin Next.js HTTP adapters
+    src/components/        # Browser UI and server components
+    public/
+  backend/
+    prisma/
+    src/
+      sources/
+        tdata/
+          liquipedia/
+          hltv/
+          dltv/
+          vlr/
+          fandom/
+        tbvolley/
+          VolleyballWorld/
+          beach.volley.ru/
+          GermanBeachTour/
+          config.ts
+          genderSwitchCache.ts
 ```
 
-Each source folder should keep its source-specific client/parser code close to its import adapter. Shared cross-source helpers stay directly under `src/lib/sources`.
+Each source folder should keep its source-specific client/parser code close to its import adapter. Shared cross-source helpers stay directly under `backend/src/sources`.
+
+## Import Aliases
+
+- `@/*` resolves to `frontend/src/*`.
+- `@backend/*` resolves to `backend/src/*`.
+
+Frontend UI should use `@backend/*` only for dependency-free types, formatting helpers, and user-facing error mappers. API routes and server components may import backend services freely.
 
 ## Coupling Rules
 
@@ -53,7 +69,7 @@ Each source folder should keep its source-specific client/parser code close to i
 
 Remove a file when all of these are true:
 
-- it is not imported by `src`, `tests`, `scripts`, or `prisma`;
+- it is not imported by `frontend`, `backend`, `tests`, or `scripts`;
 - it is not a Next.js route/page/layout/error/loading entrypoint;
 - it is not referenced by package scripts, deployment scripts, or documentation;
 - typecheck, lint, tests, and build stay green after removal.

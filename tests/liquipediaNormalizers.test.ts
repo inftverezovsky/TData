@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { normalizeDota2Tournament } from "../src/lib/normalizers/dota2Tournament";
-import { normalizeCounterStrikeTournament } from "../src/lib/normalizers/counterstrikeTournament";
-import { normalizeLeagueOfLegendsTournament } from "../src/lib/normalizers/leagueoflegendsTournament";
-import { normalizeValorantTournament } from "../src/lib/normalizers/valorantTournament";
+import { normalizeDota2Tournament } from "../backend/src/normalizers/dota2Tournament";
+import { normalizeCounterStrikeTournament } from "../backend/src/normalizers/counterstrikeTournament";
+import { normalizeLeagueOfLegendsTournament } from "../backend/src/normalizers/leagueoflegendsTournament";
+import { normalizeValorantTournament } from "../backend/src/normalizers/valorantTournament";
 
 const emptyBracketHtml = `
   <div class="brkts-match">

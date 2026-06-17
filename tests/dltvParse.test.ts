@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { filterDltvEvents, filterDltvEventsByWindow, parseDltvEventPage, parseDltvEvents, parseDltvMatchPage } from "../src/lib/sources/TCyber/dltv/parse";
-import { resolveDltvImportStatus, shouldReplaceDltvMatchesOnImport } from "../src/lib/sources/TCyber/dltv/importTournament";
+import { filterDltvEvents, filterDltvEventsByWindow, parseDltvEventPage, parseDltvEvents, parseDltvMatchPage } from "../backend/src/sources/tdata/dltv/parse";
+import { resolveDltvImportStatus, shouldReplaceDltvMatchesOnImport } from "../backend/src/sources/tdata/dltv/importTournament";
 
 test("parseDltvEvents extracts and filters live/upcoming events", () => {
   const html = `

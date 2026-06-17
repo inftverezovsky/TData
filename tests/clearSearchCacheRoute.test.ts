@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { POST } from "../src/app/api/settings/clear-search-cache/route";
+import { POST } from "../frontend/src/app/api/settings/clear-search-cache/route";
 
 test("clear search cache endpoint clears scoped cache from source UI", async () => {
   const cacheDir = path.join(process.cwd(), "cache", "hltv", "authless-route-test");

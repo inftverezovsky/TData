@@ -20,7 +20,10 @@
     "baseUrl": ".",
     "paths": {
       "@/*": [
-        "src/*"
+        "frontend/src/*"
+      ],
+      "@backend/*": [
+        "backend/src/*"
       ]
     },
     "plugins": [
@@ -30,14 +33,15 @@
     ]
   },
   "include": [
-    "next-env.d.ts",
+    "frontend/next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
-    ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts"
+    "frontend/.next/types/**/*.ts",
+    "frontend/.next/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",
+    "frontend/.next",
     "scratch"
   ]
 }

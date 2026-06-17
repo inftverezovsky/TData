@@ -1,5 +1,6 @@
 node_modules
 .next
+frontend/.next
 out
 dist
 coverage
@@ -23,10 +24,10 @@ yarn-error.log*
 scratch/
 .gemini/
 /cache/
-!src/lib/cache/
-!src/lib/cache/**
+!backend/src/cache/
+!backend/src/cache/**
 User/
-TData/
+/TData/
 hltv_debug_error.png
 *.tsbuildinfo
 
@@ -35,8 +36,8 @@ hltv_debug_error.png
 .idea/
 
 # Database
-prisma/dev.db
-prisma/dev.db-journal
+backend/prisma/dev.db
+backend/prisma/dev.db-journal
 
 # Certificates and Secrets
 certs/*

@@ -1,12 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { resolveManualTeamPlatformId, resolveManualTeamPlatformIdWithSource } from "../src/lib/manualImport/buildManualFixtPayload";
+import { resolveManualTeamPlatformId, resolveManualTeamPlatformIdWithSource } from "../backend/src/manualImport/buildManualFixtPayload";
 import {
   buildManualImportTeamMappingSavePlan,
   collectManualImportTeamMappingCandidates,
   collectSingleManualImportTeamMappingCandidate,
   normalizeAdminSportId,
-} from "../src/lib/manualImport/teamMappings";
+} from "../backend/src/manualImport/teamMappings";
 
 test("resolveManualTeamPlatformId gives manual import mapping priority over common team mapping", () => {
   assert.equal(

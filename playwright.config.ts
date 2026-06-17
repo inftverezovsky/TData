@@ -31,8 +31,8 @@ export default defineConfig({
   },
   webServer: {
     command: useProductionServer
-      ? `npx next start -p ${port} -H 127.0.0.1`
-      : `npx next dev -p ${port} -H 127.0.0.1`,
+      ? `npx next start frontend -p ${port} -H 127.0.0.1`
+      : `npx next dev frontend -p ${port} -H 127.0.0.1`,
     url: baseURL,
     reuseExistingServer: Boolean(process.env.PLAYWRIGHT_REUSE_EXISTING_SERVER) && !useProductionServer,
     timeout: 120_000,

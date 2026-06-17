@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 
-const API_ROOT = path.join(process.cwd(), "src", "app", "api");
+const API_ROOT = path.join(process.cwd(), "frontend", "src", "app", "api");
 const ADMIN_GUARD_PATTERN = /\brequireAdmin\s*\(/;
 
 const REQUIRED_ADMIN_GUARDED_ROUTES = new Set([

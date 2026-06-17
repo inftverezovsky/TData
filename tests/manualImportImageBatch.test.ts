@@ -5,7 +5,7 @@ import {
   dedupeManualImportBatchMatches,
   MANUAL_IMPORT_MAX_IMAGES,
   selectManualImportImageHashes,
-} from "../src/lib/manualImport/imageBatch";
+} from "../backend/src/manualImport/imageBatch";
 
 test("dedupeManualImportBatchMatches removes same dated pair regardless of side order", () => {
   const result = dedupeManualImportBatchMatches([

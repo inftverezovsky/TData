@@ -1,7 +1,7 @@
 param(
   [string]$Username = "inftverezovsky",
   [string]$Tag = "latest",
-  [string]$SshKeyPath = "$env:USERPROFILE\.ssh\tcyber_vps_82_147_67_231",
+  [string]$SshKeyPath = "$env:USERPROFILE\.ssh\tdata_vps_82_147_67_231",
   [switch]$Prune
 )
 

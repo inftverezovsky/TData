@@ -10,7 +10,7 @@ import {
   normalizeCBVMatch,
   parseCBVEtapa,
   parseCBVEtapas,
-} from "../src/lib/sources/tbvolley/CBV";
+} from "../backend/src/sources/tbvolley/CBV";
 
 test("CBV etapa parser extracts Brasilia metadata", () => {
   const etapas = parseCBVEtapas([

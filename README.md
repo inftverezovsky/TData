@@ -50,47 +50,46 @@ flowchart LR
 
 ```text
 TData/
-├── prisma/                    # Схема БД (PostgreSQL) и сид-файлы
+├── frontend/                  # Next.js приложение: UI, App Router и тонкие API adapters
+│   ├── public/                # Статические ассеты приложения
+│   ├── src/
+│   │   ├── app/               # Pages, layouts и route handlers Next.js
+│   │   │   ├── [disciplineSlug]/
+│   │   │   ├── api/           # HTTP-слой: валидация запроса и вызов backend services
+│   │   │   └── settings/
+│   │   └── components/        # React UI-компоненты без прямого доступа к Prisma/filesystem
+│   ├── next.config.mjs
+│   ├── postcss.config.js
+│   └── tailwind.config.ts
+├── backend/                   # Серверная доменная логика и интеграции
+│   ├── prisma/                # Схема БД (PostgreSQL), миграции и seed
+│   └── src/
+│       ├── adminUpload/       # FIxt payload, upload policy и Admin API client
+│       ├── adminTeams/        # Импорт и подсказки команд админки
+│       ├── auth/              # Admin session/password guard
+│       ├── db/                # Prisma client
+│       ├── imports/           # Оркестрация импорта турниров
+│       ├── matches/           # Дедупликация, расписание, качество матчей
+│       ├── normalizers/       # Нормализаторы Wikitext/HTML
+│       ├── sources/           # Liquipedia, HLTV, VLR, DLTV, Fandom, TBvolley, WTT
+│       ├── sync/              # Identity sync
+│       └── teams/             # Canonicalize, fuzzy match, automapping
 ├── scripts/                   # Утилиты автоматизации и CLI
-│   └── tcyber-cli.ts          # Единый пульт разработчика TData CLI
-├── tests/                     # 100% покрывающий юнит-тест-сьют (52 теста)
-├── src/
-│   ├── app/                   # Физические роуты приложения (Next.js 15 App Router)
-│   │   ├── [disciplineSlug]/  # Динамический хаб дисциплин (Универсальный UI)
-│   │   │   └── tournament/[id] # Детализированный дашборд турнира и маппинга
-│   │   ├── api/               # Унифицированное REST API
-│   │   │   ├── [disciplineSlug]/ # Динамический импорт, поиск и превью
-│   │   │   ├── admin/         # Телеметрия и мониторинг
-│   │   │   └── disciplines/   # Глобальные настройки родительских категорий
-│   │   └── settings/          # Глобальные настройки системы и прокси-пула
-│   ├── components/            # Изолированные React-компоненты
-│   │   ├── admin/             # Управление заливкой и импортом команд
-│   │   ├── hltv/              # Парсинг ручного текста HLTV
-│   │   ├── layout/            # Шапка, навигация, каркас
-│   │   ├── settings/          # Дашборды телеметрии и настройки кэша
-│   │   ├── tournament/        # Маппинг команд, превью и отправка payload
-│   │   └── ui/                # Базовые атомарные дизайн-компоненты (дизайн-система)
-│   └── lib/                   # Чистая бизнес-логика (Domain & Application Services)
-│       ├── adminUpload/       # Сериализация PHP Array и отправка mTLS
-│       ├── config/            # Глобальные константы и параметры дисциплин
-│       ├── db/                # Клиент Prisma
-│       ├── hltv/              # Парсинг HLTV
-│       ├── liquipedia/        # Клиент MediaWiki API, Rate-Limiter
-│       ├── matches/           # Дедупликация матчей, валидация качества данных
-│       ├── normalizers/       # Нормализаторы Wikitext (Реестр нормализаторов)
-│       ├── sync/              # Инструменты синхронизации Identity Sync
-│       ├── teams/             # Нечёткий поиск (Fuzzy Match) и канонизация команд
-│       └── utils/             # Математические и строковые хелперы
+│   └── tdata-cli.ts          # Единый пульт разработчика TData CLI
+├── tests/                     # Unit/integration/e2e проверки
+├── docker-compose.yml         # Canonical compose deployment
+├── Dockerfile                 # Production image build
+└── package.json               # Root orchestration scripts
 ```
 
 ---
 
 ## 🛠 Единый CLI-пульт Разработчика
 
-Для упрощения отладки в терминале создан единый пульт `tcyber-cli.ts`. Запустите его командой:
+Для упрощения отладки в терминале создан единый пульт `tdata-cli.ts`. Запустите его командой:
 
 ```bash
-npx tsx scripts/tcyber-cli.ts
+npx tsx scripts/tdata-cli.ts
 ```
 
 ## GitHub Save Agent
@@ -113,7 +112,7 @@ npm run git:save -- -Message "Describe the saved change"
 
 ## 📊 Интеллектуальный OCR Fuzzy Match Engine
 
-Модуль `src/lib/teams/fuzzyMatch.ts` использует алгоритм вычисления **Расстояния Левенштейна** совместно с substring-весовыми коэффициентами. 
+Модуль `backend/src/teams/fuzzyMatch.ts` использует алгоритм вычисления **Расстояния Левенштейна** совместно с substring-весовыми коэффициентами.
 
 Это позволяет движку находить идеальные совпадения в базе данных даже при сильном уровне шума во входящих строках (например, после оптического распознавания скриншотов трансляций операторами):
 
@@ -143,7 +142,7 @@ API эндпоинт для пакетной обработки:
 
 ```bash
 npm run typecheck   # 0 ошибок компиляции (TypeScript 5.x)
-npm test            # 52/52 тестов успешно пройдены (зелёная зона)
+npm test            # полный unit/integration suite должен проходить без падений
 ```
 
 Вывод тестов:
@@ -153,7 +152,7 @@ npm test            # 52/52 тестов успешно пройдены (зел
 ✔ dedupeTournamentMatches collapses the same dated pair even when sides are swapped (4.40ms)
 ✔ team canonicalizer prefers the full participant name for short Liquipedia labels (0.96ms)
 ✔ team mapping lookup prefers saved platform IDs over stale unmapped duplicates (0.47ms)
-ℹ tests 52 | pass 52 | duration_ms 602.22
+ℹ tests 387 | pass 387
 ```
 
 ---

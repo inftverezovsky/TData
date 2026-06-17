@@ -1,10 +1,11 @@
 param(
   [string]$HostName = "82.147.67.231",
   [string]$User = "root",
-  [string]$KeyPath = "$env:USERPROFILE\.ssh\tcyber_vps_82_147_67_231",
-  [string]$RemoteDir = "/root/tcyber",
+  [string]$KeyPath = "$env:USERPROFILE\.ssh\tdata_vps_82_147_67_231",
+  [string]$RemoteDir = "/root/tdata",
   [string]$Service = "web",
-  [string]$HealthUrl = "http://82.147.67.231:3010/api/health"
+  [string]$HealthUrl = "https://www.tdata.info/api/health",
+  [int]$HealthTimeoutSeconds = 90
 )
 
 $ErrorActionPreference = "Stop"
@@ -49,7 +50,28 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host ""
 Write-Host "==> Verifying production health: $HealthUrl" -ForegroundColor Yellow
-$health = Invoke-RestMethod -Uri $HealthUrl -TimeoutSec 30
+$deadline = (Get-Date).AddSeconds($HealthTimeoutSeconds)
+$lastHealthError = $null
+$health = $null
+
+while ((Get-Date) -lt $deadline) {
+  try {
+    $health = Invoke-RestMethod -Uri $HealthUrl -TimeoutSec 10
+    if ($health.ok -eq $true) {
+      break
+    }
+    $lastHealthError = "Health endpoint returned ok=$($health.ok)."
+  } catch {
+    $lastHealthError = $_.Exception.Message
+  }
+
+  Start-Sleep -Seconds 3
+}
+
+if (-not $health) {
+  Write-Error "Production health check did not respond within ${HealthTimeoutSeconds}s. Last error: $lastHealthError"
+}
+
 $healthJson = $health | ConvertTo-Json -Depth 10
 Write-Host $healthJson
 

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { hasExactMatchTime, resolveDisplayMatchDate, resolveExactMatchDate } from "../src/lib/matches/time";
+import { hasExactMatchTime, resolveDisplayMatchDate, resolveExactMatchDate } from "../backend/src/matches/time";
 
 test("hasExactMatchTime rejects date-only announcements", () => {
   assert.equal(hasExactMatchTime({

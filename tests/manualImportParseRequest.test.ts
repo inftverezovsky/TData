@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readManualImportParseRequest } from "../src/lib/manualImport/parseRequest";
+import { readManualImportParseRequest } from "../backend/src/manualImport/parseRequest";
 
 test("readManualImportParseRequest accepts multipart image and text", async () => {
   const formData = new FormData();

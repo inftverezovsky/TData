@@ -6,7 +6,7 @@ import {
   resolveUploadPolicy,
   resolveUploadPolicyPlaceholderDecision,
   resolveUploadPolicyPreMappingSkip,
-} from "../src/lib/adminUpload/uploadPolicy";
+} from "../backend/src/adminUpload/uploadPolicy";
 
 test("resolveUploadPolicy keeps default esport uploads scoped to the requested discipline", () => {
   const policy = resolveUploadPolicy({

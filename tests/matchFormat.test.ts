@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getBestOfLabel } from "../src/lib/matches/format";
+import { getBestOfLabel } from "../backend/src/matches/format";
 
 test("getBestOfLabel normalizes known map-count formats", () => {
   assert.equal(getBestOfLabel("bo1"), "BO1");

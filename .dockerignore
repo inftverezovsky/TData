@@ -1,6 +1,7 @@
 node_modules
-.next
+frontend/.next
 .git
+.codex-logs/
 .env
 .env.local
 .env.development.local

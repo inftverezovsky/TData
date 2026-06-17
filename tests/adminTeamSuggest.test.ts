@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildAdminTeamSuggestions } from "../src/lib/adminTeams/suggest";
+import { buildAdminTeamSuggestions } from "../backend/src/adminTeams/suggest";
 
 const adminTeams = [
   { platformId: "1", platformName: "Team Liquid", normalizedName: "team liquid" },

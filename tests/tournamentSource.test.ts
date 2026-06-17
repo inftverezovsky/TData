@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getSourceProvider, sourceProviders } from "../src/lib/sources/providerRegistry";
-import { detectTournamentSource, getTournamentSourceLabel, supportsStageAnnouncements } from "../src/lib/utils/tournamentSource";
+import { getSourceProvider, sourceProviders } from "../backend/src/sources/providerRegistry";
+import { detectTournamentSource, getTournamentSourceLabel, supportsStageAnnouncements } from "../backend/src/utils/tournamentSource";
 
 test("detectTournamentSource detects HLTV URLs", () => {
   assert.equal(detectTournamentSource("https://www.hltv.org/events/8049/pgl-astana-2026"), "hltv");

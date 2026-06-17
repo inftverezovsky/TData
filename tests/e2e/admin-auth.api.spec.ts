@@ -59,7 +59,7 @@ test("admin auth protects settings endpoints and creates a usable session cookie
   expect(login.status()).toBe(200);
 
   const setCookie = login.headers()["set-cookie"];
-  expect(setCookie).toContain("tcyber_admin_session=");
+  expect(setCookie).toContain("tdata_admin_session=");
 
   const cookie = setCookie.split(";")[0];
   const session = await request.get("/api/admin-auth/session", {

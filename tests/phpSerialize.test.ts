@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { phpSerialize } from "../src/lib/adminUpload/phpSerialize";
+import { phpSerialize } from "../backend/src/adminUpload/phpSerialize";
 
 test("phpSerialize serializes scalar values", () => {
   assert.equal(phpSerialize(null), "N;");

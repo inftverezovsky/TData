@@ -5,7 +5,7 @@ import {
   hasUnknownExplicitTimezone,
   parseTeamOpponentScore,
   parseWikiDate,
-} from "../src/lib/normalizers/wikiText";
+} from "../backend/src/normalizers/wikiText";
 
 test("cleanWikiValue preserves Liquipedia timezone abbreviation templates", () => {
   assert.equal(

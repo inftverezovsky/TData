@@ -1,6 +1,6 @@
-import { prisma } from '../src/lib/db/db';
-import { normalizeTeamName, isPlaceholderTeam } from '../src/lib/teams/teams';
-import { runAutoMappingForDiscipline } from '../src/lib/teams/mapping';
+import { prisma } from '../backend/src/db/db';
+import { normalizeTeamName, isPlaceholderTeam } from '../backend/src/teams/teams';
+import { runAutoMappingForDiscipline } from '../backend/src/teams/mapping';
 
 async function main() {
   const disciplineSlug = 'dota2';

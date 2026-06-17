@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildAutoMappingPreviewFromData, isInvalidAutoMappingName } from "../src/lib/teams/mapping";
-import { buildAdminTeamDisplayLookup, resolveTeamMappingDisplay } from "../src/lib/teams/mappingDisplay";
+import { buildAutoMappingPreviewFromData, isInvalidAutoMappingName } from "../backend/src/teams/mapping";
+import { buildAdminTeamDisplayLookup, resolveTeamMappingDisplay } from "../backend/src/teams/mappingDisplay";
 
 test("team mapping display prefers AdminTeam platformName over stored canonicalName", () => {
   const display = resolveTeamMappingDisplay(

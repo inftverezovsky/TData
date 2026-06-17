@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseHltvCopiedText } from "../src/lib/sources/TCyber/hltv/manualTextParser";
+import { parseHltvCopiedText } from "../backend/src/sources/tdata/hltv/manualTextParser";
 
 test("parseHltvCopiedText parses duplicate HLTV copied team lines", () => {
   const matches = parseHltvCopiedText(`

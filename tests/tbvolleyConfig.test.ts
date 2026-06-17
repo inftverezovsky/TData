@@ -1,16 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { resolveAdminSettingsFromData } from "../src/lib/adminUpload/resolveAdminSettings";
+import { resolveAdminSettingsFromData } from "../backend/src/adminUpload/resolveAdminSettings";
 import {
   BEACH_VOLLEYBALL_ADMIN_SPORT_ID,
   resolveTournamentTeamMappingDisciplineSlug,
-} from "../src/lib/sources/tbvolley/config";
-import { selectCachedTBvolleyGenderTournament } from "../src/lib/sources/tbvolley/genderSwitchCache";
+} from "../backend/src/sources/tbvolley/config";
+import { selectCachedTBvolleyGenderTournament } from "../backend/src/sources/tbvolley/genderSwitchCache";
 import {
   getTableTennisMappingSlug,
   resolveTournamentTeamMappingDisciplineSlug as resolveTableTennisTournamentTeamMappingDisciplineSlug,
-} from "../src/lib/sources/tablet/config";
-import { selectCachedWttCategoryTournament } from "../src/lib/sources/tablet/wttCategorySwitchCache";
+} from "../backend/src/sources/tablet/config";
+import { selectCachedWttCategoryTournament } from "../backend/src/sources/tablet/wttCategorySwitchCache";
 
 test("TBvolley settings use one beach volleyball sport id for men and women scopes", () => {
   for (const disciplineSlug of ["beachvolleyball", "beachvolleyball-men", "beachvolleyball-women"]) {

@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildFixtPayloadsByShapka, type FixtMatch } from "../src/lib/adminUpload/buildFixtPayload";
-import { toAdminFixtPayloadEnvelope } from "../src/lib/adminUpload/fixtPayloadFormat";
+import { buildFixtPayloadsByShapka, type FixtMatch } from "../backend/src/adminUpload/buildFixtPayload";
+import { toAdminFixtPayloadEnvelope } from "../backend/src/adminUpload/fixtPayloadFormat";
 import {
   appendShapkaOverridesSearchParam,
   normalizeShapkaOverrides,
   readShapkaOverridesSearchParam,
-} from "../src/lib/adminUpload/shapkaOverrides";
-import { phpSerialize } from "../src/lib/adminUpload/phpSerialize";
-import { toPhpString } from "../src/lib/adminUpload/utils";
+} from "../backend/src/adminUpload/shapkaOverrides";
+import { phpSerialize } from "../backend/src/adminUpload/phpSerialize";
+import { toPhpString } from "../backend/src/adminUpload/utils";
 
 test("admin FIxt payload is wrapped as the service array format", () => {
   const payload = {

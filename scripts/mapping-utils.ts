@@ -1,6 +1,6 @@
 import { readSheet } from 'read-excel-file/node';
 import { PrismaClient } from '@prisma/client';
-import { normalizeTeamName } from '../src/lib/teams/teams';
+import { normalizeTeamName } from '../backend/src/teams/teams';
 import levenshtein from 'fast-levenshtein';
 import fs from 'fs';
 

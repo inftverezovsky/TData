@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ImportStatus } from "@prisma/client";
-import { createImportEnvelope } from "../src/lib/sources/importEnvelope";
-import type { NormalizedTournament } from "../src/lib/normalizers/types";
+import { createImportEnvelope } from "../backend/src/sources/importEnvelope";
+import type { NormalizedTournament } from "../backend/src/normalizers/types";
 
 function buildNormalizedTournament(overrides: Partial<NormalizedTournament> = {}): NormalizedTournament {
   return {

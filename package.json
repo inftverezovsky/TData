@@ -4,9 +4,9 @@
   "private": true,
   "description": "TData tournament admin hub: search tournaments, import matches, map teams, and send schedules to admin APIs.",
   "scripts": {
-    "dev": "cross-env NODE_OPTIONS=--openssl-legacy-provider next dev -p 3010",
-    "build": "prisma generate && next build",
-    "start": "next start -H 0.0.0.0",
+    "dev": "cross-env NODE_OPTIONS=--openssl-legacy-provider next dev frontend -p 3010",
+    "build": "prisma generate --schema backend/prisma/schema.prisma && next build frontend",
+    "start": "next start frontend -H 0.0.0.0",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/**/*.test.ts",
@@ -15,11 +15,11 @@
     "test:e2e:db": "cross-env RUN_DB_E2E=1 playwright test tests/e2e/fixt-send.integration.spec.ts",
     "test:all": "npm run typecheck && npm run lint && npm test && npm run build && npm run test:e2e && npm run test:e2e:db && npm run test:e2e:prod",
     "git:save": "powershell -ExecutionPolicy Bypass -File scripts/git-save-agent.ps1",
-    "prisma:generate": "prisma generate",
-    "db:push": "prisma db push",
-    "db:migrate:dev": "prisma migrate dev",
-    "db:migrate:deploy": "prisma migrate deploy",
-    "db:seed": "tsx prisma/seed.ts",
+    "prisma:generate": "prisma generate --schema backend/prisma/schema.prisma",
+    "db:push": "prisma db push --schema backend/prisma/schema.prisma",
+    "db:migrate:dev": "prisma migrate dev --schema backend/prisma/schema.prisma",
+    "db:migrate:deploy": "prisma migrate deploy --schema backend/prisma/schema.prisma",
+    "db:seed": "tsx backend/prisma/seed.ts",
     "audit:tournaments": "tsx scripts/tournament-audit-agent.ts",
     "import:dota2-admin-teams": "tsx scripts/import-admin-teams.ts",
     "setup": "npm install && npm run prisma:generate && npm run db:migrate:deploy && npm run db:seed"
@@ -68,7 +68,8 @@
     "typescript": "^5.6.3"
   },
   "prisma": {
-    "seed": "tsx prisma/seed.ts"
+    "schema": "backend/prisma/schema.prisma",
+    "seed": "tsx backend/prisma/seed.ts"
   },
   "engines": {
     "node": "24.x"
