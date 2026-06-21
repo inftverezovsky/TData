@@ -487,6 +487,10 @@ function addDerivedVariants(value: string, addVariant: (variant: FuzzyNameVarian
   if (compact && compact !== value && isSafeCompactNameKey(compact)) {
     addVariant({ value: compact, kind: "compact", matchMethod: "token_fuzzy" });
   }
+
+  for (const acronym of getSafeAcronymVariants(tokens)) {
+    addVariant({ value: acronym, kind: "compact", matchMethod: "alias_exact" });
+  }
 }
 
 function getVariantPriority(variant: FuzzyNameVariant) {
@@ -636,6 +640,31 @@ function getComparableTokens(value: string | null | undefined) {
     .replace(/\be\s+sports\b/g, "esports")
     .split(" ")
     .filter(Boolean);
+}
+
+function getSafeAcronymVariants(tokens: string[]) {
+  if (tokens.length < 2 || tokens.length > 4) return [];
+  if (tokens.some((token) => /\d/.test(token))) return [];
+
+  const contentTokens = tokens.filter((token) => token.length > 2);
+  if (contentTokens.length < 2) return [];
+  if (contentTokens.some((token) => GENERIC_PREFIX_TOKENS.has(token) || GENERIC_SUFFIX_TOKENS.has(token))) return [];
+  if (contentTokens.some((token) => QUALIFIER_TOKENS.has(token))) return [];
+
+  const variants = new Set<string>();
+  const initialism = tokens.map((token) => token[0]).join("");
+  if (tokens.length >= 3 && isSafeAcronym(initialism)) variants.add(initialism);
+
+  if (tokens.length === 2 && tokens.every((token) => token.length >= 4)) {
+    const syllabicAcronym = tokens.map((token) => token.slice(0, 2)).join("");
+    if (isSafeAcronym(syllabicAcronym)) variants.add(syllabicAcronym);
+  }
+
+  return Array.from(variants);
+}
+
+function isSafeAcronym(value: string) {
+  return /^[a-z]{2,5}$/.test(value);
 }
 
 function addSafeGenericVariant(variants: Set<string>, value: string) {

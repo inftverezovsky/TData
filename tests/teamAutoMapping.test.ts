@@ -71,7 +71,7 @@ test("auto mapping accepts safe esports suffixes without collapsing academy rost
   assert.equal(preview.unmapped[0].liquipediaName, "MIBR");
 });
 
-test("auto mapping accepts 85-89 score only when candidate gap is large", () => {
+test("auto mapping keeps 85-89 score in suggestions even when candidate gap is large", () => {
   const preview = buildAutoMappingPreviewFromData({
     teamNames: ["Perusic"],
     mappings: [],
@@ -81,10 +81,12 @@ test("auto mapping accepts 85-89 score only when candidate gap is large", () => 
     ],
   });
 
-  assert.equal(preview.auto.length, 1);
-  assert.equal(preview.auto[0].platformId, "101");
-  assert.ok((preview.auto[0].score ?? 0) >= 85);
-  assert.ok((preview.auto[0].score ?? 0) < 90);
+  assert.equal(preview.auto.length, 0);
+  assert.equal(preview.suggested.length, 1);
+  assert.equal(preview.suggested[0].platformId, "101");
+  assert.equal(preview.suggested[0].reason, "medium_confidence");
+  assert.ok((preview.suggested[0].score ?? 0) >= 85);
+  assert.ok((preview.suggested[0].score ?? 0) < 90);
 });
 
 test("auto mapping keeps 85+ candidates ambiguous when the gap is too small", () => {
@@ -160,6 +162,30 @@ test("auto mapping transliterates Cyrillic source names to English admin names",
   assert.equal(preview.auto.length, 1);
   assert.equal(preview.auto[0].platformId, "849245");
   assert.equal(preview.auto[0].matchMethod, "translit_fuzzy");
+});
+
+test("auto mapping recognizes safe organization acronyms without lowering the 90% threshold", () => {
+  const preview = buildAutoMappingPreviewFromData({
+    teamNames: ["NAVI", "NiP"],
+    mappings: [],
+    adminTeams: [
+      {
+        platformId: "312689",
+        platformName: "Natus Vincere",
+        normalizedName: "natus vincere",
+      },
+      {
+        platformId: "4411",
+        platformName: "Ninjas in Pyjamas",
+        normalizedName: "ninjas in pyjamas",
+      },
+    ],
+  });
+
+  assert.equal(preview.auto.length, 2);
+  assert.deepEqual(preview.auto.map((item) => item.platformId), ["312689", "4411"]);
+  assert.deepEqual(preview.auto.map((item) => item.score), [100, 100]);
+  assert.equal(preview.diagnostics.exactIndexHits, 2);
 });
 
 test("auto mapping uses exact pair index for surname-initial beach volleyball pairs", () => {

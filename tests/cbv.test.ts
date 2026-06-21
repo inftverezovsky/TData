@@ -91,18 +91,18 @@ test("CBV filters drop completed tournaments and matches", () => {
       id: 950,
       nome: "Brasilia Open",
       status: "E",
-      dataInicioEtapa: "2026-04-02",
-      dataFimEtapa: "2026-04-06",
+      dataInicioEtapa: "2099-04-02",
+      dataFimEtapa: "2099-04-06",
       campeonato: { id: 37, nome: "CBVP ADULTO" },
-      temporada: { id: 23, nome: "2026" },
+      temporada: { id: 23, nome: "2099" },
     },
     {
       id: 951,
       nome: "Saquarema Open",
-      dataInicioEtapa: "2026-06-16",
-      dataFimEtapa: "2026-06-18",
+      dataInicioEtapa: "2099-06-16",
+      dataFimEtapa: "2099-06-18",
       campeonato: { id: 37, nome: "CBVP ADULTO" },
-      temporada: { id: 23, nome: "2026" },
+      temporada: { id: 23, nome: "2099" },
     },
   ], {
     gender: "men",
@@ -111,7 +111,7 @@ test("CBV filters drop completed tournaments and matches", () => {
   });
 
   assert.deepEqual(
-    filterCBVUpcomingTournaments(tournaments, new Date("2026-06-11T00:00:00.000Z")).map((tournament) => tournament.etapaId),
+    filterCBVUpcomingTournaments(tournaments, new Date("2099-06-11T00:00:00.000Z")).map((tournament) => tournament.etapaId),
     ["951"],
   );
   assert.equal(isActiveCBVMatch({

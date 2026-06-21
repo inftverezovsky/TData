@@ -116,14 +116,14 @@ test("12ndr tournament filter drops completed tournaments", () => {
   const json = JSON.stringify([
     {
       Name: "CSVP Old",
-      Men: '<a href="/tournament?tcode=MOLD26&timezone=14">03.05. - 06.05.</a>',
+      Men: '<a href="/tournament?tcode=MOLD99&timezone=14">03.05. - 06.05.</a>',
       TournamentType: "CSV",
       Federation: "CSV",
       Country: "Peru",
     },
     {
       Name: "CSVP Future",
-      Men: '<a href="/tournament?tcode=MFUT26&timezone=14">16.06. - 18.06.</a>',
+      Men: '<a href="/tournament?tcode=MFUT99&timezone=14">16.06. - 18.06.</a>',
       TournamentType: "CSV",
       Federation: "CSV",
       Country: "Peru",
@@ -132,12 +132,12 @@ test("12ndr tournament filter drops completed tournaments", () => {
   const tournaments = parseTwelveNdrCalendarJson(json, {
     source: "twelvendrcsvp",
     calendarMode: "csvp",
-    season: 2026,
+    season: 2099,
     gender: "men",
   });
 
   assert.deepEqual(
-    filterTwelveNdrUpcomingTournaments(tournaments, new Date("2026-06-11T00:00:00.000Z")).map((tournament) => tournament.tcode),
-    ["MFUT26"],
+    filterTwelveNdrUpcomingTournaments(tournaments, new Date("2099-06-11T00:00:00.000Z")).map((tournament) => tournament.tcode),
+    ["MFUT99"],
   );
 });
