@@ -9,6 +9,8 @@ const KHL_GAME_ID = "901973";
 const API_EVENT_ID = "2986031";
 const STAGE_ID = "395";
 const MATCH_DATE = "2026-05-21";
+const DIRECTORY_PLAYER_ID = "99000001";
+const DIRECTORY_PLAYER_NAME = "KHL Browser Candidate Player";
 
 type TargetTemplate = {
   khlGameId: string;
@@ -54,6 +56,17 @@ async function main() {
   const visible = expect.configure({ timeout: 30_000 });
 
   try {
+  await prisma.adminTeam.create({
+    data: {
+      disciplineSlug: "khl-browser-test",
+      platformId: DIRECTORY_PLAYER_ID,
+      platformName: DIRECTORY_PLAYER_NAME,
+      platformNameEn: DIRECTORY_PLAYER_NAME,
+      normalizedName: "khl browser candidate player",
+      normalizedNameEn: "khl browser candidate player",
+      sourceFileName: "isolated-browser-fixture",
+    },
+  });
   await page.goto(`${baseUrl}/results`);
   await visible(page).toHaveURL(`${baseUrl}/results/khl`);
   await visible(page.getByRole("heading", { name: "Доступ ограничен" })).toBeVisible();
@@ -163,6 +176,33 @@ async function main() {
   assert.equal((await templateResponsePromise).status(), 200);
   const targetTextarea = targetMappingsDetails(page).locator("textarea");
   await visible(targetTextarea).toBeVisible();
+  await visible(targetMappingsDetails(page).getByTestId("khl-target-bindings-form")).toBeVisible();
+  await visible(targetMappingsDetails(page).getByTestId("khl-team-targets-home")).toBeVisible();
+  await visible(targetMappingsDetails(page).getByTestId("khl-team-targets-away")).toBeVisible();
+
+  const firstPlayerBinding = targetMappingsDetails(page).getByTestId("khl-player-binding").first();
+  await firstPlayerBinding.locator("summary").click();
+  const directoryResponsePromise = waitForApiResponse(
+    page,
+    "/api/results/khl/admin-directory/suggest",
+    "GET"
+  );
+  await firstPlayerBinding.getByRole("combobox").fill(DIRECTORY_PLAYER_NAME);
+  assert.equal((await directoryResponsePromise).status(), 200);
+  await firstPlayerBinding.getByRole("option", { name: new RegExp(DIRECTORY_PLAYER_NAME) }).click();
+  await visible(firstPlayerBinding.getByPlaceholder("Admin player ID")).toHaveValue(DIRECTORY_PLAYER_ID);
+  assert.equal(await prisma.khlPlayer.count({ where: { adminPlayerId: DIRECTORY_PLAYER_ID } }), 0);
+  const playerBindingResponsePromise = waitForApiResponse(
+    page,
+    "/api/results/khl/bindings/player",
+    "POST"
+  );
+  await firstPlayerBinding.getByRole("button", { name: "Подтвердить игрока" }).click();
+  assert.equal((await playerBindingResponsePromise).status(), 200);
+  assert.equal(await prisma.khlPlayer.count({
+    where: { adminPlayerId: DIRECTORY_PLAYER_ID, adminBindingStatus: "CONFIRMED" },
+  }), 1);
+
   const targetTemplate = JSON.parse(await targetTextarea.inputValue()) as TargetTemplate;
   fillTargetTemplate(targetTemplate);
   const expectedTargetJson = JSON.stringify(targetTemplate, null, 2);
@@ -324,7 +364,7 @@ function fillTargetTemplate(template: TargetTemplate) {
     }
   }
   for (const player of template.players) {
-    player.adminPlayerId = `e2e-player-${player.khlPlayerId}`;
+    if (!player.adminPlayerId) player.adminPlayerId = `e2e-player-${player.khlPlayerId}`;
     player.adminMatchPlayerId = `e2e-match-player-${player.khlPlayerId}`;
     for (const code of Object.keys(player.stats)) {
       player.stats[code] = `e2e-player-${player.khlPlayerId}-stat-${code}`;

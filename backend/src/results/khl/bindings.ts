@@ -14,10 +14,16 @@ import type { NormalizedKhlMatch } from "@backend/sources/results/khl/normalize"
 
 export type KhlBindingConflictCode =
   | "TEAM_NOT_FOUND"
+  | "PLAYER_NOT_FOUND"
   | "MATCH_NOT_FOUND"
+  | "MATCH_NOT_BOUND"
   | "UNMAPPED_TEAM"
   | "ADMIN_TEAM_ALREADY_BOUND"
+  | "ADMIN_PLAYER_ALREADY_BOUND"
+  | "ADMIN_MATCH_PLAYER_ALREADY_BOUND"
   | "ADMIN_MATCH_ALREADY_BOUND"
+  | "PLAYER_ALREADY_BOUND"
+  | "MATCH_PLAYER_ALREADY_BOUND"
   | "MATCH_ALREADY_BOUND"
   | "MATCH_RESOLUTION_BLOCKED"
   | "BOUND_MATCH_DEPENDS_ON_TEAM"
@@ -43,6 +49,14 @@ type MatchBindingInput = {
   khlGameId: string;
   adminMatchId: string;
   candidates: AdminMatchCandidate[];
+  confirmedBy: string;
+};
+
+type PlayerBindingInput = {
+  khlGameId: string;
+  khlPlayerId: string;
+  adminPlayerId: string;
+  adminMatchPlayerId?: string | null;
   confirmedBy: string;
 };
 
@@ -219,6 +233,127 @@ export async function confirmKhlMatchBinding(
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (error) {
     throw translateUniqueConflict(error, "ADMIN_MATCH_ALREADY_BOUND");
+  }
+}
+
+export async function confirmKhlPlayerBinding(
+  prisma: PrismaClient,
+  input: PlayerBindingInput
+) {
+  const khlGameId = validateExternalId(input.khlGameId, "KHL game id");
+  const khlPlayerId = validateExternalId(input.khlPlayerId, "KHL player id");
+  const adminPlayerId = validateIdentifier(input.adminPlayerId, "Admin player id");
+  const adminMatchPlayerId = input.adminMatchPlayerId == null || input.adminMatchPlayerId === ""
+    ? null
+    : validateIdentifier(input.adminMatchPlayerId, "Admin match-player id");
+  const confirmedBy = validateActor(input.confirmedBy);
+
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const match = await tx.khlMatch.findUnique({
+        where: { khlGameId },
+        include: {
+          participants: {
+            where: { isListed: true, player: { khlPlayerId } },
+            include: { player: true },
+          },
+        },
+      });
+      if (!match) {
+        throw new KhlBindingConflictError("MATCH_NOT_FOUND", "KHL match was not ingested.");
+      }
+      const participant = match.participants[0];
+      if (!participant) {
+        throw new KhlBindingConflictError(
+          "PLAYER_NOT_FOUND",
+          "The listed KHL player was not found in this match."
+        );
+      }
+      if (adminMatchPlayerId && (
+        match.adminBindingStatus !== KhlBindingStatus.CONFIRMED || !match.adminMatchId
+      )) {
+        throw new KhlBindingConflictError(
+          "MATCH_NOT_BOUND",
+          "Confirm the Admin match before its match-player id."
+        );
+      }
+      if (
+        participant.player.adminBindingStatus === KhlBindingStatus.CONFIRMED
+        && participant.player.adminPlayerId
+        && participant.player.adminPlayerId !== adminPlayerId
+      ) {
+        throw new KhlBindingConflictError(
+          "PLAYER_ALREADY_BOUND",
+          "The KHL player already has a different confirmed Admin player id."
+        );
+      }
+      if (
+        adminMatchPlayerId
+        && participant.adminBindingStatus === KhlBindingStatus.CONFIRMED
+        && participant.adminMatchPlayerId
+        && participant.adminMatchPlayerId !== adminMatchPlayerId
+      ) {
+        throw new KhlBindingConflictError(
+          "MATCH_PLAYER_ALREADY_BOUND",
+          "The match participant already has a different confirmed Admin match-player id."
+        );
+      }
+
+      const [playerCollision, matchPlayerCollision] = await Promise.all([
+        tx.khlPlayer.findFirst({
+          where: { adminPlayerId, NOT: { id: participant.playerId } },
+          select: { id: true },
+        }),
+        adminMatchPlayerId ? tx.khlMatchParticipant.findFirst({
+          where: { adminMatchPlayerId, NOT: { id: participant.id } },
+          select: { id: true },
+        }) : null,
+      ]);
+      if (playerCollision) {
+        throw new KhlBindingConflictError(
+          "ADMIN_PLAYER_ALREADY_BOUND",
+          "The Admin player id is already bound to another KHL player."
+        );
+      }
+      if (matchPlayerCollision) {
+        throw new KhlBindingConflictError(
+          "ADMIN_MATCH_PLAYER_ALREADY_BOUND",
+          "The Admin match-player id is already bound to another KHL participant."
+        );
+      }
+
+      const now = new Date();
+      const player = await tx.khlPlayer.update({
+        where: { id: participant.playerId },
+        data: {
+          adminPlayerId,
+          adminBindingStatus: KhlBindingStatus.CONFIRMED,
+          adminConfirmedAt: now,
+          adminConfirmedBy: confirmedBy,
+        },
+      });
+      const storedParticipant = adminMatchPlayerId
+        ? await tx.khlMatchParticipant.update({
+          where: { id: participant.id },
+          data: {
+            adminMatchPlayerId,
+            adminBindingStatus: KhlBindingStatus.CONFIRMED,
+            adminConfirmedAt: now,
+            adminConfirmedBy: confirmedBy,
+          },
+        })
+        : participant;
+      return { player, participant: storedParticipant };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  } catch (error) {
+    if (error instanceof KhlBindingConflictError) throw error;
+    if (String((error as { code?: string })?.code || "") === "P2002") {
+      throw new KhlBindingConflictError(
+        "ADMIN_PLAYER_ALREADY_BOUND",
+        "An Admin player or match-player id is already bound to another KHL record."
+      );
+    }
+    throw error;
   }
 }
 

@@ -4,6 +4,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { KhlMatchProtocolView } from "@backend/results/khl/matchProtocol";
 import { KhlMatchProtocol } from "@/components/results/khl/KhlMatchProtocol";
+import {
+  KhlAdminDirectoryPicker,
+  KhlTargetBindingsForm,
+  type KhlTargetBindingLabels,
+  type KhlTargetBindingsTemplate,
+} from "@/components/results/khl/KhlTargetBindingsForm";
 
 type Stage = {
   stageId: string;
@@ -120,6 +126,7 @@ export function KhlResultsClient() {
   const [previews, setPreviews] = useState<Record<string, PreviewState>>({});
   const [diffs, setDiffs] = useState<Record<string, DiffState>>({});
   const [targetJson, setTargetJson] = useState<Record<string, string>>({});
+  const [targetLabels, setTargetLabels] = useState<Record<string, KhlTargetBindingLabels>>({});
   const [matchCandidateJson, setMatchCandidateJson] = useState<Record<string, string>>({});
 
   const selectedStage = useMemo(
@@ -367,13 +374,62 @@ export function KhlResultsClient() {
     setBusyKey(key);
     setError(null);
     try {
-      const data = await requestJson<{ template: unknown }>(
+      const data = await requestJson<{
+        template: KhlTargetBindingsTemplate;
+        labels: KhlTargetBindingLabels;
+      }>(
         `/api/results/khl/bindings/targets?khlGameId=${match.khlGameId}`
       );
       setTargetJson((state) => ({
         ...state,
         [match.khlGameId]: JSON.stringify(data.template, null, 2),
       }));
+      setTargetLabels((state) => ({ ...state, [match.khlGameId]: data.labels }));
+    } catch (cause) {
+      setError(messageOf(cause));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const savePlayerBinding = async (
+    match: StoredMatch,
+    player: KhlTargetBindingsTemplate["players"][number]
+  ) => {
+    const key = `player:${match.khlGameId}:${player.khlPlayerId}`;
+    setBusyKey(key);
+    setError(null);
+    try {
+      await requestJson("/api/results/khl/bindings/player", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          khlGameId: match.khlGameId,
+          khlPlayerId: player.khlPlayerId,
+          adminPlayerId: player.adminPlayerId,
+          adminMatchPlayerId: player.adminMatchPlayerId || null,
+        }),
+      });
+      setTargetLabels((state) => {
+        const labels = state[match.khlGameId];
+        if (!labels) return state;
+        return {
+          ...state,
+          [match.khlGameId]: {
+            ...labels,
+            playerBindings: {
+              ...labels.playerBindings,
+              [player.khlPlayerId]: {
+                player: "CONFIRMED",
+                matchPlayer: player.adminMatchPlayerId
+                  ? "CONFIRMED"
+                  : labels.playerBindings?.[player.khlPlayerId]?.matchPlayer || "UNMAPPED",
+              },
+            },
+          },
+        };
+      });
+      setMessage(`Игрок KHL ${player.khlPlayerId} сохранён в базе с Admin ID ${player.adminPlayerId}.`);
     } catch (cause) {
       setError(messageOf(cause));
     } finally {
@@ -392,6 +448,23 @@ export function KhlResultsClient() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify(parsed),
       });
+      const confirmed = parseTargetTemplate(targetJson[match.khlGameId]);
+      if (confirmed) {
+        setTargetLabels((state) => {
+          const labels = state[match.khlGameId];
+          if (!labels) return state;
+          return {
+            ...state,
+            [match.khlGameId]: {
+              ...labels,
+              playerBindings: Object.fromEntries(confirmed.players.map((player) => [
+                player.khlPlayerId,
+                { player: "CONFIRMED", matchPlayer: "CONFIRMED" },
+              ])),
+            },
+          };
+        });
+      }
       setMessage(`Target mappings матча ${match.khlGameId} подтверждены.`);
       await loadPreview(match);
     } catch (cause) {
@@ -502,6 +575,8 @@ export function KhlResultsClient() {
           const teamsMapped = match.homeTeam.adminBindingStatus === "CONFIRMED" && match.awayTeam.adminBindingStatus === "CONFIRMED";
           const preview = previews[match.khlGameId];
           const diff = diffs[match.khlGameId];
+          const targetTemplate = parseTargetTemplate(targetJson[match.khlGameId]);
+          const labels = targetLabels[match.khlGameId];
           return (
             <article key={match.id} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -530,9 +605,20 @@ export function KhlResultsClient() {
                     <div key={team.khlTeamId} className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
                       <div className="text-xs font-bold uppercase text-slate-500">KHL team {team.khlTeamId} · {team.adminBindingStatus}</div>
                       <div className="mt-1 font-bold">{team.name}</div>
+                      <div className="mt-3">
+                        <KhlAdminDirectoryPicker
+                          defaultQuery={team.name}
+                          disabled={team.adminBindingStatus === "CONFIRMED"}
+                          placeholder="Название команды или Admin ID"
+                          onSelect={(suggestion) => setBindingValues((state) => ({
+                            ...state,
+                            [key]: suggestion.platformId,
+                          }))}
+                        />
+                      </div>
                       <div className="mt-3 flex gap-2">
-                        <input value={bindingValues[key] ?? team.adminTeamId ?? ""} onChange={(event) => setBindingValues((state) => ({ ...state, [key]: event.target.value }))} placeholder="Admin team ID" className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm" />
-                        <button onClick={() => saveTeamBinding(team)} disabled={busyKey === key} className="rounded-xl bg-slate-800 px-4 py-2 text-xs font-bold text-white disabled:opacity-50">Подтвердить</button>
+                        <input disabled={team.adminBindingStatus === "CONFIRMED"} value={bindingValues[key] ?? team.adminTeamId ?? ""} onChange={(event) => setBindingValues((state) => ({ ...state, [key]: event.target.value }))} placeholder="Admin team ID" className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm disabled:bg-emerald-50" />
+                        <button onClick={() => saveTeamBinding(team)} disabled={team.adminBindingStatus === "CONFIRMED" || busyKey === key} className="rounded-xl bg-slate-800 px-4 py-2 text-xs font-bold text-white disabled:opacity-50">{team.adminBindingStatus === "CONFIRMED" ? "Сохранено" : "Подтвердить"}</button>
                       </div>
                     </div>
                   );
@@ -563,10 +649,13 @@ export function KhlResultsClient() {
                 {!teamsMapped && <p className="mt-2 text-xs font-semibold text-amber-700">Сначала подтвердите обе команды.</p>}
               </div>
 
-              <details className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
-                <summary className="cursor-pointer text-sm font-black text-slate-900">Player/stat target mappings (JSON)</summary>
+              <details data-testid="khl-target-bindings" className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+                <summary className="cursor-pointer text-sm font-black text-slate-900">
+                  Привязки игроков и статистики по командам
+                  <span className="sr-only">Player/stat target mappings (JSON)</span>
+                </summary>
                 <p className="mt-2 text-xs text-slate-500">
-                  Шаблон содержит всех заявленных игроков. Требуются ID типов статистики и конкретных записей Admin; подтверждённые значения становятся неизменяемыми.
+                  Игрока можно найти по точному Admin ID или фамилии/имени. Статистика хозяев и гостей заполняется в отдельных блоках; подтверждённые значения сохраняются в БД.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button onClick={() => loadTargetTemplate(match)} disabled={!teamsMapped || match.adminBindingStatus !== "CONFIRMED" || busyKey === `targets-template:${match.khlGameId}`} className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 disabled:opacity-40">
@@ -576,13 +665,30 @@ export function KhlResultsClient() {
                     Проверить и подтвердить IDs
                   </button>
                 </div>
-                {targetJson[match.khlGameId] !== undefined && (
-                  <textarea
-                    value={targetJson[match.khlGameId]}
-                    onChange={(event) => setTargetJson((state) => ({ ...state, [match.khlGameId]: event.target.value }))}
-                    spellCheck={false}
-                    className="mt-3 h-64 w-full rounded-xl border border-slate-200 bg-slate-950 p-4 font-mono text-xs text-slate-100"
+                {targetTemplate && labels && (
+                  <KhlTargetBindingsForm
+                    template={targetTemplate}
+                    labels={labels}
+                    protocol={match.protocol}
+                    busyKey={busyKey}
+                    onChange={(next) => setTargetJson((state) => ({
+                      ...state,
+                      [match.khlGameId]: JSON.stringify(next, null, 2),
+                    }))}
+                    onConfirmPlayer={(player) => savePlayerBinding(match, player)}
                   />
+                )}
+                {targetJson[match.khlGameId] !== undefined && (
+                  <div className="mt-5 border-t border-slate-100 pt-4">
+                    <div className="text-xs font-black text-slate-600">Расширенный JSON · резервный технический режим</div>
+                    {!targetTemplate && <p className="mt-2 text-xs font-bold text-red-700">JSON содержит синтаксическую ошибку; форма временно недоступна.</p>}
+                    <textarea
+                      value={targetJson[match.khlGameId]}
+                      onChange={(event) => setTargetJson((state) => ({ ...state, [match.khlGameId]: event.target.value }))}
+                      spellCheck={false}
+                      className="mt-2 h-48 w-full rounded-xl border border-slate-200 bg-slate-950 p-4 font-mono text-xs text-slate-100"
+                    />
+                  </div>
                 )}
               </details>
 
@@ -693,6 +799,26 @@ function formatDiffValue(value: unknown) {
 
 function messageOf(value: unknown) {
   return value instanceof Error ? value.message : "Неизвестная ошибка";
+}
+
+function parseTargetTemplate(value: string | undefined): KhlTargetBindingsTemplate | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as Partial<KhlTargetBindingsTemplate>;
+    if (
+      !parsed
+      || typeof parsed !== "object"
+      || typeof parsed.khlGameId !== "string"
+      || !parsed.teamStatTypes
+      || !parsed.playerStatTypes
+      || !parsed.teams?.home
+      || !parsed.teams?.away
+      || !Array.isArray(parsed.players)
+    ) return null;
+    return parsed as KhlTargetBindingsTemplate;
+  } catch {
+    return null;
+  }
 }
 
 function withoutKey<T>(state: Record<string, T>, key: string) {

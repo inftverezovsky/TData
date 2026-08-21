@@ -7,6 +7,7 @@ import { PrismaClient } from "@prisma/client";
 import {
   KhlBindingConflictError,
   confirmKhlMatchBinding,
+  confirmKhlPlayerBinding,
   confirmKhlTeamBinding,
 } from "../backend/src/results/khl/bindings";
 import { ingestKhlEventDetail } from "../backend/src/results/khl/repository";
@@ -159,6 +160,66 @@ test("team bindings cannot drift underneath an already confirmed match", async (
     }),
     (error: unknown) => error instanceof KhlBindingConflictError
       && error.code === "BOUND_MATCH_DEPENDS_ON_TEAM"
+  );
+});
+
+test("player bindings persist globally and per match without allowing collisions", async () => {
+  const match = await prisma.khlMatch.findUniqueOrThrow({
+    where: { khlGameId: "901973" },
+    include: {
+      participants: {
+        where: { isListed: true },
+        include: { player: true },
+        orderBy: { shirtNumber: "asc" },
+        take: 2,
+      },
+    },
+  });
+  const [first, second] = match.participants;
+  assert.ok(first?.player.khlPlayerId);
+  assert.ok(second?.player.khlPlayerId);
+
+  const saved = await confirmKhlPlayerBinding(prisma, {
+    khlGameId: match.khlGameId,
+    khlPlayerId: first.player.khlPlayerId,
+    adminPlayerId: "admin-player-persistent-1",
+    adminMatchPlayerId: "admin-match-player-persistent-1",
+    confirmedBy: "test-admin",
+  });
+  assert.equal(saved.player.adminBindingStatus, "CONFIRMED");
+  assert.equal(saved.player.adminPlayerId, "admin-player-persistent-1");
+  assert.equal(saved.participant.adminMatchPlayerId, "admin-match-player-persistent-1");
+
+  const repeated = await confirmKhlPlayerBinding(prisma, {
+    khlGameId: match.khlGameId,
+    khlPlayerId: first.player.khlPlayerId,
+    adminPlayerId: "admin-player-persistent-1",
+    adminMatchPlayerId: "admin-match-player-persistent-1",
+    confirmedBy: "test-admin",
+  });
+  assert.equal(repeated.player.id, saved.player.id);
+  assert.equal(repeated.participant.id, saved.participant.id);
+
+  await assert.rejects(
+    confirmKhlPlayerBinding(prisma, {
+      khlGameId: match.khlGameId,
+      khlPlayerId: first.player.khlPlayerId,
+      adminPlayerId: "different-admin-player",
+      adminMatchPlayerId: "admin-match-player-persistent-1",
+      confirmedBy: "test-admin",
+    }),
+    (error: unknown) => error instanceof KhlBindingConflictError
+      && error.code === "PLAYER_ALREADY_BOUND"
+  );
+  await assert.rejects(
+    confirmKhlPlayerBinding(prisma, {
+      khlGameId: match.khlGameId,
+      khlPlayerId: second.player.khlPlayerId,
+      adminPlayerId: "admin-player-persistent-1",
+      confirmedBy: "test-admin",
+    }),
+    (error: unknown) => error instanceof KhlBindingConflictError
+      && error.code === "ADMIN_PLAYER_ALREADY_BOUND"
   );
 });
 

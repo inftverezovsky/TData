@@ -4,6 +4,8 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { createAdminSessionResponse } from "../backend/src/auth/adminAuth";
+import { GET as getAdminDirectorySuggestions } from "../frontend/src/app/api/results/khl/admin-directory/suggest/route";
+import { POST as postPlayerBinding } from "../frontend/src/app/api/results/khl/bindings/player/route";
 import { GET as getDiff } from "../frontend/src/app/api/results/khl/diff/route";
 import { POST as postStageDelivery } from "../frontend/src/app/api/results/khl/delivery/stage/route";
 import { GET as getSchedule } from "../frontend/src/app/api/results/khl/schedule/route";
@@ -46,6 +48,21 @@ test("KHL API handlers reject unauthenticated requests before validation or netw
     new Request("http://localhost/api/results/khl/diff?khlGameId=not-valid")
   );
   assert.equal(diff.status, 401);
+
+  const directory = await getAdminDirectorySuggestions(
+    new Request("http://localhost/api/results/khl/admin-directory/suggest?q=invalid")
+  );
+  assert.equal(directory.status, 401);
+
+  const playerBinding = await postPlayerBinding(new Request(
+    "http://localhost/api/results/khl/bindings/player",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "not-json",
+    }
+  ));
+  assert.equal(playerBinding.status, 401);
 
   const stageDelivery = await postStageDelivery(
     new Request("http://localhost/api/results/khl/delivery/stage", {

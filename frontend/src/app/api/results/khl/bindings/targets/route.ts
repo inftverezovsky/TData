@@ -71,6 +71,15 @@ export async function GET(request: Request) {
           participant.player.name,
         ])
       ),
+      playerBindings: Object.fromEntries(
+        match.participants.map((participant) => [
+          String(participant.player.khlPlayerId),
+          {
+            player: participant.player.adminBindingStatus,
+            matchPlayer: participant.adminBindingStatus,
+          },
+        ])
+      ),
     },
     template: {
       khlGameId,
