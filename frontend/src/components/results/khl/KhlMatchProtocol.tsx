@@ -14,7 +14,7 @@ export function KhlMatchProtocol({ protocol }: Props) {
   if (!protocol) {
     return (
       <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-        Нет активной проверенной ревизии — официальный протокол пока недоступен.
+        Официальный протокол ещё не сохранён.
       </div>
     );
   }
@@ -38,7 +38,7 @@ export function KhlMatchProtocol({ protocol }: Props) {
           <span className={`rounded-full px-3 py-1 text-xs font-bold ${protocol.validation.ok
             ? "bg-emerald-100 text-emerald-800"
             : "bg-red-100 text-red-800"}`}>
-            {protocol.validation.ok ? "Протокол проверен" : "Есть ошибки нормализации"}
+            {protocol.validation.ok ? "Протокол проверен" : "Показан, но доставка заблокирована"}
           </span>
         </div>
       </summary>

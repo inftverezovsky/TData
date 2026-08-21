@@ -45,6 +45,14 @@ export async function GET(request: Request) {
             normalizedJson: true,
           },
         },
+        revisions: {
+          orderBy: { revisionNumber: "desc" },
+          take: 1,
+          select: {
+            state: true,
+            normalizedJson: true,
+          },
+        },
         _count: { select: { revisions: true, participants: true } },
       },
     }),
@@ -69,9 +77,11 @@ export async function GET(request: Request) {
       hasMore: offset + matches.length < total,
     },
     matches: matches.map((match) => {
+      const { revisions, ...storedMatch } = match;
       const revision = match.activeRevision;
+      const protocolRevision = revision || revisions[0] || null;
       return {
-        ...match,
+        ...storedMatch,
         activeRevision: revision ? {
           id: revision.id,
           revisionNumber: revision.revisionNumber,
@@ -80,9 +90,9 @@ export async function GET(request: Request) {
           validationIssues: revision.validationIssues,
           createdAt: revision.createdAt,
         } : null,
-        protocol: revision
+        protocol: protocolRevision
           ? buildKhlMatchProtocolView(
-            revision.normalizedJson as unknown as NormalizedKhlMatch
+            protocolRevision.normalizedJson as unknown as NormalizedKhlMatch
           )
           : null,
       };

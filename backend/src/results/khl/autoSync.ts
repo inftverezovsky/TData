@@ -49,6 +49,7 @@ export type KhlResultsSyncSummary = {
     ingested: number;
     reusedSnapshots: number;
     reusedRevisions: number;
+    rejectedRevisions: number;
     skippedBeforeCutoff: number;
     skippedAfterRange: number;
     skippedNotFinished: number;
@@ -61,6 +62,7 @@ export type KhlResultsSyncSummary = {
 type IngestResult = {
   reusedSnapshot: boolean;
   reusedRevision: boolean;
+  revision?: { state: string };
 };
 
 type SyncOptions = {
@@ -117,6 +119,7 @@ export async function syncKhlResults(options: SyncOptions): Promise<KhlResultsSy
     ingested: 0,
     reusedSnapshots: 0,
     reusedRevisions: 0,
+    rejectedRevisions: 0,
     skippedBeforeCutoff: 0,
     skippedAfterRange: 0,
     skippedNotFinished: 0,
@@ -210,6 +213,13 @@ export async function syncKhlResults(options: SyncOptions): Promise<KhlResultsSy
       eventCounters.ingested += 1;
       if (result.reusedSnapshot) eventCounters.reusedSnapshots += 1;
       if (result.reusedRevision) eventCounters.reusedRevisions += 1;
+      if (result.revision && result.revision.state !== "VALIDATED") {
+        eventCounters.rejectedRevisions += 1;
+        failures.push(eventFailure(
+          event,
+          `KHL normalized revision was stored as ${result.revision.state} and was not activated.`
+        ));
+      }
     } catch (cause) {
       failures.push(eventFailure(event, errorMessage(cause)));
     }

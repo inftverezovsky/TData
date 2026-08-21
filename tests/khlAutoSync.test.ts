@@ -151,6 +151,27 @@ test("automatic KHL sync rejects a detail response outside the configured scope"
   assert.match(summary.failures[0]?.message || "", /identity, date or finished status/);
 });
 
+test("automatic KHL sync reports a stored rejected revision as a failed result", async () => {
+  const scheduled = event("rejected-game", "rejected-event", "407", MAY_10, "finished");
+  const summary = await syncKhlResults({
+    prisma: emptyPrisma(),
+    client: clientWithEvents([scheduled]),
+    from: KHL_RESULTS_CUTOFF,
+    to: new Date("2026-05-31T23:59:59.999Z"),
+    inspectDetail: detailInspector([scheduled]),
+    ingest: async () => ({
+      reusedSnapshot: false,
+      reusedRevision: false,
+      revision: { state: "REJECTED" },
+    }),
+  });
+
+  assert.equal(summary.events.ingested, 1);
+  assert.equal(summary.events.rejectedRevisions, 1);
+  assert.equal(summary.failures.length, 1);
+  assert.match(summary.failures[0]?.message || "", /stored as REJECTED/);
+});
+
 function stage(stageId: string, season: string): KhlStage {
   return {
     stageId,
