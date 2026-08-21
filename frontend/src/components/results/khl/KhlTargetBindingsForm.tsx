@@ -59,7 +59,6 @@ export function KhlTargetBindingsForm({
   busyKey,
   onChange,
   onConfirmPlayer,
-  showStatTypes = true,
   showTeamTargets = true,
 }: {
   template: KhlTargetBindingsTemplate;
@@ -68,7 +67,6 @@ export function KhlTargetBindingsForm({
   busyKey: string | null;
   onChange: (template: KhlTargetBindingsTemplate) => void;
   onConfirmPlayer: (player: KhlTargetBindingsTemplate["players"][number]) => void;
-  showStatTypes?: boolean;
   showTeamTargets?: boolean;
 }) {
   const update = (mutate: (next: KhlTargetBindingsTemplate) => void) => {
@@ -82,33 +80,6 @@ export function KhlTargetBindingsForm({
 
   return (
     <div data-testid="khl-target-bindings-form" className="mt-4 space-y-5">
-      {showStatTypes && <section className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4">
-        <h4 className="text-sm font-black text-slate-950">Типы статистики Admin</h4>
-        <p className="mt-1 text-xs text-slate-600">
-          Это semantic type ID. Они общие для метрики; конкретные target record ID ниже задаются отдельно каждой команде и каждому игроку.
-        </p>
-        <div className="mt-3 grid gap-3 lg:grid-cols-2">
-          <StatTypeGroup
-            title="Командные типы"
-            rows={KHL_TEAM_STATS.map(([code, label]) => ({
-              code,
-              label,
-              value: template.teamStatTypes[code],
-              onChange: (value: string) => update((next) => { next.teamStatTypes[code] = value; }),
-            }))}
-          />
-          <StatTypeGroup
-            title="Игровые типы"
-            rows={PLAYER_STATS.map(([code, label]) => ({
-              code,
-              label,
-              value: template.playerStatTypes[code],
-              onChange: (value: string) => update((next) => { next.playerStatTypes[code] = value; }),
-            }))}
-          />
-        </div>
-      </section>}
-
       {showTeamTargets && <section>
         <h4 className="text-sm font-black text-slate-950">Статистика команд — отдельные привязки</h4>
         <p className="mt-1 text-xs text-slate-500">
@@ -261,25 +232,6 @@ export function KhlTargetBindingsForm({
           })}
         </div>
       </section>
-    </div>
-  );
-}
-
-function StatTypeGroup({ title, rows }: {
-  title: string;
-  rows: Array<{ code: string; label: string; value: string; onChange: (value: string) => void }>;
-}) {
-  return (
-    <div className="rounded-xl border border-white bg-white p-3">
-      <div className="text-xs font-black text-slate-800">{title}</div>
-      <div className="mt-2 space-y-2">
-        {rows.map((row) => (
-          <label key={row.code} className="grid gap-1 text-[11px] font-bold text-slate-600 sm:grid-cols-[1fr_1.4fr] sm:items-center">
-            <span>{row.label} <span className="font-mono text-[9px] text-slate-400">{row.code}</span></span>
-            <input value={row.value} onChange={(event) => row.onChange(event.target.value)} placeholder="Admin stat type ID" className="rounded-lg border border-slate-200 px-2 py-1.5 text-xs" />
-          </label>
-        ))}
-      </div>
     </div>
   );
 }

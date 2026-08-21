@@ -108,9 +108,9 @@ async function main() {
 
   await page.getByPlaceholder("Пароль...").fill(adminPassword);
   await page.getByRole("button", { name: "Разблокировать" }).click();
-  await visible(page.getByRole("heading", { name: "КХЛ", exact: true })).toBeVisible();
   await visible(page.getByRole("heading", { name: "Автоматическое обновление включено" })).toBeVisible();
   await visible(page.getByText(/Только завершённые матчи с 01\.05\.2026/)).toBeVisible();
+  await expect(page.getByText("Admin sender отключён", { exact: true })).toHaveCount(0);
 
   const rootTabs = rootTabList(page);
   await visible(rootTabs.getByRole("tab", { name: "Настройки", exact: true })).toBeVisible();
@@ -128,6 +128,10 @@ async function main() {
 
   await rootTabs.getByRole("tab", { name: "Настройки", exact: true }).click();
   await visible(page.getByTestId("khl-settings-workspace")).toBeVisible();
+  await expect(page.getByRole("heading", {
+    name: "Типы статистики Admin",
+    exact: true,
+  })).toHaveCount(0);
   const settingsTabs = settingsTabList(page);
   for (const [testId, label] of [
     ["khl-tab-teams-players", "Команды и игроки"],
@@ -319,7 +323,6 @@ async function main() {
   await expect(settingsWorkspace(page).getByRole("button", {
     name: "Загрузить сохранённые IDs",
   })).toBeDisabled();
-  await saveStatTypeMappings(page);
   await confirmTeamStatistics(
     page,
     scheduleEvent.teams.home.khlTeamId,
@@ -333,6 +336,11 @@ async function main() {
   assert.equal(await prisma.khlTeamStatBinding.count({
     where: { adminBindingStatus: "CONFIRMED" },
   }), 8);
+  await saveStatTypeMappingsViaApi(page);
+  await page.reload();
+  await selectRootTab(page, "settings");
+  await selectSettingsTab(page, "teams-players");
+  await selectStatisticsMatch(page);
   await expect(settingsWorkspace(page).getByRole("button", {
     name: "Загрузить сохранённые IDs",
   })).toBeEnabled();
@@ -418,7 +426,7 @@ async function main() {
   await visible(matchCard.locator("pre")).toContainText("e2e-admin-match-901973");
 
   await page.reload();
-  await visible(page.getByRole("heading", { name: "КХЛ", exact: true })).toBeVisible();
+  await visible(page.getByRole("heading", { name: "Автоматическое обновление включено" })).toBeVisible();
   await selectRootTab(page, "settings");
   await selectSettingsTab(page, "teams-players");
   await assertTeamStatisticsPrefill(
@@ -651,25 +659,19 @@ async function assertTeamStatisticsPrefill(page: Page, khlTeamId: string, idPref
   }
 }
 
-async function saveStatTypeMappings(page: Page) {
-  const panel = settingsWorkspace(page).locator("section").filter({
-    has: page.getByRole("heading", { name: "Типы статистики Admin", exact: true }),
-  }).first();
-  for (const [code, adminStatTypeId] of Object.entries({
-    ...expectedTeamStatTypes(),
-    ...expectedPlayerStatTypes(),
-  })) {
-    const label = panel.getByText(code, { exact: true }).locator("xpath=ancestor::label");
-    await label.getByPlaceholder("Admin stat type ID").fill(adminStatTypeId);
-  }
-  const responsePromise = waitForApiResponse(
-    page,
-    "/api/results/khl/bindings/stat-types",
-    "POST"
-  );
-  await panel.getByRole("button", { name: "Подтвердить типы статистики" }).click();
-  assert.equal((await responsePromise).status(), 200);
-  await expect(panel.getByPlaceholder("Admin stat type ID").first()).toBeDisabled();
+async function saveStatTypeMappingsViaApi(page: Page) {
+  const result = await page.evaluate(async (body) => {
+    const response = await fetch("/api/results/khl/bindings/stat-types", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return { status: response.status, body: await response.json() };
+  }, {
+    teamStatTypes: expectedTeamStatTypes(),
+    playerStatTypes: expectedPlayerStatTypes(),
+  }) as { status: number; body: { error?: string } };
+  assert.equal(result.status, 200, result.body.error);
 }
 
 async function selectStatisticsMatch(page: Page) {

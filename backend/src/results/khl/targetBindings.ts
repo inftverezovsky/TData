@@ -274,22 +274,22 @@ export async function confirmKhlTeamStatBindings(
           );
         }
 
-        const mappings = await tx.khlStatMapping.findMany({
-          where: {
-            scope: KhlStatScope.TEAM,
-            semanticCode: { in: [...KHL_TEAM_STAT_CODES] },
-          },
-        });
-        const mappingByCode = new Map(mappings.map((mapping) => [mapping.semanticCode, mapping]));
-        if (KHL_TEAM_STAT_CODES.some((code) => {
-          const mapping = mappingByCode.get(code);
-          return mapping?.adminBindingStatus !== KhlBindingStatus.CONFIRMED
-            || !mapping.adminStatTypeId;
-        })) {
-          throw new KhlTargetBindingError(
-            "STAT_TYPES_NOT_BOUND",
-            "All Admin team statistic type IDs must be confirmed first."
-          );
+        const mappingIdByCode = new Map<KhlTeamStatCode, string>();
+        for (const code of KHL_TEAM_STAT_CODES) {
+          const mapping = await tx.khlStatMapping.upsert({
+            where: {
+              scope_semanticCode: {
+                scope: KhlStatScope.TEAM,
+                semanticCode: code,
+              },
+            },
+            create: {
+              scope: KhlStatScope.TEAM,
+              semanticCode: code,
+            },
+            update: {},
+          });
+          mappingIdByCode.set(code, mapping.id);
         }
 
         const now = new Date();
@@ -298,7 +298,7 @@ export async function confirmKhlTeamStatBindings(
           bindings.push(await upsertImmutableTeamStatBinding(
             tx,
             team.id,
-            mappingByCode.get(code)!.id,
+            mappingIdByCode.get(code)!,
             validated.teamStats[code],
             validated.confirmedBy,
             now,

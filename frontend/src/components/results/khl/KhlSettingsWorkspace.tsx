@@ -31,8 +31,6 @@ import type {
   StoredMatch,
 } from "@/components/results/khl/types";
 
-type StatTypeValues = Record<"TEAM" | "PLAYER", Record<string, string>>;
-
 type Props = {
   directory: SettingsDirectory | null;
   matches: StoredMatch[];
@@ -61,7 +59,6 @@ type Props = {
   onSaveTeamStats: (team: SettingsTeam) => void;
   onSavePlayer: (player: SettingsPlayer) => void;
   onSaveMatch: (match: StoredMatch) => void;
-  onSaveStatTypes: (values: StatTypeValues) => void;
   onLoadTargetTemplate: (match: StoredMatch) => void;
   onSaveTargetBindings: (match: StoredMatch) => void;
   onConfirmTargetPlayer: (
@@ -71,16 +68,6 @@ type Props = {
   onLoadPreview: (match: StoredMatch) => void;
   onLoadDiff: (match: StoredMatch) => void;
   onStageDelivery: (match: StoredMatch) => void;
-};
-
-const STAT_LABELS: Record<string, string> = {
-  shots_on_goal: "Броски в створ",
-  faceoffs_won: "Выигранные вбрасывания",
-  power_play_goals: "Голы в большинстве",
-  penalty_minutes_2_4: "Штрафные минуты 2/4",
-  goals: "Голы игроков",
-  assists: "Передачи игроков",
-  points: "Очки игроков",
 };
 
 export function KhlSettingsWorkspace(props: Props) {
@@ -119,15 +106,8 @@ function TeamsPlayersSettings(props: Props) {
     status
   ), [directory?.players, directory?.teams, query, status]);
 
-  const teamStatTypesReady = KHL_TEAM_STATS.every(([code]) => directory?.statMappings.some(
-    (mapping) => mapping.scope === "TEAM"
-      && mapping.semanticCode === code
-      && mapping.adminBindingStatus === "CONFIRMED"
-  ));
-
   return (
     <div className="space-y-5">
-      <StatTypeSettings {...props} />
       <SettingsPanel
         title="Команды и игроки"
         description="Сначала подтвердите Admin team ID. Затем отдельно сохраните постоянные статистические ID команды и раскройте список игроков. Все подтверждённые ID переиспользуются в следующих матчах."
@@ -201,7 +181,6 @@ function TeamsPlayersSettings(props: Props) {
                 <TeamStatBindingSection
                   team={team}
                   teamConfirmed={teamConfirmed}
-                  statTypesReady={teamStatTypesReady}
                   busyKey={busyKey}
                   bindingValues={bindingValues}
                   onBindingValueChange={onBindingValueChange}
@@ -260,7 +239,6 @@ function TeamsPlayersSettings(props: Props) {
 function TeamStatBindingSection({
   team,
   teamConfirmed,
-  statTypesReady,
   busyKey,
   bindingValues,
   onBindingValueChange,
@@ -268,7 +246,6 @@ function TeamStatBindingSection({
 }: {
   team: SettingsTeam;
   teamConfirmed: boolean;
-  statTypesReady: boolean;
   busyKey: string | null;
   bindingValues: Record<string, string>;
   onBindingValueChange: (key: string, value: string) => void;
@@ -306,11 +283,6 @@ function TeamStatBindingSection({
         </span>
       </summary>
       <div className="border-t border-indigo-100 bg-white p-4">
-        {!statTypesReady && (
-          <p className="mb-3 rounded-xl bg-amber-50 p-3 text-xs font-bold text-amber-800">
-            Сначала подтвердите общие типы статистики Admin в верхнем блоке.
-          </p>
-        )}
         <div className="grid gap-3 md:grid-cols-2">
           {KHL_TEAM_STATS.map(([code, label]) => {
             const stored = bindings.get(code);
@@ -333,7 +305,7 @@ function TeamStatBindingSection({
         <button
           type="button"
           onClick={() => onSaveTeamStats(team)}
-          disabled={!statTypesReady || !complete || confirmedCount === KHL_TEAM_STATS.length || busyKey === key}
+          disabled={!complete || confirmedCount === KHL_TEAM_STATS.length || busyKey === key}
           className="mt-4 rounded-xl bg-indigo-700 px-5 py-2.5 text-xs font-black text-white disabled:opacity-40"
         >
           {confirmedCount === KHL_TEAM_STATS.length
@@ -545,77 +517,6 @@ function PlayerTargetSettings(props: Props) {
   );
 }
 
-function StatTypeSettings({ directory, busyKey, onSaveStatTypes }: Props) {
-  const [values, setValues] = useState<StatTypeValues>({ TEAM: {}, PLAYER: {} });
-  useEffect(() => {
-    setValues((current) => {
-      const next: StatTypeValues = {
-        TEAM: { ...current.TEAM },
-        PLAYER: { ...current.PLAYER },
-      };
-      for (const mapping of directory?.statMappings || []) {
-        if (
-          mapping.adminBindingStatus === "CONFIRMED"
-          || next[mapping.scope][mapping.semanticCode] === undefined
-        ) {
-          next[mapping.scope][mapping.semanticCode] = mapping.adminStatTypeId || "";
-        }
-      }
-      return next;
-    });
-  }, [directory?.statMappings]);
-  const mappings = directory?.statMappings || [];
-  const complete = mappings.length === 7 && mappings.every((mapping) => (
-    Boolean((values[mapping.scope][mapping.semanticCode] || "").trim())
-  ));
-
-  return (
-    <SettingsPanel
-      title="Типы статистики Admin"
-      description="Semantic type ID задаётся один раз. Это отдельная привязка; конкретные записи каждой команды задаются ниже."
-    >
-      <div className="grid gap-4 lg:grid-cols-2">
-        {(["TEAM", "PLAYER"] as const).map((scope) => (
-          <div key={scope} className="rounded-2xl border border-slate-200 bg-white p-4">
-            <h4 className="text-xs font-black uppercase tracking-wide text-violet-700">
-              {scope === "TEAM" ? "Командная статистика" : "Статистика игроков"}
-            </h4>
-            <div className="mt-3 space-y-3">
-              {mappings.filter((mapping) => mapping.scope === scope).map((mapping) => {
-                const confirmed = mapping.adminBindingStatus === "CONFIRMED";
-                return (
-                  <label key={mapping.semanticCode} className="block text-xs font-bold text-slate-600">
-                    {STAT_LABELS[mapping.semanticCode] || mapping.semanticCode}
-                    <span className="ml-2 font-mono text-[9px] text-slate-400">{mapping.semanticCode}</span>
-                    <input
-                      value={values[scope][mapping.semanticCode] || ""}
-                      disabled={confirmed}
-                      onChange={(event) => setValues((current) => ({
-                        ...current,
-                        [scope]: { ...current[scope], [mapping.semanticCode]: event.target.value },
-                      }))}
-                      placeholder="Admin stat type ID"
-                      className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs disabled:bg-emerald-50"
-                    />
-                  </label>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </div>
-      <button
-        type="button"
-        onClick={() => onSaveStatTypes(values)}
-        disabled={!complete || busyKey === "stat-types:save"}
-        className="mt-4 rounded-xl bg-violet-700 px-5 py-2.5 text-xs font-black text-white disabled:opacity-40"
-      >
-        {busyKey === "stat-types:save" ? "Сохранение…" : "Подтвердить типы статистики"}
-      </button>
-    </SettingsPanel>
-  );
-}
-
 function TargetBindingEditor({
   match,
   directory,
@@ -653,7 +554,7 @@ function TargetBindingEditor({
       </div>
       {!readyForTemplate && (
         <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs font-bold text-amber-800">
-          Сначала подтвердите матч, общие типы статистики и все четыре статистических ID обеих команд.
+          Сначала подтвердите матч и все четыре статистических ID обеих команд. Служебные типы статистики для staging остаются закрытой настройкой до подтверждения Admin-контракта.
         </p>
       )}
       {template && labels && (
@@ -662,7 +563,6 @@ function TargetBindingEditor({
           labels={labels}
           protocol={match.protocol}
           busyKey={busyKey}
-          showStatTypes={false}
           showTeamTargets={false}
           onChange={(next) => onTargetJsonChange(match.khlGameId, JSON.stringify(next, null, 2))}
           onConfirmPlayer={(player) => onConfirmTargetPlayer(match, player)}

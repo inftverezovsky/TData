@@ -81,7 +81,6 @@ test("migration does not promote legacy match-scoped targets to persistent team 
 
 test("team statistic target ids persist once per KHL team and metric", async () => {
   const team = await createVisibleTeam("34", "Авангард", true);
-  await confirmKhlStatTypes(prisma, statTypes);
 
   const first = await confirmKhlTeamStatBindings(prisma, {
     khlTeamId: team.khlTeamId,
@@ -96,6 +95,10 @@ test("team statistic target ids persist once per KHL team and metric", async () 
   assert.equal(first.bindings.length, 4);
   assert.equal(firstRows.length, 4);
   assert.ok(firstRows.every((row) => row.adminBindingStatus === KhlBindingStatus.CONFIRMED));
+  assert.ok(firstRows.every((row) => (
+    row.statMapping.adminBindingStatus === KhlBindingStatus.UNMAPPED
+      && row.statMapping.adminStatTypeId === null
+  )));
 
   const repeated = await confirmKhlTeamStatBindings(prisma, {
     khlTeamId: team.khlTeamId,

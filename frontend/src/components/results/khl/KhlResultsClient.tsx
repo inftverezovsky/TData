@@ -246,17 +246,6 @@ export function KhlResultsClient() {
     }, true);
   };
 
-  const saveStatTypes = async (
-    values: Record<"TEAM" | "PLAYER", Record<string, string>>
-  ) => runBusy("stat-types:save", async () => {
-    await requestJson("/api/results/khl/bindings/stat-types", jsonPost({
-      teamStatTypes: values.TEAM,
-      playerStatTypes: values.PLAYER,
-    }));
-    setMessage("Типы статистики Admin сохранены в базе.");
-    await loadSettingsDirectory();
-  });
-
   const loadTargetTemplate = async (match: StoredMatch) => runBusy(
     `targets-template:${match.khlGameId}`,
     async () => {
@@ -388,21 +377,6 @@ export function KhlResultsClient() {
 
   return (
     <main className="mx-auto max-w-7xl space-y-6 py-8">
-      <header className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-600">Результаты</p>
-            <h1 className="mt-2 text-3xl font-black text-slate-950">КХЛ</h1>
-            <p className="mt-2 max-w-3xl text-sm text-slate-600">
-              Официальные результаты и статистика загружаются автоматически. Просмотр данных не зависит от привязок к Admin.
-            </p>
-          </div>
-          <span className="rounded-full bg-amber-50 px-4 py-2 text-xs font-bold text-amber-800 ring-1 ring-amber-200">
-            Admin sender отключён
-          </span>
-        </div>
-      </header>
-
       <AutomationPanel automation={automation} busyKey={busyKey} onToggle={toggleAutomation} />
 
       {(error || message) && (
@@ -467,7 +441,6 @@ export function KhlResultsClient() {
           onSaveTeamStats={saveTeamStatBindings}
           onSavePlayer={saveDirectoryPlayer}
           onSaveMatch={saveMatchBinding}
-          onSaveStatTypes={saveStatTypes}
           onLoadTargetTemplate={loadTargetTemplate}
           onSaveTargetBindings={saveTargetBindings}
           onConfirmTargetPlayer={saveTargetPlayer}
