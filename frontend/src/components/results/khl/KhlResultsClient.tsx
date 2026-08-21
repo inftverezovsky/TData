@@ -637,17 +637,57 @@ export function KhlResultsClient() {
           const targetTemplate = parseTargetTemplate(targetJson[match.khlGameId]);
           const labels = targetLabels[match.khlGameId];
           return (
-            <article key={match.id} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-lg font-black text-slate-950">{match.homeTeam.name} — {match.awayTeam.name}</h3>
-                  <p className="mt-1 text-xs text-slate-500">KHL game {match.khlGameId} · stage {match.stageId} · {match.season} · {new Date(match.startsAt).toLocaleString("ru-RU")}</p>
-                </div>
-                <div className="text-right">
-                  <div className="text-xl font-black">{match.officialHomeScore ?? "—"}:{match.officialAwayScore ?? "—"}</div>
-                  <div className="text-xs text-slate-500">Admin total (P1–P3): {match.regulationHomeScore ?? "—"}:{match.regulationAwayScore ?? "—"}</div>
-                </div>
-              </div>
+            <article key={match.id} className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+              <details data-testid="khl-match-disclosure" className="group">
+                <summary
+                  data-testid="khl-match-summary"
+                  className="cursor-pointer list-none p-5 transition-colors hover:bg-slate-50 [&::-webkit-details-marker]:hidden"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-4">
+                    <div className="min-w-[260px] flex-1">
+                      <div className="text-xs font-bold text-slate-500">
+                        {new Date(match.startsAt).toLocaleString("ru-RU")} · KHL game {match.khlGameId} · stage {match.stageId} · {match.season}
+                      </div>
+                      <h3 className="mt-1 text-lg font-black text-slate-950">
+                        {match.homeTeam.name} — {match.awayTeam.name}
+                      </h3>
+                      <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-bold">
+                        <span className={`rounded-full px-3 py-1 ${match.activeRevision
+                          ? "bg-emerald-50 text-emerald-800"
+                          : "bg-amber-50 text-amber-800"}`}>
+                          {match.activeRevision ? `Протокол #${match.activeRevision.revisionNumber}` : "Нет активного протокола"}
+                        </span>
+                        <span className="rounded-full bg-blue-50 px-3 py-1 text-blue-800">
+                          Игроков: {match._count.participants}
+                        </span>
+                        <span className={`rounded-full px-3 py-1 ${match.adminBindingStatus === "CONFIRMED"
+                          ? "bg-violet-50 text-violet-800"
+                          : "bg-slate-100 text-slate-600"}`}>
+                          {match.adminBindingStatus === "CONFIRMED" ? "Admin match привязан" : "Admin match не привязан"}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="text-right">
+                        <div className="text-2xl font-black text-slate-950">
+                          {match.officialHomeScore ?? "—"}:{match.officialAwayScore ?? "—"}
+                        </div>
+                        <div className="text-[11px] text-slate-500">
+                          P1–P3: {match.regulationHomeScore ?? "—"}:{match.regulationAwayScore ?? "—"}
+                        </div>
+                      </div>
+                      <div className="flex min-w-24 items-center justify-end gap-2 text-xs font-black text-blue-700">
+                        <span className="group-open:hidden">Открыть</span>
+                        <span className="hidden group-open:inline">Свернуть</span>
+                        <svg aria-hidden="true" viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5 transition-transform group-open:rotate-180">
+                          <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.168l3.71-3.938a.75.75 0 1 1 1.08 1.04l-4.25 4.51a.75.75 0 0 1-1.08 0l-4.25-4.51a.75.75 0 0 1 .02-1.06Z" clipRule="evenodd" />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+                </summary>
+
+                <div className="border-t border-slate-200 p-6">
 
               <KhlMatchProtocol protocol={match.protocol} />
 
@@ -821,6 +861,8 @@ export function KhlResultsClient() {
                   </div>
                 )}
               </div>
+                </div>
+              </details>
             </article>
           );
         })}

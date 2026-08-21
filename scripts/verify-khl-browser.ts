@@ -171,7 +171,15 @@ async function main() {
   assert.equal(repeatedIngestBody.idempotency.reusedRevision, true);
   assert.equal(repeatedIngestBody.idempotency.activated, false);
 
-  const protocol = matchArticle(page).getByTestId("khl-protocol");
+  const matchDisclosure = matchArticle(page).getByTestId("khl-match-disclosure");
+  const matchSummary = matchDisclosure.getByTestId("khl-match-summary");
+  const protocol = matchDisclosure.getByTestId("khl-protocol");
+  await visible(matchSummary).toContainText(`KHL game ${KHL_GAME_ID}`);
+  await visible(matchSummary).toContainText("Игроков: 43");
+  await expect(matchDisclosure).not.toHaveAttribute("open", "");
+  await expect(protocol).not.toBeVisible();
+  await matchSummary.click();
+  await expect(matchDisclosure).toHaveAttribute("open", "");
   await visible(protocol).toBeVisible();
   await visible(protocol.getByText("Официальный протокол КХЛ · доступен без Admin mappings")).toBeVisible();
   await visible(protocol.getByText("Броски в створ")).toBeVisible();
@@ -267,6 +275,10 @@ async function main() {
   await page.reload();
   await visible(page.getByRole("heading", { name: "КХЛ", exact: true })).toBeVisible();
   await visible(matchArticle(page)).toBeVisible();
+  const reloadedMatchDisclosure = matchArticle(page).getByTestId("khl-match-disclosure");
+  await expect(reloadedMatchDisclosure).not.toHaveAttribute("open", "");
+  await reloadedMatchDisclosure.getByTestId("khl-match-summary").click();
+  await expect(reloadedMatchDisclosure).toHaveAttribute("open", "");
   await targetMappingsDetails(page).locator("summary").click();
   const prefillResponsePromise = waitForApiResponse(page, "/api/results/khl/bindings/targets", "GET");
   await matchArticle(page).getByRole("button", { name: "Загрузить шаблон" }).click();
@@ -380,9 +392,7 @@ function matchArticle(page: Page) {
 }
 
 function targetMappingsDetails(page: Page) {
-  return matchArticle(page).locator("details").filter({
-    has: page.getByText("Player/stat target mappings (JSON)", { exact: true }),
-  });
+  return matchArticle(page).getByTestId("khl-target-bindings");
 }
 
 async function confirmTeam(page: Page, index: number, adminTeamId: string) {
