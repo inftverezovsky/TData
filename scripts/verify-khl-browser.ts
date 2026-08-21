@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { PrismaClient } from "@prisma/client";
 import { chromium, expect, type Page, type Response } from "@playwright/test";
 
+import { KHL_RESULTS_AUTO_SYNC_PAUSED_KEY } from "@backend/results/khl/automation";
 import { requireSameDatabaseUrl } from "./helpers/isolatedKhlDatabase";
 
 const KHL_GAME_ID = "901973";
@@ -56,6 +57,11 @@ async function main() {
   const visible = expect.configure({ timeout: 30_000 });
 
   try {
+  await prisma.globalSettings.upsert({
+    where: { key: KHL_RESULTS_AUTO_SYNC_PAUSED_KEY },
+    create: { key: KHL_RESULTS_AUTO_SYNC_PAUSED_KEY, value: "0" },
+    update: { value: "0" },
+  });
   await prisma.adminTeam.create({
     data: {
       disciplineSlug: "khl-browser-test",
@@ -87,6 +93,37 @@ async function main() {
   await visible(page.getByRole("heading", { name: "КХЛ", exact: true })).toBeVisible();
   await visible(page.getByRole("heading", { name: "Автоматическое обновление включено" })).toBeVisible();
   await visible(page.getByText(/Только завершённые матчи с 01\.05\.2026/)).toBeVisible();
+
+  const pauseResponsePromise = waitForApiResponse(page, "/api/results/khl/automation", "POST");
+  await page.getByRole("button", { name: "Остановить автообновление" }).click();
+  const pauseResponse = await pauseResponsePromise;
+  assert.equal(pauseResponse.status(), 200);
+  assert.deepEqual((await pauseResponse.json() as { automation: {
+    configured: boolean;
+    paused: boolean;
+    enabled: boolean;
+  } }).automation, { configured: true, paused: true, enabled: false });
+  await visible(page.getByRole("heading", { name: "Автоматическое обновление остановлено" })).toBeVisible();
+  assert.equal((await prisma.globalSettings.findUnique({
+    where: { key: KHL_RESULTS_AUTO_SYNC_PAUSED_KEY },
+  }))?.value, "1");
+
+  await page.reload();
+  await visible(page.getByRole("heading", { name: "Автоматическое обновление остановлено" })).toBeVisible();
+  const resumeResponsePromise = waitForApiResponse(page, "/api/results/khl/automation", "POST");
+  await page.getByRole("button", { name: "Запустить автообновление" }).click();
+  const resumeResponse = await resumeResponsePromise;
+  assert.equal(resumeResponse.status(), 200);
+  assert.deepEqual((await resumeResponse.json() as { automation: {
+    configured: boolean;
+    paused: boolean;
+    enabled: boolean;
+  } }).automation, { configured: true, paused: false, enabled: true });
+  await visible(page.getByRole("heading", { name: "Автоматическое обновление включено" })).toBeVisible();
+  assert.equal((await prisma.globalSettings.findUnique({
+    where: { key: KHL_RESULTS_AUTO_SYNC_PAUSED_KEY },
+  }))?.value, "0");
+
   await page.getByText("Ручная проверка расписания (резервный режим)", { exact: true }).click();
   await page.waitForFunction(() => document.querySelectorAll("select option").length > 1);
   await page.locator("select").selectOption(STAGE_ID);
@@ -317,9 +354,15 @@ async function main() {
     deliveryAttemptCount: attempts,
     transportExecuted: false,
     finalDiff: "UNCHANGED",
+    automationControl: "PAUSE_PERSISTED_THEN_RESUMED",
     browserConsoleErrors: unexpectedBrowserErrors.length,
   }, null, 2)}\n`);
   } finally {
+    await prisma.globalSettings.upsert({
+      where: { key: KHL_RESULTS_AUTO_SYNC_PAUSED_KEY },
+      create: { key: KHL_RESULTS_AUTO_SYNC_PAUSED_KEY, value: "0" },
+      update: { value: "0" },
+    }).catch(() => undefined);
     await page.close().catch(() => undefined);
     await context.close().catch(() => undefined);
     await browser.close().catch(() => undefined);

@@ -5,6 +5,7 @@ import test from "node:test";
 
 import { createAdminSessionResponse } from "../backend/src/auth/adminAuth";
 import { GET as getAdminDirectorySuggestions } from "../frontend/src/app/api/results/khl/admin-directory/suggest/route";
+import { POST as postAutomation } from "../frontend/src/app/api/results/khl/automation/route";
 import { POST as postPlayerBinding } from "../frontend/src/app/api/results/khl/bindings/player/route";
 import { GET as getDiff } from "../frontend/src/app/api/results/khl/diff/route";
 import { POST as postStageDelivery } from "../frontend/src/app/api/results/khl/delivery/stage/route";
@@ -63,6 +64,16 @@ test("KHL API handlers reject unauthenticated requests before validation or netw
     }
   ));
   assert.equal(playerBinding.status, 401);
+
+  const automation = await postAutomation(new Request(
+    "http://localhost/api/results/khl/automation",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "not-json",
+    }
+  ));
+  assert.equal(automation.status, 401);
 
   const stageDelivery = await postStageDelivery(
     new Request("http://localhost/api/results/khl/delivery/stage", {
@@ -123,6 +134,20 @@ test("authenticated KHL mutations require same-origin JSON requests", async () =
       body: "{}",
     }));
     assert.equal(sameOriginJson.status, 400);
+
+    const invalidAutomation = await postAutomation(new Request(
+      "http://localhost/api/results/khl/automation",
+      {
+        method: "POST",
+        headers: {
+          cookie,
+          origin: "http://localhost",
+          "content-type": "application/json",
+        },
+        body: "{}",
+      }
+    ));
+    assert.equal(invalidAutomation.status, 400);
   } finally {
     restoreEnvironment("ADMIN_PASSWORD", previousPassword);
     restoreEnvironment("ADMIN_SESSION_SECRET", previousSecret);

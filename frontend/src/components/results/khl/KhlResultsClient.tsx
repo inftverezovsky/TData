@@ -68,6 +68,8 @@ type StoredMatch = {
 
 type ApiError = { error?: string; code?: string };
 type AutomationStatus = {
+  configured: boolean;
+  paused: boolean;
   enabled: boolean;
   cutoff: string;
   intervalMinutes: number;
@@ -214,6 +216,33 @@ export function KhlResultsClient() {
       });
       setAutomation(data.automation);
       setHasMoreMatches(data.pagination.hasMore);
+    } catch (cause) {
+      setError(messageOf(cause));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const toggleAutomation = async () => {
+    if (!automation?.configured) return;
+    const key = "automation:toggle";
+    const nextPaused = !automation.paused;
+    setBusyKey(key);
+    setError(null);
+    setMessage(null);
+    try {
+      const result = await requestJson<{ automation: AutomationStatus }>(
+        "/api/results/khl/automation",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ paused: nextPaused }),
+        }
+      );
+      setAutomation((current) => current ? { ...current, ...result.automation } : current);
+      setMessage(nextPaused
+        ? "Автоматическое обновление результатов КХЛ остановлено."
+        : "Автоматическое обновление результатов КХЛ запущено.");
     } catch (cause) {
       setError(messageOf(cause));
     } finally {
@@ -494,20 +523,50 @@ export function KhlResultsClient() {
 
       <section className={`rounded-3xl border p-5 shadow-sm ${automation?.enabled
         ? "border-emerald-200 bg-emerald-50"
-        : "border-amber-200 bg-amber-50"}`}>
+        : automation?.paused
+          ? "border-red-200 bg-red-50"
+          : "border-amber-200 bg-amber-50"}`}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className={`text-sm font-black ${automation?.enabled ? "text-emerald-950" : "text-amber-950"}`}>
-              {automation?.enabled ? "Автоматическое обновление включено" : "Автоматическое обновление не подтверждено"}
+            <h2 className={`text-sm font-black ${automation?.enabled
+              ? "text-emerald-950"
+              : automation?.paused ? "text-red-950" : "text-amber-950"}`}>
+              {automation?.enabled
+                ? "Автоматическое обновление включено"
+                : automation?.paused
+                  ? "Автоматическое обновление остановлено"
+                  : "Автоматическое обновление не настроено"}
             </h2>
-            <p className={`mt-1 text-xs ${automation?.enabled ? "text-emerald-800" : "text-amber-800"}`}>
+            <p className={`mt-1 text-xs ${automation?.enabled
+              ? "text-emerald-800"
+              : automation?.paused ? "text-red-800" : "text-amber-800"}`}>
               Только завершённые матчи с 01.05.2026 · проверка каждые {automation?.intervalMinutes || 10} минут · страница обновляет список сама.
             </p>
           </div>
-          <div className={`text-xs font-bold ${automation?.enabled ? "text-emerald-900" : "text-amber-900"}`}>
-            Последнее получение: {automation?.lastFetchedAt
-              ? new Date(automation.lastFetchedAt).toLocaleString("ru-RU")
-              : "ещё не выполнялось"}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className={`text-xs font-bold ${automation?.enabled
+              ? "text-emerald-900"
+              : automation?.paused ? "text-red-900" : "text-amber-900"}`}>
+              Последнее получение: {automation?.lastFetchedAt
+                ? new Date(automation.lastFetchedAt).toLocaleString("ru-RU")
+                : "ещё не выполнялось"}
+            </div>
+            {automation?.configured && (
+              <button
+                type="button"
+                onClick={toggleAutomation}
+                disabled={busyKey === "automation:toggle"}
+                className={`rounded-xl px-4 py-2 text-xs font-black text-white shadow-sm disabled:opacity-50 ${automation.paused
+                  ? "bg-emerald-700 hover:bg-emerald-800"
+                  : "bg-red-700 hover:bg-red-800"}`}
+              >
+                {busyKey === "automation:toggle"
+                  ? "Сохранение…"
+                  : automation.paused
+                    ? "Запустить автообновление"
+                    : "Остановить автообновление"}
+              </button>
+            )}
           </div>
         </div>
       </section>

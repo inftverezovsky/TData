@@ -7,6 +7,7 @@ import {
   defaultKhlSyncFrom,
   syncKhlResults,
 } from "@backend/results/khl/autoSync";
+import { runKhlResultsAutoSync } from "@backend/results/khl/automation";
 
 const prisma = new PrismaClient();
 
@@ -37,15 +38,23 @@ async function main() {
     ? KHL_RESULTS_REFRESH_HOURS * 60 * 60 * 1000
     : readNumber(args.refreshHours, "--refresh-hours", 0, 168) * 60 * 60 * 1000;
 
-  const summary = await syncKhlResults({
+  const outcome = await runKhlResultsAutoSync({
     prisma,
-    from,
-    to,
-    now,
-    refreshExistingAfterMs,
+    configured: process.env.KHL_RESULTS_AUTO_SYNC_ENABLED === "1",
+    run: () => syncKhlResults({
+      prisma,
+      from,
+      to,
+      now,
+      refreshExistingAfterMs,
+    }),
   });
-  console.log(JSON.stringify(summary));
-  if (summary.failures.length > 0) process.exitCode = 1;
+  if (!outcome.executed) {
+    console.log(JSON.stringify({ skipped: true, reason: outcome.reason, automation: outcome.automation }));
+    return;
+  }
+  console.log(JSON.stringify(outcome.result));
+  if (outcome.result.failures.length > 0) process.exitCode = 1;
 }
 
 type ParsedArgs = {

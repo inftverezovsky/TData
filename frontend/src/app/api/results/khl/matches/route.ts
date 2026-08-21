@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireAdmin } from "@backend/auth/adminAuth";
 import { prisma } from "@backend/db/db";
 import { KHL_RESULTS_CUTOFF } from "@backend/results/khl/autoSync";
+import { getKhlResultsAutomationStatus } from "@backend/results/khl/automation";
 import { buildKhlMatchProtocolView } from "@backend/results/khl/matchProtocol";
 import type { NormalizedKhlMatch } from "@backend/sources/results/khl/normalize";
 
@@ -25,7 +26,7 @@ export async function GET(request: Request) {
     startsAt: { gte: KHL_RESULTS_CUTOFF },
     ...(stageId ? { stageId } : {}),
   };
-  const [matches, latestSnapshot, total] = await Promise.all([
+  const [matches, latestSnapshot, total, automation] = await Promise.all([
     prisma.khlMatch.findMany({
       where,
       orderBy: [{ startsAt: "desc" }, { khlGameId: "desc" }],
@@ -62,10 +63,14 @@ export async function GET(request: Request) {
       select: { lastFetchedAt: true },
     }),
     prisma.khlMatch.count({ where }),
+    getKhlResultsAutomationStatus(
+      prisma,
+      process.env.KHL_RESULTS_AUTO_SYNC_ENABLED === "1"
+    ),
   ]);
   return NextResponse.json({
     automation: {
-      enabled: process.env.KHL_RESULTS_AUTO_SYNC_ENABLED === "1",
+      ...automation,
       cutoff: KHL_RESULTS_CUTOFF.toISOString(),
       intervalMinutes: automaticSyncIntervalMinutes(),
       lastFetchedAt: latestSnapshot?.lastFetchedAt || null,
