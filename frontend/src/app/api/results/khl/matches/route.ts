@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 
 import { requireAdmin } from "@backend/auth/adminAuth";
 import { prisma } from "@backend/db/db";
+import { buildKhlMatchProtocolView } from "@backend/results/khl/matchProtocol";
+import type { NormalizedKhlMatch } from "@backend/sources/results/khl/normalize";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -32,12 +34,33 @@ export async function GET(request: Request) {
           state: true,
           validationIssues: true,
           createdAt: true,
+          normalizedJson: true,
         },
       },
       _count: { select: { revisions: true, participants: true } },
     },
   });
-  return NextResponse.json({ matches });
+  return NextResponse.json({
+    matches: matches.map((match) => {
+      const revision = match.activeRevision;
+      return {
+        ...match,
+        activeRevision: revision ? {
+          id: revision.id,
+          revisionNumber: revision.revisionNumber,
+          normalizedHash: revision.normalizedHash,
+          state: revision.state,
+          validationIssues: revision.validationIssues,
+          createdAt: revision.createdAt,
+        } : null,
+        protocol: revision
+          ? buildKhlMatchProtocolView(
+            revision.normalizedJson as unknown as NormalizedKhlMatch
+          )
+          : null,
+      };
+    }),
+  });
 }
 
 function optionalPositiveInteger(value: string | null) {

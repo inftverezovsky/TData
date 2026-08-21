@@ -9,6 +9,7 @@ import { POST as postStageDelivery } from "../frontend/src/app/api/results/khl/d
 import { GET as getSchedule } from "../frontend/src/app/api/results/khl/schedule/route";
 import { GET as getStages } from "../frontend/src/app/api/results/khl/stages/route";
 import { POST as postIngest } from "../frontend/src/app/api/results/khl/ingest/route";
+import { GET as getMatches } from "../frontend/src/app/api/results/khl/matches/route";
 
 const routesRoot = join(process.cwd(), "frontend", "src", "app", "api", "results", "khl");
 
@@ -35,6 +36,11 @@ test("KHL API handlers reject unauthenticated requests before validation or netw
     new Request("http://localhost/api/results/khl/schedule?stageId=395")
   );
   assert.equal(schedule.status, 401);
+
+  const matches = await getMatches(
+    new Request("http://localhost/api/results/khl/matches")
+  );
+  assert.equal(matches.status, 401);
 
   const diff = await getDiff(
     new Request("http://localhost/api/results/khl/diff?khlGameId=not-valid")

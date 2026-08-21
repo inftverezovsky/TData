@@ -118,6 +118,17 @@ async function main() {
   assert.equal(repeatedIngestBody.idempotency.reusedRevision, true);
   assert.equal(repeatedIngestBody.idempotency.activated, false);
 
+  const protocol = matchArticle(page).getByTestId("khl-protocol");
+  await visible(protocol).toBeVisible();
+  await visible(protocol.getByText("Официальный протокол КХЛ · доступен без Admin mappings")).toBeVisible();
+  await visible(protocol.getByText("Броски в створ")).toBeVisible();
+  await visible(protocol.getByText("Все заявленные игроки · 43")).toBeVisible();
+  await visible(protocol.getByTestId("khl-protocol-player")).toHaveCount(43);
+  assert.equal(
+    await matchArticle(page).getByPlaceholder("Admin team ID").first().inputValue(),
+    ""
+  );
+
   const previewBlockedPromise = waitForApiResponse(page, "/api/results/khl/preview", "GET");
   await matchArticle(page).getByRole("button", { name: "Сформировать preview" }).click();
   const blockedResponse = await previewBlockedPromise;
@@ -143,11 +154,11 @@ async function main() {
   await matchArticle(page).getByRole("button", { name: "Подтвердить матч" }).click();
   assert.equal((await matchBindingPromise).status(), 200);
 
-  await matchArticle(page).locator("details").locator("summary").click();
+  await targetMappingsDetails(page).locator("summary").click();
   const templateResponsePromise = waitForApiResponse(page, "/api/results/khl/bindings/targets", "GET");
   await matchArticle(page).getByRole("button", { name: "Загрузить шаблон" }).click();
   assert.equal((await templateResponsePromise).status(), 200);
-  const targetTextarea = matchArticle(page).locator("details textarea");
+  const targetTextarea = targetMappingsDetails(page).locator("textarea");
   await visible(targetTextarea).toBeVisible();
   const targetTemplate = JSON.parse(await targetTextarea.inputValue()) as TargetTemplate;
   fillTargetTemplate(targetTemplate);
@@ -176,12 +187,12 @@ async function main() {
   await page.reload();
   await visible(page.getByRole("heading", { name: "КХЛ", exact: true })).toBeVisible();
   await visible(matchArticle(page)).toBeVisible();
-  await matchArticle(page).locator("details").locator("summary").click();
+  await targetMappingsDetails(page).locator("summary").click();
   const prefillResponsePromise = waitForApiResponse(page, "/api/results/khl/bindings/targets", "GET");
   await matchArticle(page).getByRole("button", { name: "Загрузить шаблон" }).click();
   assert.equal((await prefillResponsePromise).status(), 200);
   assert.deepEqual(
-    JSON.parse(await matchArticle(page).locator("details textarea").inputValue()),
+    JSON.parse(await targetMappingsDetails(page).locator("textarea").inputValue()),
     targetTemplate
   );
 
@@ -280,6 +291,12 @@ main().catch((error: unknown) => {
 
 function matchArticle(page: Page) {
   return page.locator("article").filter({ hasText: `KHL game ${KHL_GAME_ID}` }).first();
+}
+
+function targetMappingsDetails(page: Page) {
+  return matchArticle(page).locator("details").filter({
+    has: page.getByText("Player/stat target mappings (JSON)", { exact: true }),
+  });
 }
 
 async function confirmTeam(page: Page, index: number, adminTeamId: string) {

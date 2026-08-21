@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import type { KhlMatchProtocolView } from "@backend/results/khl/matchProtocol";
+import { KhlMatchProtocol } from "@/components/results/khl/KhlMatchProtocol";
+
 type Stage = {
   stageId: string;
   khlStageId: string;
@@ -53,6 +56,7 @@ type StoredMatch = {
     normalizedHash: string;
     validationIssues: unknown;
   } | null;
+  protocol: KhlMatchProtocolView | null;
   _count: { revisions: number; participants: number };
 };
 
@@ -354,8 +358,8 @@ export function KhlResultsClient() {
             <p className="text-xs font-bold uppercase tracking-[0.2em] text-blue-600">Результаты</p>
             <h1 className="mt-2 text-3xl font-black text-slate-950">КХЛ</h1>
             <p className="mt-2 max-w-3xl text-sm text-slate-600">
-              First-party KHL API → raw snapshot → проверенная ревизия → подтверждённые Admin ID.
-              Отправка блокируется до полной и однозначной привязки.
+              First-party KHL API → raw snapshot → проверенная статистика матча → подтверждённые Admin ID.
+              Официальный протокол доступен сразу после ingest; привязки нужны только для подготовки доставки.
             </p>
           </div>
           <span className="rounded-full bg-amber-50 px-4 py-2 text-xs font-bold text-amber-800 ring-1 ring-amber-200">
@@ -412,8 +416,8 @@ export function KhlResultsClient() {
       <section className="space-y-4">
         <div className="flex items-end justify-between gap-4">
           <div>
-            <h2 className="text-lg font-black text-slate-950">Сохранённые матчи и mappings</h2>
-            <p className="text-sm text-slate-500">Названия показываются оператору, но не используются как ключ сопоставления.</p>
+            <h2 className="text-lg font-black text-slate-950">Сохранённые матчи</h2>
+            <p className="text-sm text-slate-500">Сначала проверьте официальный протокол, затем при необходимости настройте Admin mappings.</p>
           </div>
           <button onClick={() => loadStoredMatches().catch((cause) => setError(messageOf(cause)))} className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700">Обновить</button>
         </div>
@@ -433,6 +437,14 @@ export function KhlResultsClient() {
                   <div className="text-xl font-black">{match.officialHomeScore ?? "—"}:{match.officialAwayScore ?? "—"}</div>
                   <div className="text-xs text-slate-500">Admin total (P1–P3): {match.regulationHomeScore ?? "—"}:{match.regulationAwayScore ?? "—"}</div>
                 </div>
+              </div>
+
+              <KhlMatchProtocol protocol={match.protocol} />
+
+              <div className="mt-6 border-t border-slate-200 pt-5">
+                <div className="text-xs font-black uppercase tracking-[0.14em] text-violet-700">2. Привязки к Admin</div>
+                <div className="mt-1 text-sm font-black text-slate-950">Команды, матч, игроки и целевые записи</div>
+                <p className="mt-1 text-xs text-slate-500">Этот этап не влияет на просмотр протокола и нужен только для fail-closed staging.</p>
               </div>
 
               <div className="mt-4 grid gap-3 lg:grid-cols-2">
