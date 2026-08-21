@@ -4,7 +4,7 @@ import { useEffect, useId, useState } from "react";
 
 import type { KhlMatchProtocolView } from "@backend/results/khl/matchProtocol";
 
-const TEAM_STATS = [
+export const KHL_TEAM_STATS = [
   ["shots_on_goal", "Броски в створ"],
   ["faceoffs_won", "Выигранные вбрасывания"],
   ["power_play_goals", "Голы в большинстве"],
@@ -16,7 +16,7 @@ const PLAYER_STATS = [
   ["points", "Очки"],
 ] as const;
 
-type TeamStatCode = typeof TEAM_STATS[number][0];
+type TeamStatCode = typeof KHL_TEAM_STATS[number][0];
 type PlayerStatCode = typeof PLAYER_STATS[number][0];
 type Side = "home" | "away";
 
@@ -60,6 +60,7 @@ export function KhlTargetBindingsForm({
   onChange,
   onConfirmPlayer,
   showStatTypes = true,
+  showTeamTargets = true,
 }: {
   template: KhlTargetBindingsTemplate;
   labels: KhlTargetBindingLabels;
@@ -68,6 +69,7 @@ export function KhlTargetBindingsForm({
   onChange: (template: KhlTargetBindingsTemplate) => void;
   onConfirmPlayer: (player: KhlTargetBindingsTemplate["players"][number]) => void;
   showStatTypes?: boolean;
+  showTeamTargets?: boolean;
 }) {
   const update = (mutate: (next: KhlTargetBindingsTemplate) => void) => {
     const next = structuredClone(template);
@@ -88,7 +90,7 @@ export function KhlTargetBindingsForm({
         <div className="mt-3 grid gap-3 lg:grid-cols-2">
           <StatTypeGroup
             title="Командные типы"
-            rows={TEAM_STATS.map(([code, label]) => ({
+            rows={KHL_TEAM_STATS.map(([code, label]) => ({
               code,
               label,
               value: template.teamStatTypes[code],
@@ -107,7 +109,7 @@ export function KhlTargetBindingsForm({
         </div>
       </section>}
 
-      <section>
+      {showTeamTargets && <section>
         <h4 className="text-sm font-black text-slate-950">Статистика команд — отдельные привязки</h4>
         <p className="mt-1 text-xs text-slate-500">
           Для хозяев и гостей сохраняются разные Admin target record ID, даже когда semantic type одинаковый.
@@ -120,7 +122,7 @@ export function KhlTargetBindingsForm({
               </div>
               <div className="mt-1 font-black text-slate-950">{labels[`${side}Team`]}</div>
               <div className="mt-3 space-y-3">
-                {TEAM_STATS.map(([code, label]) => {
+                {KHL_TEAM_STATS.map(([code, label]) => {
                   const metric = protocol?.teams[side].metrics.find((item) => item.code === code);
                   return (
                     <label key={code} className="block">
@@ -143,7 +145,7 @@ export function KhlTargetBindingsForm({
             </div>
           ))}
         </div>
-      </section>
+      </section>}
 
       <section>
         <h4 className="text-sm font-black text-slate-950">Игроки — Admin ID, ФИО и статистика</h4>

@@ -27,6 +27,15 @@ export async function getKhlSettingsDirectory(prisma: PrismaClient) {
         adminBindingStatus: true,
         adminConfirmedAt: true,
         adminConfirmedBy: true,
+        teamStatBindings: {
+          select: {
+            adminTeamStatId: true,
+            adminBindingStatus: true,
+            adminConfirmedAt: true,
+            adminConfirmedBy: true,
+            statMapping: { select: { semanticCode: true } },
+          },
+        },
         _count: {
           select: {
             homeMatches: { where: { startsAt: { gte: KHL_SETTINGS_CUTOFF } } },
@@ -116,10 +125,22 @@ export async function getKhlSettingsDirectory(prisma: PrismaClient) {
 
   return {
     cutoff: KHL_SETTINGS_CUTOFF.toISOString(),
-    teams: teams.map(({ _count, ...team }) => ({
+    teams: teams.map(({ _count, teamStatBindings, ...team }) => ({
       ...team,
       adminConfirmedAt: isoDate(team.adminConfirmedAt),
       matchCount: _count.homeMatches + _count.awayMatches,
+      statBindings: KHL_TEAM_STAT_CODES.map((semanticCode) => {
+        const stored = teamStatBindings.find(
+          (binding) => binding.statMapping.semanticCode === semanticCode
+        );
+        return {
+          semanticCode,
+          adminTeamStatId: stored?.adminTeamStatId ?? null,
+          adminBindingStatus: stored?.adminBindingStatus ?? KhlBindingStatus.UNMAPPED,
+          adminConfirmedAt: isoDate(stored?.adminConfirmedAt ?? null),
+          adminConfirmedBy: stored?.adminConfirmedBy ?? null,
+        };
+      }),
     })),
     players: players.map(({ _count, participants, ...player }) => {
       const participant = participants[0];

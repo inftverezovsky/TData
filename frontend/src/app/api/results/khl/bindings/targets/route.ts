@@ -25,8 +25,8 @@ export async function GET(request: Request) {
   const match = await prisma.khlMatch.findUnique({
     where: { khlGameId },
     include: {
-      homeTeam: true,
-      awayTeam: true,
+      homeTeam: { include: { teamStatBindings: { include: { statMapping: true } } } },
+      awayTeam: { include: { teamStatBindings: { include: { statMapping: true } } } },
       participants: {
         where: { isListed: true },
         include: {
@@ -35,7 +35,6 @@ export async function GET(request: Request) {
         },
         orderBy: [{ teamId: "asc" }, { shirtNumber: "asc" }],
       },
-      teamStatTargets: { include: { statMapping: true } },
     },
   });
   if (!match) return NextResponse.json({ error: "KHL match was not ingested." }, { status: 404 });
@@ -47,15 +46,13 @@ export async function GET(request: Request) {
     ));
     return confirmedValue(mapping?.adminBindingStatus, mapping?.adminStatTypeId);
   };
-  const teamStats = (teamId: string) => Object.fromEntries(
+  const teamStats = (bindings: typeof match.homeTeam.teamStatBindings) => Object.fromEntries(
     KHL_TEAM_STAT_CODES.map((code) => {
-      const target = match.teamStatTargets.find((candidate) => (
-        candidate.teamId === teamId && candidate.statMapping.semanticCode === code
-      ));
+      const target = bindings.find((candidate) => candidate.statMapping.semanticCode === code);
       return [code, {
         adminMatchStatId: confirmedValue(
           target?.adminBindingStatus,
-          target?.adminMatchStatId
+          target?.adminTeamStatId
         ),
       }];
     })
@@ -90,8 +87,8 @@ export async function GET(request: Request) {
         playerCodes.map((code) => [code, statTypeId(KhlStatScope.PLAYER, code)])
       ),
       teams: {
-        home: { stats: teamStats(match.homeTeamId) },
-        away: { stats: teamStats(match.awayTeamId) },
+        home: { stats: teamStats(match.homeTeam.teamStatBindings) },
+        away: { stats: teamStats(match.awayTeam.teamStatBindings) },
       },
       players: match.participants.map((participant) => ({
         khlPlayerId: participant.player.khlPlayerId,

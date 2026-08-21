@@ -2,10 +2,22 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  areKhlTargetBindingPrerequisitesReady,
   filterKhlSettingsTeamPlayerGroups,
   groupKhlSettingsPlayersByTeam,
 } from "../frontend/src/components/results/khl/khlSettingsViewModel";
-import type { SettingsPlayer, SettingsTeam } from "../frontend/src/components/results/khl/types";
+import type {
+  SettingsDirectory,
+  SettingsPlayer,
+  SettingsTeam,
+} from "../frontend/src/components/results/khl/types";
+
+const teamStatCodes = [
+  "shots_on_goal",
+  "faceoffs_won",
+  "power_play_goals",
+  "penalty_minutes_2_4",
+] as const;
 
 test("settings players are grouped by their latest KHL team with stable counts", () => {
   const players = [
@@ -113,6 +125,57 @@ test("settings search and status filters narrow players inside their team group"
   assert.equal(unmapped[0]?.confirmedCount, 0);
 });
 
+test("an incomplete team-stat group remains unmapped and cannot appear confirmed", () => {
+  const teams = [team("team-avangard", "Авангард", "CONFIRMED", "UNMAPPED")];
+  const players = [
+    player("1", "Первый Игрок", "team-avangard", "Авангард", "CONFIRMED"),
+  ];
+  const groups = groupKhlSettingsPlayersByTeam(players, teams);
+
+  assert.equal(filterKhlSettingsTeamPlayerGroups(groups, "", "UNMAPPED").length, 1);
+  assert.equal(filterKhlSettingsTeamPlayerGroups(groups, "", "CONFIRMED").length, 0);
+});
+
+test("player target editor requires every global type and both teams' persistent stat IDs", () => {
+  const home = team("team-home", "Авангард", "CONFIRMED");
+  const away = team("team-away", "Локомотив", "CONFIRMED");
+  const match = {
+    adminBindingStatus: "CONFIRMED",
+    homeTeam: { khlTeamId: home.khlTeamId, adminBindingStatus: "CONFIRMED" },
+    awayTeam: { khlTeamId: away.khlTeamId, adminBindingStatus: "CONFIRMED" },
+  };
+  const directory: SettingsDirectory = {
+    teams: [home, away],
+    players: [],
+    statMappings: [
+      ...teamStatCodes.map((semanticCode) => ({
+        scope: "TEAM" as const,
+        semanticCode,
+        adminStatTypeId: `type-${semanticCode}`,
+        adminBindingStatus: "CONFIRMED",
+      })),
+      ...["goals", "assists", "points"].map((semanticCode) => ({
+        scope: "PLAYER" as const,
+        semanticCode,
+        adminStatTypeId: `type-${semanticCode}`,
+        adminBindingStatus: "CONFIRMED",
+      })),
+    ],
+  };
+
+  assert.equal(areKhlTargetBindingPrerequisitesReady(match, directory), true);
+  assert.equal(areKhlTargetBindingPrerequisitesReady(match, {
+    ...directory,
+    teams: [team("team-home", "Авангард", "CONFIRMED", "UNMAPPED"), away],
+  }), false);
+  assert.equal(areKhlTargetBindingPrerequisitesReady(match, {
+    ...directory,
+    statMappings: directory.statMappings.map((mapping, index) => (
+      index === 0 ? { ...mapping, adminBindingStatus: "UNMAPPED" } : mapping
+    )),
+  }), false);
+});
+
 function player(
   khlPlayerId: string,
   name: string,
@@ -140,7 +203,8 @@ function player(
 function team(
   khlTeamId: string,
   name: string,
-  adminBindingStatus: string
+  adminBindingStatus: string,
+  teamStatStatus = adminBindingStatus
 ): SettingsTeam {
   return {
     khlTeamId,
@@ -149,5 +213,12 @@ function team(
     adminTeamId: adminBindingStatus === "CONFIRMED" ? `admin-${khlTeamId}` : null,
     adminBindingStatus,
     matchCount: 1,
+    statBindings: teamStatCodes.map((semanticCode) => ({
+      semanticCode,
+      adminTeamStatId: teamStatStatus === "CONFIRMED" ? `target-${khlTeamId}-${semanticCode}` : null,
+      adminBindingStatus: teamStatStatus,
+      adminConfirmedAt: teamStatStatus === "CONFIRMED" ? "2026-05-21T16:30:00.000Z" : null,
+      adminConfirmedBy: teamStatStatus === "CONFIRMED" ? "test" : null,
+    })),
   };
 }

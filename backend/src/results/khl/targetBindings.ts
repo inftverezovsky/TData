@@ -40,12 +40,21 @@ export type ConfirmKhlStatTypesInput = {
   confirmedBy: string;
 };
 
+export type ConfirmKhlTeamStatBindingsInput = {
+  khlTeamId: string;
+  teamStats: Record<KhlTeamStatCode, string>;
+  confirmedBy: string;
+};
+
 export class KhlTargetBindingError extends Error {
   constructor(
     public readonly code:
       | "INVALID_TARGET_BINDINGS"
       | "MATCH_NOT_FOUND"
       | "MATCH_NOT_BOUND"
+      | "TEAM_NOT_FOUND"
+      | "TEAM_NOT_BOUND"
+      | "STAT_TYPES_NOT_BOUND"
       | "PLAYER_SET_MISMATCH"
       | "CONFIRMED_BINDING_IMMUTABLE"
       | "ADMIN_ID_COLLISION",
@@ -137,45 +146,15 @@ export async function confirmKhlResultTargets(
         for (const code of KHL_TEAM_STAT_CODES) {
           const adminMatchStatId = validated.teams[side].stats[code].adminMatchStatId;
           const statMappingId = statMappingIds.get(`TEAM:${code}`)!;
-          const current = await tx.khlTeamStatTarget.findUnique({
-            where: {
-              matchId_teamId_statMappingId: {
-                matchId: match.id,
-                teamId: team.id,
-                statMappingId,
-              },
-            },
-          });
-          assertImmutable(
-            current?.adminBindingStatus,
-            current?.adminMatchStatId,
+          await upsertImmutableTeamStatBinding(
+            tx,
+            team.id,
+            statMappingId,
             adminMatchStatId,
-            `${side} ${code} Admin match-stat record`
+            validated.confirmedBy,
+            now,
+            `${side} ${code} Admin team-stat record`
           );
-          await tx.khlTeamStatTarget.upsert({
-            where: {
-              matchId_teamId_statMappingId: {
-                matchId: match.id,
-                teamId: team.id,
-                statMappingId,
-              },
-            },
-            create: {
-              matchId: match.id,
-              teamId: team.id,
-              statMappingId,
-              adminMatchStatId,
-              adminBindingStatus: KhlBindingStatus.CONFIRMED,
-              adminConfirmedAt: now,
-              adminConfirmedBy: validated.confirmedBy,
-            },
-            update: {
-              adminMatchStatId,
-              adminBindingStatus: KhlBindingStatus.CONFIRMED,
-              adminConfirmedAt: now,
-              adminConfirmedBy: validated.confirmedBy,
-            },
-          });
         }
       }
 
@@ -276,6 +255,76 @@ export async function confirmKhlResultTargets(
   }
 }
 
+export async function confirmKhlTeamStatBindings(
+  prisma: PrismaClient,
+  input: ConfirmKhlTeamStatBindingsInput
+) {
+  const validated = validateTeamStatBindingsInput(input);
+  for (let attempt = 1; attempt <= STAT_BINDING_TRANSACTION_ATTEMPTS; attempt += 1) {
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const team = await tx.khlTeam.findUnique({ where: { khlTeamId: validated.khlTeamId } });
+        if (!team) {
+          throw new KhlTargetBindingError("TEAM_NOT_FOUND", "KHL team was not ingested.");
+        }
+        if (team.adminBindingStatus !== KhlBindingStatus.CONFIRMED || !team.adminTeamId) {
+          throw new KhlTargetBindingError(
+            "TEAM_NOT_BOUND",
+            "Admin team mapping must be confirmed first."
+          );
+        }
+
+        const mappings = await tx.khlStatMapping.findMany({
+          where: {
+            scope: KhlStatScope.TEAM,
+            semanticCode: { in: [...KHL_TEAM_STAT_CODES] },
+          },
+        });
+        const mappingByCode = new Map(mappings.map((mapping) => [mapping.semanticCode, mapping]));
+        if (KHL_TEAM_STAT_CODES.some((code) => {
+          const mapping = mappingByCode.get(code);
+          return mapping?.adminBindingStatus !== KhlBindingStatus.CONFIRMED
+            || !mapping.adminStatTypeId;
+        })) {
+          throw new KhlTargetBindingError(
+            "STAT_TYPES_NOT_BOUND",
+            "All Admin team statistic type IDs must be confirmed first."
+          );
+        }
+
+        const now = new Date();
+        const bindings = [];
+        for (const code of KHL_TEAM_STAT_CODES) {
+          bindings.push(await upsertImmutableTeamStatBinding(
+            tx,
+            team.id,
+            mappingByCode.get(code)!.id,
+            validated.teamStats[code],
+            validated.confirmedBy,
+            now,
+            `${team.name} ${code} Admin team-stat record`
+          ));
+        }
+        return { khlTeamId: team.khlTeamId, bindings };
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (error) {
+      if (error instanceof KhlTargetBindingError) throw error;
+      const code = String((error as { code?: string })?.code || "");
+      if ((code === "P2002" || code === "P2034") && attempt < STAT_BINDING_TRANSACTION_ATTEMPTS) {
+        continue;
+      }
+      if (code === "P2002") {
+        throw new KhlTargetBindingError(
+          "ADMIN_ID_COLLISION",
+          "One of the Admin team statistic target IDs is already bound to another team."
+        );
+      }
+      throw error;
+    }
+  }
+  throw new Error("Unreachable team statistic binding retry state.");
+}
+
 export async function confirmKhlStatTypes(
   prisma: PrismaClient,
   input: ConfirmKhlStatTypesInput
@@ -368,6 +417,49 @@ async function upsertImmutableStatMapping(
   });
 }
 
+async function upsertImmutableTeamStatBinding(
+  tx: Prisma.TransactionClient,
+  teamId: string,
+  statMappingId: string,
+  adminTeamStatId: string,
+  confirmedBy: string,
+  now: Date,
+  label: string
+) {
+  const current = await tx.khlTeamStatBinding.findUnique({
+    where: { teamId_statMappingId: { teamId, statMappingId } },
+  });
+  assertImmutable(
+    current?.adminBindingStatus,
+    current?.adminTeamStatId,
+    adminTeamStatId,
+    label
+  );
+  if (
+    current?.adminBindingStatus === KhlBindingStatus.CONFIRMED
+    && current.adminTeamStatId === adminTeamStatId
+  ) {
+    return current;
+  }
+  return tx.khlTeamStatBinding.upsert({
+    where: { teamId_statMappingId: { teamId, statMappingId } },
+    create: {
+      teamId,
+      statMappingId,
+      adminTeamStatId,
+      adminBindingStatus: KhlBindingStatus.CONFIRMED,
+      adminConfirmedAt: now,
+      adminConfirmedBy: confirmedBy,
+    },
+    update: {
+      adminTeamStatId,
+      adminBindingStatus: KhlBindingStatus.CONFIRMED,
+      adminConfirmedAt: now,
+      adminConfirmedBy: confirmedBy,
+    },
+  });
+}
+
 function assertImmutable(
   status: KhlBindingStatus | undefined,
   current: string | null | undefined,
@@ -438,6 +530,19 @@ function validateStatTypesInput(input: unknown): ConfirmKhlStatTypesInput {
       code,
       identifier(player[code], `player ${code} stat type id`),
     ])) as Record<KhlPlayerStatCode, string>,
+    confirmedBy: identifier(root.confirmedBy, "confirmation actor"),
+  };
+}
+
+function validateTeamStatBindingsInput(input: unknown): ConfirmKhlTeamStatBindingsInput {
+  const root = exactObject(input, ["khlTeamId", "teamStats", "confirmedBy"], "request");
+  const teamStats = exactObject(root.teamStats, KHL_TEAM_STAT_CODES, "teamStats");
+  return {
+    khlTeamId: externalId(root.khlTeamId, "KHL team id"),
+    teamStats: Object.fromEntries(KHL_TEAM_STAT_CODES.map((code) => [
+      code,
+      identifier(teamStats[code], `team ${code} target id`),
+    ])) as Record<KhlTeamStatCode, string>,
     confirmedBy: identifier(root.confirmedBy, "confirmation actor"),
   };
 }

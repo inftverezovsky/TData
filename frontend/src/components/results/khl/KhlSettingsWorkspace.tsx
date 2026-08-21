@@ -5,11 +5,13 @@ import { useEffect, useMemo, useState } from "react";
 import {
   KhlAdminDirectoryPicker,
   KhlTargetBindingsForm,
+  KHL_TEAM_STATS,
   type KhlTargetBindingLabels,
   type KhlTargetBindingsTemplate,
 } from "@/components/results/khl/KhlTargetBindingsForm";
 import { KhlTabs } from "@/components/results/khl/KhlTabs";
 import {
+  areKhlTargetBindingPrerequisitesReady,
   filterKhlSettingsTeamPlayerGroups,
   groupKhlSettingsPlayersByTeam,
 } from "@/components/results/khl/khlSettingsViewModel";
@@ -56,6 +58,7 @@ type Props = {
   onMatchCandidateChange: (khlGameId: string, value: string) => void;
   onTargetJsonChange: (khlGameId: string, value: string) => void;
   onSaveTeam: (team: SettingsTeam) => void;
+  onSaveTeamStats: (team: SettingsTeam) => void;
   onSavePlayer: (player: SettingsPlayer) => void;
   onSaveMatch: (match: StoredMatch) => void;
   onSaveStatTypes: (values: StatTypeValues) => void;
@@ -93,20 +96,21 @@ export function KhlSettingsWorkspace(props: Props) {
       />
       {tab === "teams-players" && <TeamsPlayersSettings {...props} />}
       {tab === "matches" && <MatchesSettings {...props} />}
-      {tab === "statistics" && <StatisticsSettings {...props} />}
       {tab === "extras" && <ExtrasSettings />}
     </section>
   );
 }
 
-function TeamsPlayersSettings({
-  directory,
-  busyKey,
-  bindingValues,
-  onBindingValueChange,
-  onSaveTeam,
-  onSavePlayer,
-}: Props) {
+function TeamsPlayersSettings(props: Props) {
+  const {
+    directory,
+    busyKey,
+    bindingValues,
+    onBindingValueChange,
+    onSaveTeam,
+    onSaveTeamStats,
+    onSavePlayer,
+  } = props;
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("ALL");
   const groups = useMemo(() => filterKhlSettingsTeamPlayerGroups(
@@ -115,12 +119,20 @@ function TeamsPlayersSettings({
     status
   ), [directory?.players, directory?.teams, query, status]);
 
+  const teamStatTypesReady = KHL_TEAM_STATS.every(([code]) => directory?.statMappings.some(
+    (mapping) => mapping.scope === "TEAM"
+      && mapping.semanticCode === code
+      && mapping.adminBindingStatus === "CONFIRMED"
+  ));
+
   return (
-    <SettingsPanel
-      title="Команды и игроки"
-      description="Сначала подтвердите Admin team ID. После этого раскроется список игроков команды; подтверждённые team/player ID сохраняются в базе и подставляются в следующих матчах."
-    >
-      <DirectoryFilters
+    <div className="space-y-5">
+      <StatTypeSettings {...props} />
+      <SettingsPanel
+        title="Команды и игроки"
+        description="Сначала подтвердите Admin team ID. Затем отдельно сохраните постоянные статистические ID команды и раскройте список игроков. Все подтверждённые ID переиспользуются в следующих матчах."
+      >
+        <DirectoryFilters
         query={query}
         onQueryChange={setQuery}
         status={status}
@@ -185,6 +197,17 @@ function TeamsPlayersSettings({
                   </>
                 )}
               </div>
+              {team && (
+                <TeamStatBindingSection
+                  team={team}
+                  teamConfirmed={teamConfirmed}
+                  statTypesReady={teamStatTypesReady}
+                  busyKey={busyKey}
+                  bindingValues={bindingValues}
+                  onBindingValueChange={onBindingValueChange}
+                  onSaveTeamStats={onSaveTeamStats}
+                />
+              )}
               {group.playersUnlocked ? (
                 <details data-testid="khl-team-players-disclosure" className="group border-t border-slate-200">
                   <summary
@@ -228,7 +251,97 @@ function TeamsPlayersSettings({
         })}
       </div>
       {groups.length === 0 && <EmptyState text="Команды и игроки по выбранному фильтру не найдены." />}
-    </SettingsPanel>
+      </SettingsPanel>
+      <PlayerTargetSettings {...props} />
+    </div>
+  );
+}
+
+function TeamStatBindingSection({
+  team,
+  teamConfirmed,
+  statTypesReady,
+  busyKey,
+  bindingValues,
+  onBindingValueChange,
+  onSaveTeamStats,
+}: {
+  team: SettingsTeam;
+  teamConfirmed: boolean;
+  statTypesReady: boolean;
+  busyKey: string | null;
+  bindingValues: Record<string, string>;
+  onBindingValueChange: (key: string, value: string) => void;
+  onSaveTeamStats: (team: SettingsTeam) => void;
+}) {
+  const key = `team-stats:${team.khlTeamId}`;
+  const bindings = new Map(team.statBindings.map((binding) => [binding.semanticCode, binding]));
+  const confirmedCount = KHL_TEAM_STATS.filter(([code]) => (
+    bindings.get(code)?.adminBindingStatus === "CONFIRMED"
+  )).length;
+  const complete = KHL_TEAM_STATS.every(([code]) => (
+    Boolean((bindingValues[`${key}:${code}`] ?? bindings.get(code)?.adminTeamStatId ?? "").trim())
+  ));
+
+  if (!teamConfirmed) {
+    return (
+      <div data-testid="khl-team-statistics-locked" className="border-t border-amber-200 bg-amber-50 px-4 py-3 text-xs font-bold text-amber-900">
+        Статистика команды откроется после подтверждения Admin team ID.
+      </div>
+    );
+  }
+
+  return (
+    <details data-testid="khl-team-statistics-disclosure" className="group border-t border-indigo-100">
+      <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 bg-indigo-50/60 px-4 py-3 text-xs font-black text-slate-800 hover:bg-indigo-50 [&::-webkit-details-marker]:hidden">
+        <span>Статистические ID команды</span>
+        <span className="flex items-center gap-2">
+          <span className="rounded-full bg-indigo-100 px-3 py-1 text-indigo-800">
+            Привязано: {confirmedCount} из {KHL_TEAM_STATS.length}
+          </span>
+          <span className="min-w-16 text-right text-blue-700">
+            <span className="group-open:hidden">Открыть</span>
+            <span className="hidden group-open:inline">Свернуть</span>
+          </span>
+        </span>
+      </summary>
+      <div className="border-t border-indigo-100 bg-white p-4">
+        {!statTypesReady && (
+          <p className="mb-3 rounded-xl bg-amber-50 p-3 text-xs font-bold text-amber-800">
+            Сначала подтвердите общие типы статистики Admin в верхнем блоке.
+          </p>
+        )}
+        <div className="grid gap-3 md:grid-cols-2">
+          {KHL_TEAM_STATS.map(([code, label]) => {
+            const stored = bindings.get(code);
+            const confirmed = stored?.adminBindingStatus === "CONFIRMED";
+            return (
+              <label key={code} className="text-xs font-bold text-slate-700">
+                {label}
+                {confirmed && <span className="ml-2 text-emerald-700">· сохранён постоянно</span>}
+                <input
+                  value={bindingValues[`${key}:${code}`] ?? stored?.adminTeamStatId ?? ""}
+                  disabled={confirmed}
+                  onChange={(event) => onBindingValueChange(`${key}:${code}`, event.target.value)}
+                  placeholder={`Admin ID · ${label}`}
+                  className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs disabled:bg-emerald-50"
+                />
+              </label>
+            );
+          })}
+        </div>
+        <button
+          type="button"
+          onClick={() => onSaveTeamStats(team)}
+          disabled={!statTypesReady || !complete || confirmedCount === KHL_TEAM_STATS.length || busyKey === key}
+          className="mt-4 rounded-xl bg-indigo-700 px-5 py-2.5 text-xs font-black text-white disabled:opacity-40"
+        >
+          {confirmedCount === KHL_TEAM_STATS.length
+            ? "Статистика сохранена"
+            : busyKey === key ? "Сохранение…" : "Подтвердить статистику команды"}
+        </button>
+      </div>
+    </details>
   );
 }
 
@@ -385,7 +498,7 @@ function MatchBindingCard({
             className="mt-1 h-28 w-full rounded-xl border border-slate-200 bg-slate-950 p-3 font-mono text-xs text-slate-100"
           />
         </label>
-        {!teamsMapped && <p className="mt-2 text-xs font-bold text-amber-700">Сначала подтвердите обе команды во вкладке «Команды».</p>}
+        {!teamsMapped && <p className="mt-2 text-xs font-bold text-amber-700">Сначала подтвердите обе команды во вкладке «Команды и игроки».</p>}
         <DeliveryControls
           match={match}
           busyKey={busyKey}
@@ -400,7 +513,7 @@ function MatchBindingCard({
   );
 }
 
-function StatisticsSettings(props: Props) {
+function PlayerTargetSettings(props: Props) {
   const [selectedId, setSelectedId] = useState("");
   const selected = props.matches.find((match) => match.khlGameId === selectedId)
     || props.matches[0]
@@ -411,10 +524,9 @@ function StatisticsSettings(props: Props) {
 
   return (
     <div className="space-y-5">
-      <StatTypeSettings {...props} />
       <SettingsPanel
-        title="Целевые записи статистики по матчу и команде"
-        description="У хозяев и гостей разные Admin target record ID. Игровые target ID также сохраняются для конкретного участника матча."
+        title="Статистика игроков по матчу"
+        description="Здесь сохраняются Admin match-player ID и target ID статистики каждого участника конкретного матча. Постоянные командные ID находятся выше, внутри карточек команд."
       >
         <select
           value={selected?.khlGameId || ""}
@@ -506,6 +618,7 @@ function StatTypeSettings({ directory, busyKey, onSaveStatTypes }: Props) {
 
 function TargetBindingEditor({
   match,
+  directory,
   busyKey,
   targetJson,
   targetLabels,
@@ -516,9 +629,7 @@ function TargetBindingEditor({
 }: Props & { match: StoredMatch }) {
   const template = parseTargetTemplate(targetJson[match.khlGameId]);
   const labels = targetLabels[match.khlGameId];
-  const readyForTemplate = match.adminBindingStatus === "CONFIRMED"
-    && match.homeTeam.adminBindingStatus === "CONFIRMED"
-    && match.awayTeam.adminBindingStatus === "CONFIRMED";
+  const readyForTemplate = areKhlTargetBindingPrerequisitesReady(match, directory);
 
   return (
     <div className="mt-4">
@@ -534,7 +645,7 @@ function TargetBindingEditor({
         <button
           type="button"
           onClick={() => onSaveTargetBindings(match)}
-          disabled={!template || busyKey === `targets-save:${match.khlGameId}`}
+          disabled={!readyForTemplate || !template || busyKey === `targets-save:${match.khlGameId}`}
           className="rounded-xl bg-slate-950 px-4 py-2 text-xs font-black text-white disabled:opacity-40"
         >
           {busyKey === `targets-save:${match.khlGameId}` ? "Проверка…" : "Подтвердить target IDs"}
@@ -542,7 +653,7 @@ function TargetBindingEditor({
       </div>
       {!readyForTemplate && (
         <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs font-bold text-amber-800">
-          Сначала подтвердите команды и матч в соответствующих вкладках.
+          Сначала подтвердите матч, общие типы статистики и все четыре статистических ID обеих команд.
         </p>
       )}
       {template && labels && (
@@ -552,6 +663,7 @@ function TargetBindingEditor({
           protocol={match.protocol}
           busyKey={busyKey}
           showStatTypes={false}
+          showTeamTargets={false}
           onChange={(next) => onTargetJsonChange(match.khlGameId, JSON.stringify(next, null, 2))}
           onConfirmPlayer={(player) => onConfirmTargetPlayer(match, player)}
         />

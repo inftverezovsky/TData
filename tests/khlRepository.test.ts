@@ -43,6 +43,7 @@ async function clearKhlTables() {
     prisma.khlDelivery.deleteMany(),
     prisma.khlPlayerStatTarget.deleteMany(),
     prisma.khlTeamStatTarget.deleteMany(),
+    prisma.khlTeamStatBinding.deleteMany(),
     prisma.khlMatchParticipant.deleteMany(),
     prisma.khlMatchRevision.deleteMany(),
     prisma.khlRawSnapshot.deleteMany(),

@@ -8,6 +8,7 @@ import { GET as getAdminDirectorySuggestions } from "../frontend/src/app/api/res
 import { POST as postAutomation } from "../frontend/src/app/api/results/khl/automation/route";
 import { POST as postPlayerBinding } from "../frontend/src/app/api/results/khl/bindings/player/route";
 import { POST as postStatTypeBinding } from "../frontend/src/app/api/results/khl/bindings/stat-types/route";
+import { POST as postTeamStatBinding } from "../frontend/src/app/api/results/khl/bindings/team-stats/route";
 import { GET as getDiff } from "../frontend/src/app/api/results/khl/diff/route";
 import { POST as postStageDelivery } from "../frontend/src/app/api/results/khl/delivery/stage/route";
 import { GET as getSchedule } from "../frontend/src/app/api/results/khl/schedule/route";
@@ -82,6 +83,16 @@ test("KHL API handlers reject unauthenticated requests before validation or netw
   ));
   assert.equal(statTypeBinding.status, 401);
 
+  const teamStatBinding = await postTeamStatBinding(new Request(
+    "http://localhost/api/results/khl/bindings/team-stats",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "not-json",
+    }
+  ));
+  assert.equal(teamStatBinding.status, 401);
+
   const automation = await postAutomation(new Request(
     "http://localhost/api/results/khl/automation",
     {
@@ -154,6 +165,20 @@ test("authenticated KHL mutations require same-origin JSON requests", async () =
       }
     ));
     assert.equal(crossOriginStatTypes.status, 403);
+
+    const crossOriginTeamStats = await postTeamStatBinding(new Request(
+      "http://localhost/api/results/khl/bindings/team-stats",
+      {
+        method: "POST",
+        headers: {
+          cookie,
+          origin: "https://attacker.example",
+          "content-type": "application/json",
+        },
+        body: "{}",
+      }
+    ));
+    assert.equal(crossOriginTeamStats.status, 403);
 
     const oversizedStatTypes = await postStatTypeBinding(new Request(
       "http://localhost/api/results/khl/bindings/stat-types",

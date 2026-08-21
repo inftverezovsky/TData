@@ -112,6 +112,13 @@ export type SettingsTeam = {
   adminTeamId: string | null;
   adminBindingStatus: string;
   matchCount: number;
+  statBindings: Array<{
+    semanticCode: string;
+    adminTeamStatId: string | null;
+    adminBindingStatus: string;
+    adminConfirmedAt: string | null;
+    adminConfirmedBy: string | null;
+  }>;
 };
 
 export type SettingsPlayer = {

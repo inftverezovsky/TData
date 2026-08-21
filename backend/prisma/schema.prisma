@@ -460,6 +460,7 @@ model KhlTeam {
   awayMatches     KhlMatch[]            @relation("KhlAwayTeam")
   participants    KhlMatchParticipant[]
   teamStatTargets KhlTeamStatTarget[]
+  teamStatBindings KhlTeamStatBinding[]
 
   @@index([apiTeamId])
   @@index([adminBindingStatus])
@@ -611,6 +612,7 @@ model KhlStatMapping {
   updatedAt          DateTime         @updatedAt
 
   teamTargets   KhlTeamStatTarget[]
+  teamBindings  KhlTeamStatBinding[]
   playerTargets KhlPlayerStatTarget[]
 
   @@unique([scope, semanticCode])
@@ -635,6 +637,24 @@ model KhlTeamStatTarget {
   statMapping KhlStatMapping @relation(fields: [statMappingId], references: [id], onDelete: Restrict)
 
   @@unique([matchId, teamId, statMappingId])
+  @@index([adminBindingStatus])
+}
+
+model KhlTeamStatBinding {
+  id                 String           @id @default(cuid())
+  teamId             String
+  statMappingId      String
+  adminTeamStatId    String?          @unique
+  adminBindingStatus KhlBindingStatus @default(UNMAPPED)
+  adminConfirmedAt   DateTime?
+  adminConfirmedBy   String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  team        KhlTeam        @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  statMapping KhlStatMapping @relation(fields: [statMappingId], references: [id], onDelete: Restrict)
+
+  @@unique([teamId, statMappingId])
   @@index([adminBindingStatus])
 }
 

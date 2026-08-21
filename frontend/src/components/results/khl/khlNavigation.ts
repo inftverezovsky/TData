@@ -6,7 +6,6 @@ export const KHL_ROOT_TABS = [
 export const KHL_SETTINGS_TABS = [
   { id: "teams-players", label: "Команды и игроки" },
   { id: "matches", label: "Матчи" },
-  { id: "statistics", label: "Статистика" },
   { id: "extras", label: "Допы" },
 ] as const;
 

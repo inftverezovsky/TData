@@ -32,6 +32,7 @@ async function clearKhlTables() {
     prisma.khlDelivery.deleteMany(),
     prisma.khlPlayerStatTarget.deleteMany(),
     prisma.khlTeamStatTarget.deleteMany(),
+    prisma.khlTeamStatBinding.deleteMany(),
     prisma.khlMatchParticipant.deleteMany(),
     prisma.khlMatchRevision.deleteMany(),
     prisma.khlRawSnapshot.deleteMany(),
@@ -151,12 +152,11 @@ test("fully confirmed target records produce deterministic preview without sendi
   }
   for (const teamId of [match.homeTeamId, match.awayTeamId]) {
     for (const code of KHL_TEAM_STAT_CODES) {
-      await prisma.khlTeamStatTarget.create({
+      await prisma.khlTeamStatBinding.create({
         data: {
-          matchId: match.id,
           teamId,
           statMappingId: mappings.get(`TEAM:${code}`)!,
-          adminMatchStatId: `admin-match-stat-${teamId}-${code}`,
+          adminTeamStatId: `admin-match-stat-${teamId}-${code}`,
           adminBindingStatus: KhlBindingStatus.CONFIRMED,
           adminConfirmedAt: new Date(),
           adminConfirmedBy: "test-admin",

@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type {
-  KhlTargetBindingLabels,
-  KhlTargetBindingsTemplate,
+import {
+  KHL_TEAM_STATS,
+  type KhlTargetBindingLabels,
+  type KhlTargetBindingsTemplate,
 } from "@/components/results/khl/KhlTargetBindingsForm";
 import { KhlResultsWorkspace } from "@/components/results/khl/KhlResultsWorkspace";
 import { KhlSettingsWorkspace } from "@/components/results/khl/KhlSettingsWorkspace";
@@ -206,6 +207,23 @@ export function KhlResultsClient() {
         adminMatchPlayerId: null,
       }));
       setMessage(`Игрок ${player.name} привязан постоянно к Admin ID ${adminPlayerId}.`);
+      await refreshData();
+    });
+  };
+
+  const saveTeamStatBindings = async (team: SettingsTeam) => {
+    const key = `team-stats:${team.khlTeamId}`;
+    const teamStats = Object.fromEntries(KHL_TEAM_STATS.map(([code]) => {
+      const stored = team.statBindings.find((binding) => binding.semanticCode === code);
+      const value = bindingValues[`${key}:${code}`] ?? stored?.adminTeamStatId ?? "";
+      return [code, value.trim()];
+    }));
+    await runBusy(key, async () => {
+      await requestJson("/api/results/khl/bindings/team-stats", jsonPost({
+        khlTeamId: team.khlTeamId,
+        teamStats,
+      }));
+      setMessage(`Статистические ID команды ${team.name} сохранены постоянно.`);
       await refreshData();
     });
   };
@@ -446,6 +464,7 @@ export function KhlResultsClient() {
             [id]: value,
           }))}
           onSaveTeam={saveTeamBinding}
+          onSaveTeamStats={saveTeamStatBindings}
           onSavePlayer={saveDirectoryPlayer}
           onSaveMatch={saveMatchBinding}
           onSaveStatTypes={saveStatTypes}

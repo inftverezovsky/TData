@@ -44,15 +44,14 @@ export async function buildKhlAdminPreview(
   const match = await prisma.khlMatch.findUnique({
     where: { khlGameId },
     include: {
-      homeTeam: true,
-      awayTeam: true,
+      homeTeam: { include: { teamStatBindings: { include: { statMapping: true } } } },
+      awayTeam: { include: { teamStatBindings: { include: { statMapping: true } } } },
       activeRevision: { include: { snapshot: true } },
       revisions: {
         orderBy: { revisionNumber: "desc" },
         take: 1,
         select: { id: true, revisionNumber: true, state: true },
       },
-      teamStatTargets: { include: { statMapping: true } },
       participants: {
         where: { isListed: true },
         include: {
@@ -106,8 +105,8 @@ export async function buildKhlAdminPreview(
   const bindings: KhlAdminBindings = {
     adminMatchId: confirmedId(match.adminBindingStatus, match.adminMatchId),
     teams: {
-      home: buildTeamBindings(match.homeTeam, match.teamStatTargets),
-      away: buildTeamBindings(match.awayTeam, match.teamStatTargets),
+      home: buildTeamBindings(match.homeTeam),
+      away: buildTeamBindings(match.awayTeam),
     },
     playerStatTypes: {
       goals: statTypeId(playerTypes, "goals"),
@@ -163,28 +162,30 @@ export async function buildKhlAdminPreview(
 }
 
 function buildTeamBindings(
-  team: { id: string; adminTeamId: string | null; adminBindingStatus: KhlBindingStatus },
-  targets: Array<{
-    teamId: string;
-    adminMatchStatId: string | null;
+  team: {
+    adminTeamId: string | null;
     adminBindingStatus: KhlBindingStatus;
-    statMapping: {
-      semanticCode: string;
-      adminStatTypeId: string | null;
+    teamStatBindings: Array<{
+      adminTeamStatId: string | null;
       adminBindingStatus: KhlBindingStatus;
-    };
-  }>
+      statMapping: {
+        semanticCode: string;
+        adminStatTypeId: string | null;
+        adminBindingStatus: KhlBindingStatus;
+      };
+    }>;
+  }
 ) {
   const stats = Object.fromEntries(KHL_TEAM_STAT_CODES.map((code) => {
-    const target = targets.find((candidate) => (
-      candidate.teamId === team.id && candidate.statMapping.semanticCode === code
-    ));
+    const target = team.teamStatBindings.find(
+      (candidate) => candidate.statMapping.semanticCode === code
+    );
     const confirmed = target
       && target.adminBindingStatus === KhlBindingStatus.CONFIRMED
       && target.statMapping.adminBindingStatus === KhlBindingStatus.CONFIRMED;
     return [code, {
       adminStatTypeId: confirmed ? target.statMapping.adminStatTypeId || "" : "",
-      adminMatchStatId: confirmed ? target.adminMatchStatId || "" : "",
+      adminMatchStatId: confirmed ? target.adminTeamStatId || "" : "",
     }];
   })) as Record<KhlTeamStatCode, { adminStatTypeId: string; adminMatchStatId: string }>;
   return {

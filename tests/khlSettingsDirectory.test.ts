@@ -47,6 +47,7 @@ async function clearKhlTables() {
     prisma.khlDelivery.deleteMany(),
     prisma.khlPlayerStatTarget.deleteMany(),
     prisma.khlTeamStatTarget.deleteMany(),
+    prisma.khlTeamStatBinding.deleteMany(),
     prisma.khlStatMapping.deleteMany(),
     prisma.khlMatchParticipant.deleteMany(),
     prisma.khlMatchRevision.deleteMany(),
@@ -198,6 +199,13 @@ test("settings directory returns only post-cutoff global teams/players and all s
       adminConfirmedAt: "2026-05-20T10:00:00.000Z",
       adminConfirmedBy: "settings-test-admin",
       matchCount: 1,
+      statBindings: KHL_TEAM_STAT_CODES.map((semanticCode) => ({
+        semanticCode,
+        adminTeamStatId: null,
+        adminBindingStatus: KhlBindingStatus.UNMAPPED,
+        adminConfirmedAt: null,
+        adminConfirmedBy: null,
+      })),
     }
   );
   assert.equal(directory.players.length, 1);

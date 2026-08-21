@@ -132,7 +132,6 @@ async function main() {
   for (const [testId, label] of [
     ["khl-tab-teams-players", "Команды и игроки"],
     ["khl-tab-matches", "Матчи"],
-    ["khl-tab-statistics", "Статистика"],
     ["khl-tab-extras", "Допы"],
   ] as const) {
     await visible(settingsTabs.getByTestId(testId)).toHaveText(label);
@@ -227,6 +226,7 @@ async function main() {
   const playerTeamGroups = settingsWorkspace(page).getByTestId("khl-team-player-group");
   await visible(playerTeamGroups).toHaveCount(2);
   await visible(settingsWorkspace(page).getByTestId("khl-team-players-locked")).toHaveCount(2);
+  await visible(settingsWorkspace(page).getByTestId("khl-team-statistics-locked")).toHaveCount(2);
   await expect(settingsWorkspace(page).getByTestId("khl-team-players-disclosure")).toHaveCount(0);
 
   await selectRootTab(page, "results");
@@ -314,9 +314,28 @@ async function main() {
   await matchCard.getByRole("button", { name: "Подтвердить матч" }).click();
   assert.equal((await matchBindingPromise).status(), 200);
 
-  await selectSettingsTab(page, "statistics");
-  await saveStatTypeMappings(page);
+  await selectSettingsTab(page, "teams-players");
   await selectStatisticsMatch(page);
+  await expect(settingsWorkspace(page).getByRole("button", {
+    name: "Загрузить сохранённые IDs",
+  })).toBeDisabled();
+  await saveStatTypeMappings(page);
+  await confirmTeamStatistics(
+    page,
+    scheduleEvent.teams.home.khlTeamId,
+    "e2e-home-team-stat"
+  );
+  await confirmTeamStatistics(
+    page,
+    scheduleEvent.teams.away.khlTeamId,
+    "e2e-away-team-stat"
+  );
+  assert.equal(await prisma.khlTeamStatBinding.count({
+    where: { adminBindingStatus: "CONFIRMED" },
+  }), 8);
+  await expect(settingsWorkspace(page).getByRole("button", {
+    name: "Загрузить сохранённые IDs",
+  })).toBeEnabled();
   const templateResponsePromise = waitForApiResponse(page, "/api/results/khl/bindings/targets", "GET");
   await settingsWorkspace(page).getByRole("button", { name: "Загрузить сохранённые IDs" }).click();
   const templateResponse = await templateResponsePromise;
@@ -324,10 +343,11 @@ async function main() {
   const templateBody = await templateResponse.json() as { template: TargetTemplate };
   assert.deepEqual(templateBody.template.teamStatTypes, expectedTeamStatTypes());
   assert.deepEqual(templateBody.template.playerStatTypes, expectedPlayerStatTypes());
+  assertTeamStatisticTemplate(templateBody.template);
   const targetForm = settingsWorkspace(page).getByTestId("khl-target-bindings-form");
   await visible(targetForm).toBeVisible();
-  await visible(targetForm.getByTestId("khl-team-targets-home")).toBeVisible();
-  await visible(targetForm.getByTestId("khl-team-targets-away")).toBeVisible();
+  await expect(targetForm.getByTestId("khl-team-targets-home")).toHaveCount(0);
+  await expect(targetForm.getByTestId("khl-team-targets-away")).toHaveCount(0);
 
   const firstPlayer = templateBody.template.players[0];
   assert.ok(firstPlayer);
@@ -400,7 +420,17 @@ async function main() {
   await page.reload();
   await visible(page.getByRole("heading", { name: "КХЛ", exact: true })).toBeVisible();
   await selectRootTab(page, "settings");
-  await selectSettingsTab(page, "statistics");
+  await selectSettingsTab(page, "teams-players");
+  await assertTeamStatisticsPrefill(
+    page,
+    scheduleEvent.teams.home.khlTeamId,
+    "e2e-home-team-stat"
+  );
+  await assertTeamStatisticsPrefill(
+    page,
+    scheduleEvent.teams.away.khlTeamId,
+    "e2e-away-team-stat"
+  );
   await selectStatisticsMatch(page);
   const prefillResponsePromise = waitForApiResponse(page, "/api/results/khl/bindings/targets", "GET");
   await settingsWorkspace(page).getByRole("button", { name: "Загрузить сохранённые IDs" }).click();
@@ -539,7 +569,7 @@ async function selectRootTab(page: Page, tab: "settings" | "results") {
 
 async function selectSettingsTab(
   page: Page,
-  tab: "teams-players" | "matches" | "statistics" | "extras"
+  tab: "teams-players" | "matches" | "extras"
 ) {
   await settingsTabList(page).getByTestId(`khl-tab-${tab}`).click();
 }
@@ -585,6 +615,40 @@ async function confirmTeam(page: Page, khlTeamId: string, adminTeamId: string) {
   const responsePromise = waitForApiResponse(page, "/api/results/khl/bindings/team", "POST");
   await teamRow.getByRole("button", { name: "Подтвердить команду", exact: true }).click();
   assert.equal((await responsePromise).status(), 200);
+}
+
+async function confirmTeamStatistics(page: Page, khlTeamId: string, idPrefix: string) {
+  const teamRow = settingsWorkspace(page).getByTestId("khl-team-player-group").filter({
+    hasText: `KHL ${khlTeamId} ·`,
+  }).first();
+  const disclosure = teamRow.getByTestId("khl-team-statistics-disclosure");
+  await openDetails(disclosure);
+  for (const code of TEAM_STAT_CODES) {
+    await disclosure.getByPlaceholder(`Admin ID · ${teamStatLabel(code)}`).fill(
+      `${idPrefix}-${code}`
+    );
+  }
+  const responsePromise = waitForApiResponse(
+    page,
+    "/api/results/khl/bindings/team-stats",
+    "POST"
+  );
+  await disclosure.getByRole("button", { name: "Подтвердить статистику команды" }).click();
+  assert.equal((await responsePromise).status(), 200);
+  await expect(disclosure.getByPlaceholder("Admin ID · Броски в створ")).toBeDisabled();
+}
+
+async function assertTeamStatisticsPrefill(page: Page, khlTeamId: string, idPrefix: string) {
+  const teamRow = settingsWorkspace(page).getByTestId("khl-team-player-group").filter({
+    hasText: `KHL ${khlTeamId} ·`,
+  }).first();
+  const disclosure = teamRow.getByTestId("khl-team-statistics-disclosure");
+  await openDetails(disclosure);
+  for (const code of TEAM_STAT_CODES) {
+    const input = disclosure.getByPlaceholder(`Admin ID · ${teamStatLabel(code)}`);
+    await expect(input).toHaveValue(`${idPrefix}-${code}`);
+    await expect(input).toBeDisabled();
+  }
 }
 
 async function saveStatTypeMappings(page: Page) {
@@ -634,11 +698,7 @@ function buildExpectedTargetTemplate(template: TargetTemplate): TargetTemplate {
   const next = structuredClone(template);
   next.teamStatTypes = expectedTeamStatTypes();
   next.playerStatTypes = expectedPlayerStatTypes();
-  for (const [side, team] of Object.entries(next.teams)) {
-    for (const [code, target] of Object.entries(team.stats)) {
-      target.adminMatchStatId = `e2e-${side}-match-stat-${code}`;
-    }
-  }
+  assertTeamStatisticTemplate(next);
   next.players = next.players.map((player) => ({
     ...player,
     adminPlayerId: player.adminPlayerId || `e2e-player-${player.khlPlayerId}`,
@@ -652,16 +712,6 @@ function buildExpectedTargetTemplate(template: TargetTemplate): TargetTemplate {
 }
 
 async function fillTargetEditor(page: Page, template: TargetTemplate) {
-  const form = settingsWorkspace(page).getByTestId("khl-target-bindings-form");
-  for (const side of ["home", "away"] as const) {
-    const teamGroup = form.getByTestId(`khl-team-targets-${side}`);
-    for (const code of TEAM_STAT_CODES) {
-      await teamGroup.getByPlaceholder(`Admin target ID · ${teamStatLabel(code)}`).fill(
-        template.teams[side].stats[code].adminMatchStatId
-      );
-    }
-  }
-
   for (const player of template.players) {
     const binding = targetPlayerBinding(page, player.khlPlayerId);
     await openDetails(binding);
@@ -685,14 +735,7 @@ async function fillTargetEditor(page: Page, template: TargetTemplate) {
 async function assertTargetEditorPrefill(page: Page, template: TargetTemplate) {
   const form = settingsWorkspace(page).getByTestId("khl-target-bindings-form");
   await expect(form).toBeVisible();
-  for (const side of ["home", "away"] as const) {
-    const teamGroup = form.getByTestId(`khl-team-targets-${side}`);
-    for (const code of TEAM_STAT_CODES) {
-      await expect(
-        teamGroup.getByPlaceholder(`Admin target ID · ${teamStatLabel(code)}`)
-      ).toHaveValue(template.teams[side].stats[code].adminMatchStatId);
-    }
-  }
+  assertTeamStatisticTemplate(template);
   for (const player of template.players) {
     const binding = targetPlayerBinding(page, player.khlPlayerId);
     await expect(binding.getByPlaceholder("Admin player ID")).toHaveValue(player.adminPlayerId);
@@ -702,6 +745,17 @@ async function assertTargetEditorPrefill(page: Page, template: TargetTemplate) {
     for (const code of PLAYER_STAT_CODES) {
       await expect(binding.getByPlaceholder(`Admin ${code} record ID`)).toHaveValue(
         player.stats[code]
+      );
+    }
+  }
+}
+
+function assertTeamStatisticTemplate(template: TargetTemplate) {
+  for (const side of ["home", "away"] as const) {
+    for (const code of TEAM_STAT_CODES) {
+      assert.equal(
+        template.teams[side].stats[code].adminMatchStatId,
+        `e2e-${side}-team-stat-${code}`
       );
     }
   }
