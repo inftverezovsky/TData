@@ -1,0 +1,13 @@
+[Unit]
+Description=Run TData KHL results synchronization every 10 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10min
+AccuracySec=30s
+RandomizedDelaySec=20s
+Persistent=true
+Unit=tdata-khl-results-sync.service
+
+[Install]
+WantedBy=timers.target

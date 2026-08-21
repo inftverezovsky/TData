@@ -72,6 +72,9 @@ async function main() {
   await page.getByPlaceholder("Пароль...").fill(adminPassword);
   await page.getByRole("button", { name: "Разблокировать" }).click();
   await visible(page.getByRole("heading", { name: "КХЛ", exact: true })).toBeVisible();
+  await visible(page.getByRole("heading", { name: "Автоматическое обновление включено" })).toBeVisible();
+  await visible(page.getByText(/Только завершённые матчи с 01\.05\.2026/)).toBeVisible();
+  await page.getByText("Ручная проверка расписания (резервный режим)", { exact: true }).click();
   await page.waitForFunction(() => document.querySelectorAll("select option").length > 1);
   await page.locator("select").selectOption(STAGE_ID);
   const dates = page.locator('input[type="date"]');
@@ -89,7 +92,7 @@ async function main() {
     event.khlGameId === KHL_GAME_ID && event.apiEventId === API_EVENT_ID
   )));
 
-  const scheduleRow = page.locator("section").filter({
+  const scheduleRow = page.locator("details").filter({
     has: page.getByRole("heading", { name: "Расписание КХЛ" }),
   }).locator("div").filter({
     hasText: `KHL ${KHL_GAME_ID}`,

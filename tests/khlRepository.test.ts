@@ -89,6 +89,33 @@ test("ingestion is idempotent and activates only validated revisions", async () 
   assert.equal(await prisma.khlRawSnapshot.count(), 1);
   assert.equal(await prisma.khlMatchRevision.count(), 1);
 
+  const participant = await prisma.khlMatchParticipant.findFirstOrThrow({
+    where: { matchId: first.match.id },
+  });
+  await prisma.$transaction([
+    prisma.khlTeam.update({
+      where: { id: first.match.homeTeamId },
+      data: {
+        adminTeamId: "test-admin-team-persistent",
+        adminBindingStatus: "CONFIRMED",
+      },
+    }),
+    prisma.khlPlayer.update({
+      where: { id: participant.playerId },
+      data: {
+        adminPlayerId: "test-admin-player-persistent",
+        adminBindingStatus: "CONFIRMED",
+      },
+    }),
+    prisma.khlMatchParticipant.update({
+      where: { id: participant.id },
+      data: {
+        adminMatchPlayerId: "test-admin-match-player-persistent",
+        adminBindingStatus: "CONFIRMED",
+      },
+    }),
+  ]);
+
   const repeated = await ingestKhlEventDetail(prisma, {
     rawBody,
     sourceUrl: "https://khl.api.webcaster.pro/api/khl_mobile/event_v2.json?id=2986031&stage_id=395",
@@ -99,6 +126,17 @@ test("ingestion is idempotent and activates only validated revisions", async () 
   assert.equal(repeated.activated, false);
   assert.equal(await prisma.khlRawSnapshot.count(), 1);
   assert.equal(await prisma.khlMatchRevision.count(), 1);
+  const [storedTeam, storedPlayer, storedParticipant] = await Promise.all([
+    prisma.khlTeam.findUniqueOrThrow({ where: { id: first.match.homeTeamId } }),
+    prisma.khlPlayer.findUniqueOrThrow({ where: { id: participant.playerId } }),
+    prisma.khlMatchParticipant.findUniqueOrThrow({ where: { id: participant.id } }),
+  ]);
+  assert.equal(storedTeam.adminTeamId, "test-admin-team-persistent");
+  assert.equal(storedTeam.adminBindingStatus, "CONFIRMED");
+  assert.equal(storedPlayer.adminPlayerId, "test-admin-player-persistent");
+  assert.equal(storedPlayer.adminBindingStatus, "CONFIRMED");
+  assert.equal(storedParticipant.adminMatchPlayerId, "test-admin-match-player-persistent");
+  assert.equal(storedParticipant.adminBindingStatus, "CONFIRMED");
 
   const invalid = JSON.parse(rawBody);
   invalid.text_events = invalid.text_events.filter(

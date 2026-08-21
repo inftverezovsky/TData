@@ -21,6 +21,7 @@
     "db:migrate:deploy": "prisma migrate deploy --schema backend/prisma/schema.prisma",
     "db:seed": "tsx backend/prisma/seed.ts",
     "audit:tournaments": "tsx scripts/tournament-audit-agent.ts",
+    "sync:khl-results": "tsx scripts/sync-khl-results.ts",
     "import:dota2-admin-teams": "tsx scripts/import-admin-teams.ts",
     "setup": "npm install && npm run prisma:generate && npm run db:migrate:deploy && npm run db:seed"
   },

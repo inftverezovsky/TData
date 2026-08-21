@@ -61,6 +61,17 @@ type StoredMatch = {
 };
 
 type ApiError = { error?: string; code?: string };
+type AutomationStatus = {
+  enabled: boolean;
+  cutoff: string;
+  intervalMinutes: number;
+  lastFetchedAt: string | null;
+};
+type MatchesResponse = {
+  matches: StoredMatch[];
+  automation: AutomationStatus;
+  pagination: { offset: number; limit: number; total: number; hasMore: boolean };
+};
 type PreviewState = {
   ready: boolean;
   issues: string[];
@@ -85,7 +96,11 @@ type DiffState = {
 };
 
 const today = new Date();
-const defaultFrom = toDateInput(new Date(today.getTime() - 14 * 86_400_000));
+const khlResultsCutoff = "2026-05-01";
+const defaultFrom = [
+  khlResultsCutoff,
+  toDateInput(new Date(today.getTime() - 14 * 86_400_000)),
+].sort().at(-1) || khlResultsCutoff;
 const defaultTo = toDateInput(new Date(today.getTime() + 14 * 86_400_000));
 
 export function KhlResultsClient() {
@@ -95,6 +110,8 @@ export function KhlResultsClient() {
   const [to, setTo] = useState(defaultTo);
   const [events, setEvents] = useState<ScheduleEvent[]>([]);
   const [storedMatches, setStoredMatches] = useState<StoredMatch[]>([]);
+  const [automation, setAutomation] = useState<AutomationStatus | null>(null);
+  const [hasMoreMatches, setHasMoreMatches] = useState(false);
   const [loading, setLoading] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -111,15 +128,17 @@ export function KhlResultsClient() {
   );
 
   const loadStoredMatches = useCallback(async () => {
-    const data = await requestJson<{ matches: StoredMatch[] }>("/api/results/khl/matches");
+    const data = await requestJson<MatchesResponse>("/api/results/khl/matches?limit=100");
     setStoredMatches(data.matches);
+    setAutomation(data.automation);
+    setHasMoreMatches(data.pagination.hasMore);
   }, []);
 
   useEffect(() => {
     let cancelled = false;
     Promise.allSettled([
       requestJson<{ stages: Stage[] }>("/api/results/khl/stages"),
-      requestJson<{ matches: StoredMatch[] }>("/api/results/khl/matches"),
+      requestJson<MatchesResponse>("/api/results/khl/matches?limit=100"),
     ]).then(([stageResult, matchResult]) => {
       if (cancelled) return;
       const errors: string[] = [];
@@ -133,6 +152,8 @@ export function KhlResultsClient() {
       }
       if (matchResult.status === "fulfilled") {
         setStoredMatches(matchResult.value.matches);
+        setAutomation(matchResult.value.automation);
+        setHasMoreMatches(matchResult.value.pagination.hasMore);
       } else {
         errors.push(`Сохранённые матчи: ${messageOf(matchResult.reason)}`);
       }
@@ -140,6 +161,13 @@ export function KhlResultsClient() {
     });
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      loadStoredMatches().catch((cause) => setError(messageOf(cause)));
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, [loadStoredMatches]);
 
   const loadSchedule = async () => {
     if (!stageId) return;
@@ -160,6 +188,29 @@ export function KhlResultsClient() {
       setError(messageOf(cause));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadMoreMatches = async () => {
+    const key = "matches:more";
+    setBusyKey(key);
+    setError(null);
+    try {
+      const query = new URLSearchParams({
+        limit: "100",
+        offset: String(storedMatches.length),
+      });
+      const data = await requestJson<MatchesResponse>(`/api/results/khl/matches?${query}`);
+      setStoredMatches((current) => {
+        const known = new Set(current.map((match) => match.id));
+        return [...current, ...data.matches.filter((match) => !known.has(match.id))];
+      });
+      setAutomation(data.automation);
+      setHasMoreMatches(data.pagination.hasMore);
+    } catch (cause) {
+      setError(messageOf(cause));
+    } finally {
+      setBusyKey(null);
     }
   };
 
@@ -359,7 +410,7 @@ export function KhlResultsClient() {
             <h1 className="mt-2 text-3xl font-black text-slate-950">КХЛ</h1>
             <p className="mt-2 max-w-3xl text-sm text-slate-600">
               First-party KHL API → raw snapshot → проверенная статистика матча → подтверждённые Admin ID.
-              Официальный протокол доступен сразу после ingest; привязки нужны только для подготовки доставки.
+              Официальный протокол появляется автоматически; привязки нужны только для подготовки доставки.
             </p>
           </div>
           <span className="rounded-full bg-amber-50 px-4 py-2 text-xs font-bold text-amber-800 ring-1 ring-amber-200">
@@ -367,6 +418,26 @@ export function KhlResultsClient() {
           </span>
         </div>
       </header>
+
+      <section className={`rounded-3xl border p-5 shadow-sm ${automation?.enabled
+        ? "border-emerald-200 bg-emerald-50"
+        : "border-amber-200 bg-amber-50"}`}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className={`text-sm font-black ${automation?.enabled ? "text-emerald-950" : "text-amber-950"}`}>
+              {automation?.enabled ? "Автоматическое обновление включено" : "Автоматическое обновление не подтверждено"}
+            </h2>
+            <p className={`mt-1 text-xs ${automation?.enabled ? "text-emerald-800" : "text-amber-800"}`}>
+              Только завершённые матчи с 01.05.2026 · проверка каждые {automation?.intervalMinutes || 10} минут · страница обновляет список сама.
+            </p>
+          </div>
+          <div className={`text-xs font-bold ${automation?.enabled ? "text-emerald-900" : "text-amber-900"}`}>
+            Последнее получение: {automation?.lastFetchedAt
+              ? new Date(automation.lastFetchedAt).toLocaleString("ru-RU")
+              : "ещё не выполнялось"}
+          </div>
+        </div>
+      </section>
 
       {(error || message) && (
         <div className={`rounded-2xl border px-5 py-4 text-sm font-semibold ${error
@@ -376,7 +447,11 @@ export function KhlResultsClient() {
         </div>
       )}
 
-      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+      <details className="rounded-3xl border border-slate-200 bg-white shadow-sm">
+        <summary className="cursor-pointer list-none px-6 py-5 text-sm font-black text-slate-700">
+          Ручная проверка расписания (резервный режим)
+        </summary>
+        <div className="border-t border-slate-100 p-6">
         <h2 className="text-lg font-black text-slate-950">Расписание КХЛ</h2>
         <div className="mt-4 grid gap-3 md:grid-cols-[2fr_1fr_1fr_auto]">
           <select value={stageId} onChange={(event) => setStageId(event.target.value)} className="rounded-xl border border-slate-200 px-4 py-3 text-sm">
@@ -387,8 +462,8 @@ export function KhlResultsClient() {
               </option>
             ))}
           </select>
-          <input type="date" value={from} onChange={(event) => setFrom(event.target.value)} className="rounded-xl border border-slate-200 px-4 py-3 text-sm" />
-          <input type="date" value={to} onChange={(event) => setTo(event.target.value)} className="rounded-xl border border-slate-200 px-4 py-3 text-sm" />
+          <input type="date" min={khlResultsCutoff} value={from} onChange={(event) => setFrom(event.target.value)} className="rounded-xl border border-slate-200 px-4 py-3 text-sm" />
+          <input type="date" min={khlResultsCutoff} value={to} onChange={(event) => setTo(event.target.value)} className="rounded-xl border border-slate-200 px-4 py-3 text-sm" />
           <button onClick={loadSchedule} disabled={loading || !selectedStage} className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white disabled:opacity-50">
             {loading ? "Загрузка…" : "Получить"}
           </button>
@@ -411,7 +486,8 @@ export function KhlResultsClient() {
           ))}
           {!loading && events.length === 0 && <p className="py-8 text-center text-sm text-slate-400">Задайте этап и диапазон дат.</p>}
         </div>
-      </section>
+        </div>
+      </details>
 
       <section className="space-y-4">
         <div className="flex items-end justify-between gap-4">
@@ -584,6 +660,15 @@ export function KhlResultsClient() {
           );
         })}
         {storedMatches.length === 0 && <div className="rounded-3xl border border-dashed border-slate-300 p-10 text-center text-sm text-slate-400">Сохранённых матчей пока нет.</div>}
+        {hasMoreMatches && (
+          <button
+            onClick={loadMoreMatches}
+            disabled={busyKey === "matches:more"}
+            className="mx-auto block rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 disabled:opacity-50"
+          >
+            {busyKey === "matches:more" ? "Загрузка…" : "Показать ещё матчи"}
+          </button>
+        )}
       </section>
     </main>
   );

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { requireAdmin } from "@backend/auth/adminAuth";
 import { prisma } from "@backend/db/db";
+import { KHL_RESULTS_CUTOFF } from "@backend/results/khl/autoSync";
 import { buildKhlMatchProtocolView } from "@backend/results/khl/matchProtocol";
 import type { NormalizedKhlMatch } from "@backend/sources/results/khl/normalize";
 
@@ -15,32 +16,58 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const stageId = optionalExternalId(url.searchParams.get("stageId"));
   const limit = Math.min(optionalPositiveInteger(url.searchParams.get("limit")) || 50, 100);
+  const offset = Math.min(optionalNonNegativeInteger(url.searchParams.get("offset")) || 0, 10_000);
   if (url.searchParams.has("stageId") && !stageId) {
     return NextResponse.json({ error: "stageId must be a positive decimal string." }, { status: 400 });
   }
 
-  const matches = await prisma.khlMatch.findMany({
-    where: stageId ? { stageId } : undefined,
-    orderBy: [{ startsAt: "desc" }, { khlGameId: "desc" }],
-    take: limit,
-    include: {
-      homeTeam: true,
-      awayTeam: true,
-      activeRevision: {
-        select: {
-          id: true,
-          revisionNumber: true,
-          normalizedHash: true,
-          state: true,
-          validationIssues: true,
-          createdAt: true,
-          normalizedJson: true,
+  const where = {
+    startsAt: { gte: KHL_RESULTS_CUTOFF },
+    ...(stageId ? { stageId } : {}),
+  };
+  const [matches, latestSnapshot, total] = await Promise.all([
+    prisma.khlMatch.findMany({
+      where,
+      orderBy: [{ startsAt: "desc" }, { khlGameId: "desc" }],
+      skip: offset,
+      take: limit,
+      include: {
+        homeTeam: true,
+        awayTeam: true,
+        activeRevision: {
+          select: {
+            id: true,
+            revisionNumber: true,
+            normalizedHash: true,
+            state: true,
+            validationIssues: true,
+            createdAt: true,
+            normalizedJson: true,
+          },
         },
+        _count: { select: { revisions: true, participants: true } },
       },
-      _count: { select: { revisions: true, participants: true } },
-    },
-  });
+    }),
+    prisma.khlRawSnapshot.findFirst({
+      where: { match: { is: { startsAt: { gte: KHL_RESULTS_CUTOFF } } } },
+      orderBy: { lastFetchedAt: "desc" },
+      select: { lastFetchedAt: true },
+    }),
+    prisma.khlMatch.count({ where }),
+  ]);
   return NextResponse.json({
+    automation: {
+      enabled: process.env.KHL_RESULTS_AUTO_SYNC_ENABLED === "1",
+      cutoff: KHL_RESULTS_CUTOFF.toISOString(),
+      intervalMinutes: automaticSyncIntervalMinutes(),
+      lastFetchedAt: latestSnapshot?.lastFetchedAt || null,
+    },
+    pagination: {
+      offset,
+      limit,
+      total,
+      hasMore: offset + matches.length < total,
+    },
     matches: matches.map((match) => {
       const revision = match.activeRevision;
       return {
@@ -69,6 +96,17 @@ function optionalPositiveInteger(value: string | null) {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
+function optionalNonNegativeInteger(value: string | null) {
+  if (!value || !/^\d+$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
 function optionalExternalId(value: string | null) {
   return value && /^[1-9]\d{0,127}$/.test(value) ? value : null;
+}
+
+function automaticSyncIntervalMinutes() {
+  const value = Number(process.env.KHL_RESULTS_AUTO_SYNC_INTERVAL_MINUTES || "10");
+  return Number.isSafeInteger(value) && value >= 1 && value <= 1_440 ? value : 10;
 }

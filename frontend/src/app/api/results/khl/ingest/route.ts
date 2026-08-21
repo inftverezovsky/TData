@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 
 import { requireAdmin, requireSameOriginJsonMutation } from "@backend/auth/adminAuth";
 import { prisma } from "@backend/db/db";
+import { KHL_RESULTS_CUTOFF } from "@backend/results/khl/autoSync";
 import { KhlRepositoryError, ingestKhlEventDetail } from "@backend/results/khl/repository";
 import { KhlApiClient, KhlApiError } from "@backend/sources/results/khl/client";
-import { KhlSchemaError } from "@backend/sources/results/khl/normalize";
+import { KhlSchemaError, normalizeKhlEventDetail } from "@backend/sources/results/khl/normalize";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -32,6 +33,13 @@ export async function POST(request: Request) {
 
   try {
     const envelope = await new KhlApiClient().getEventDetailEnvelope({ apiEventId, stageId });
+    const normalized = normalizeKhlEventDetail(envelope.event);
+    if (new Date(normalized.startsAt) < KHL_RESULTS_CUTOFF) {
+      return NextResponse.json(
+        { error: "KHL results before 2026-05-01 are outside the configured scope." },
+        { status: 422 }
+      );
+    }
     const result = await ingestKhlEventDetail(prisma, {
       rawBody: envelope.rawBody,
       sourceUrl: envelope.sourceUrl,

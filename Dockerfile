@@ -31,7 +31,9 @@ ENV PORT=3010
 COPY --from=builder /app/frontend/next.config.mjs ./frontend/next.config.mjs
 COPY --from=builder /app/frontend/.next ./frontend/.next
 COPY --from=builder /app/frontend/public ./frontend/public
+COPY --from=builder /app/tsconfig.json ./tsconfig.json
 COPY --from=builder /app/backend/prisma ./backend/prisma
+COPY --from=builder /app/backend/src ./backend/src
 COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/data/tessdata ./data/tessdata
 
