@@ -1,0 +1,4220 @@
+{
+  "_fixture": {
+    "retrieved_for": "TData KHL contract tests",
+    "schema": "khl_mobile.event_v2.subset.v1",
+    "source_url": "https://khl.api.webcaster.pro/api/khl_mobile/event_v2.json?id=2986031&stage_id=395&locale=ru"
+  },
+  "end_at": 1779393399000,
+  "event_start_at": 1779380100000,
+  "game_state_key": "finished",
+  "goals": [
+    {
+      "assistants": [
+        {
+          "aps": 40,
+          "name": "Барабанов Александр",
+          "shirt_number": 17
+        },
+        {
+          "aps": 44,
+          "name": "Миллер Митчелл",
+          "shirt_number": 58
+        }
+      ],
+      "author": {
+        "gps": 10,
+        "name": "Лямкин Никита",
+        "shirt_number": 96,
+        "team_id": 40
+      },
+      "period": 3,
+      "score": "2:3",
+      "status": "В равенстве",
+      "status_abbr": "рав",
+      "time": 3428
+    },
+    {
+      "assistants": [
+        {
+          "aps": 43,
+          "name": "Лямкин Никита",
+          "shirt_number": 96
+        },
+        {
+          "aps": 40,
+          "name": "Барабанов Александр",
+          "shirt_number": 17
+        }
+      ],
+      "author": {
+        "gps": 28,
+        "name": "Тодд Нэйтан",
+        "shirt_number": 29,
+        "team_id": 40
+      },
+      "period": 3,
+      "score": "1:3",
+      "status": "В равенстве",
+      "status_abbr": "рав",
+      "time": 3267
+    },
+    {
+      "assistants": [],
+      "author": {
+        "gps": 38,
+        "name": "Шалунов Максим",
+        "shirt_number": 78,
+        "team_id": 26
+      },
+      "period": 3,
+      "score": "0:3",
+      "status": "В равенстве",
+      "status_abbr": "рав",
+      "time": 3150
+    },
+    {
+      "assistants": [
+        {
+          "aps": 10,
+          "name": "Красковский Павел",
+          "shirt_number": 63
+        },
+        {
+          "aps": 16,
+          "name": "Кирьянов Никита В.",
+          "shirt_number": 7
+        }
+      ],
+      "author": {
+        "gps": 20,
+        "name": "Сурин Егор",
+        "shirt_number": 70,
+        "team_id": 26
+      },
+      "period": 1,
+      "score": "0:2",
+      "status": "В равенстве",
+      "status_abbr": "рав",
+      "time": 835
+    },
+    {
+      "assistants": [
+        {
+          "aps": 16,
+          "name": "Кирьянов Никита В.",
+          "shirt_number": 7
+        },
+        {
+          "aps": 10,
+          "name": "Красковский Павел",
+          "shirt_number": 63
+        }
+      ],
+      "author": {
+        "gps": 20,
+        "name": "Сурин Егор",
+        "shirt_number": 70,
+        "team_id": 26
+      },
+      "period": 1,
+      "score": "0:1",
+      "status": "В равенстве",
+      "status_abbr": "рав",
+      "time": 245
+    }
+  ],
+  "id": 2986031,
+  "khl_id": 901973,
+  "match_id": "901973",
+  "name": "Ак Барс - Локомотив",
+  "outer_stage_id": 1370,
+  "outer_url": "https://www.khl.ru/game/1370/901973/preview/",
+  "period": -1,
+  "score": "2:3",
+  "scores": {
+    "bullitt": null,
+    "first_period": "0:2",
+    "overtime": null,
+    "second_period": "0:0",
+    "third_period": "2:1"
+  },
+  "season": "2025/2026",
+  "stage_id": 395,
+  "stage_name": "Плей-офф 2025/2026",
+  "stage_type": "playoff",
+  "start_at": 1779381000000,
+  "team_a": {
+    "active": true,
+    "gf": 2,
+    "id": 40,
+    "khl_id": 53,
+    "location": "Казань",
+    "name": "Ак Барс",
+    "pim": 6,
+    "players": [
+      {
+        "id": 41191,
+        "image": "https://www.khl.ru/img/teamplayers_db/15545/39096.jpg",
+        "khl_id": 39096,
+        "match_stats": [
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 0.0
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 0.0
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 0.0
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 0
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 0
+          }
+        ],
+        "name": "Арефьев Максим",
+        "role_key": "goaltender",
+        "shirt_number": 20
+      },
+      {
+        "id": 3893,
+        "image": "https://www.khl.ru/img/teamplayers_db/15464/17210.jpg",
+        "khl_id": 17210,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 0
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 0
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 21.5166666666667
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 27
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 0
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 0
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 32.69
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 5.13
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 38
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 27
+          }
+        ],
+        "name": "Барабанов Александр",
+        "role_key": "forward",
+        "shirt_number": 17
+      },
+      {
+        "id": 3649,
+        "image": "https://www.khl.ru/img/teamplayers_db/15464/19034.jpg",
+        "khl_id": 19034,
+        "match_stats": [
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 54.6666666666667
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 0.0
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 0.0
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 5
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 5
+          }
+        ],
+        "name": "Билялов Тимур",
+        "role_key": "goaltender",
+        "shirt_number": 82
+      },
+      {
+        "id": 25701,
+        "image": "https://www.khl.ru/img/teamplayers_db/15464/24897.jpg",
+        "khl_id": 24897,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 4
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 0
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 20.0333333333333
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 27
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 0
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 0
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 34.2
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 4.83
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 31
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 25
+          }
+        ],
+        "name": "Галимов Артём",
+        "role_key": "forward",
+        "shirt_number": 95
+      },
+      {
+        "id": 16823,
+        "image": "https://www.khl.ru/img/teamplayers_db/15464/25397.jpg",
+        "khl_id": 25397,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 2
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 0
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 14.8666666666667
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 21
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 5
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 0
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 33.84
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 3.86
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 12
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 8
+          }
+        ],
+        "name": "Денисенко Григорий",
+        "role_key": "forward",
+        "shirt_number": 14
+      },
+      {
+        "id": 18697,
+        "image": "https://www.khl.ru/img/teamplayers_db/15545/22244.jpg",
+        "khl_id": 22244,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 0
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 0
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 9.46666666666667
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 15
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 2
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 0
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 0
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 38.23
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 2.61
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 5
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 3
+          }
+        ],
+        "name": "Дыняк Никита",
+        "role_key": "forward",
+        "shirt_number": 86
+      },
+      {
+        "id": 43907,
+        "image": "https://www.khl.ru/img/teamplayers_db/15464/40818.jpg",
+        "khl_id": 40818,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 0
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 0
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 0.0
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 0
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 0
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 0
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 0.0
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 0
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 0
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 0
+          }
+        ],
+        "name": "Замалтдинов Радэль",
+        "role_key": "forward",
+        "shirt_number": 13
+      },
+      {
+        "id": 8911,
+        "image": "https://www.khl.ru/img/teamplayers_db/15464/23446.jpg",
+        "khl_id": 23446,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 2
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 0
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 16.3833333333333
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 24
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 1
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 2
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 31.0
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 3.89
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 29
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 20
+          }
+        ],
+        "name": "Карпухин Илья",
+        "role_key": "defensemen",
+        "shirt_number": 89
+      },
+      {
+        "id": 31409,
+        "image": "https://www.khl.ru/img/teamplayers_db/15464/35605.jpg",
+        "khl_id": 35605,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 0
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 0
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 4
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 3
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 8.71666666666667
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 15
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 1
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 1
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 30.67
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 2.49
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 5
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 4
+          }
+        ],
+        "name": "Кателевский Дмитрий",
+        "role_key": "forward",
+        "shirt_number": 92
+      },
+      {
+        "id": 5563,
+        "image": "https://www.khl.ru/img/teamplayers_db/15545/20521.jpg",
+        "khl_id": 20521,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 3
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 1
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 24.5833333333333
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 25
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 1
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 0
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 31.9
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 5.47
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 54
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 47
+          }
+        ],
+        "name": "Лямкин Никита",
+        "role_key": "defensemen",
+        "shirt_number": 96
+      },
+      {
+        "id": 1104,
+        "image": "https://www.khl.ru/img/teamplayers_db/15545/15910.jpg",
+        "khl_id": 15910,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 0
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 0
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 14.2666666666667
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 21
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 0
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 1
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 28.55
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 3.07
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 22
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 19
+          }
+        ],
+        "name": "Марченко Алексей",
+        "role_key": "defensemen",
+        "shirt_number": 53
+      },
+      {
+        "id": 41667,
+        "image": "https://www.khl.ru/img/teamplayers_db/15545/43519.jpg",
+        "khl_id": 43519,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 3
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 0
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 28.55
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 27
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 1
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 2
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 34.52
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 6.85
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 49
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 43
+          }
+        ],
+        "name": "Миллер Митчелл",
+        "role_key": "defensemen",
+        "shirt_number": 58
+      },
+      {
+        "id": 28245,
+        "image": "https://www.khl.ru/img/teamplayers_db/15464/25837.jpg",
+        "khl_id": 25837,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 0
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 0
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 7.8
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 13
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 0
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 0
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 32.87
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 2.1
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 7
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 7
+          }
+        ],
+        "name": "Пустозёров Алексей",
+        "role_key": "forward",
+        "shirt_number": 71
+      },
+      {
+        "id": 28049,
+        "image": "https://www.khl.ru/img/teamplayers_db/15464/30665.jpg",
+        "khl_id": 30665,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 0
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 0
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 23
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 10
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 20.45
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 27
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 2
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 3
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 1
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 33.55
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 4.42
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 13
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 10
+          }
+        ],
+        "name": "Сафонов Илья",
+        "role_key": "forward",
+        "shirt_number": 24
+      },
+      {
+        "id": 3381,
+        "image": "https://www.khl.ru/img/teamplayers_db/15545/17695.jpg",
+        "khl_id": 17695,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 3
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 0
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 9
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 6
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 16.9
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 24
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 2
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 6
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 1
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 32.33
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 4.18
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 26
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 19
+          }
+        ],
+        "name": "Семёнов Кирилл Е.",
+        "role_key": "forward",
+        "shirt_number": 94
+      },
+      {
+        "id": 45131,
+        "image": "https://www.khl.ru/img/teamplayers_db/15545/41680.jpg",
+        "khl_id": 41680,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 0
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 0
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 14.2833333333333
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 19
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 0
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 0
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 31.07
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 3.04
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 27
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 22
+          }
+        ],
+        "name": "Терехов Степан",
+        "role_key": "defensemen",
+        "shirt_number": 28
+      },
+      {
+        "id": 42391,
+        "image": "https://www.khl.ru/img/teamplayers_db/15464/40292.jpg",
+        "khl_id": 40292,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 2
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 1
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 19.4166666666667
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 23
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 1
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 1
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 32.87
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 4.66
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 26
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 20
+          }
+        ],
+        "name": "Тодд Нэйтан",
+        "role_key": "forward",
+        "shirt_number": 29
+      },
+      {
+        "id": 29993,
+        "image": "https://www.khl.ru/img/teamplayers_db/15464/20724.jpg",
+        "khl_id": 20724,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 2
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 0
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 16.75
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 22
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 1
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 3
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 31.72
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 3.76
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 26
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 24
+          }
+        ],
+        "name": "Фальковский Степан",
+        "role_key": "defensemen",
+        "shirt_number": 7
+      },
+      {
+        "id": 1572,
+        "image": "https://www.khl.ru/img/teamplayers_db/15464/15967.jpg",
+        "khl_id": 15967,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 0
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 0
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 11
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 8
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 11.75
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 18
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 4
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 0
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 32.54
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 2.98
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 13
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 7
+          }
+        ],
+        "name": "Фисенко Михаил",
+        "role_key": "forward",
+        "shirt_number": 11
+      },
+      {
+        "id": 35991,
+        "image": "https://www.khl.ru/img/teamplayers_db/15545/41952.jpg",
+        "khl_id": 41952,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 3
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 0
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 4
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 3
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 14.2166666666667
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 20
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 2
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 0
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 30.31
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 3.54
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 16
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 15
+          }
+        ],
+        "name": "Хмелевский Александр",
+        "role_key": "forward",
+        "shirt_number": 55
+      },
+      {
+        "id": 27301,
+        "image": "https://www.khl.ru/img/teamplayers_db/15464/16657.jpg",
+        "khl_id": 16657,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 4
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 0
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 2
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 1
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 16.5
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 22
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 4
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 0
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 31.54
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 3.91
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 14
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 10
+          }
+        ],
+        "name": "Яшкин Дмитрий",
+        "role_key": "forward",
+        "shirt_number": 23
+      }
+    ],
+    "ppc": 3,
+    "ppg": 0,
+    "shg": 0,
+    "shots": 28,
+    "start_fives": [
+      {
+        "id": 3893,
+        "image": "https://www.khl.ru/img/teamplayers_db/15464/17210.jpg",
+        "khl_id": 17210,
+        "name": "Барабанов Александр",
+        "role_key": "forward",
+        "shirt_number": 17
+      },
+      {
+        "id": 3649,
+        "image": "https://www.khl.ru/img/teamplayers_db/15464/19034.jpg",
+        "khl_id": 19034,
+        "name": "Билялов Тимур",
+        "role_key": "goaltender",
+        "shirt_number": 82
+      },
+      {
+        "id": 25701,
+        "image": "https://www.khl.ru/img/teamplayers_db/15464/24897.jpg",
+        "khl_id": 24897,
+        "name": "Галимов Артём",
+        "role_key": "forward",
+        "shirt_number": 95
+      },
+      {
+        "id": 5563,
+        "image": "https://www.khl.ru/img/teamplayers_db/15545/20521.jpg",
+        "khl_id": 20521,
+        "name": "Лямкин Никита",
+        "role_key": "defensemen",
+        "shirt_number": 96
+      },
+      {
+        "id": 41667,
+        "image": "https://www.khl.ru/img/teamplayers_db/15545/43519.jpg",
+        "khl_id": 43519,
+        "name": "Миллер Митчелл",
+        "role_key": "defensemen",
+        "shirt_number": 58
+      },
+      {
+        "id": 28049,
+        "image": "https://www.khl.ru/img/teamplayers_db/15464/30665.jpg",
+        "khl_id": 30665,
+        "name": "Сафонов Илья",
+        "role_key": "forward",
+        "shirt_number": 24
+      }
+    ],
+    "vbr": 31
+  },
+  "team_b": {
+    "active": true,
+    "gf": 3,
+    "id": 26,
+    "khl_id": 1,
+    "location": "Ярославль",
+    "name": "Локомотив",
+    "pim": 8,
+    "players": [
+      {
+        "id": 18295,
+        "image": "https://www.khl.ru/img/teamplayers_db/15551/21886.jpg",
+        "khl_id": 21886,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 1
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 0
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 1
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 1
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 12.3833333333333
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 23
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 0
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 0
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 30.17
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 2.74
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 10
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 8
+          }
+        ],
+        "name": "Алексеев Денис В.",
+        "role_key": "forward",
+        "shirt_number": 91
+      },
+      {
+        "id": 3313,
+        "image": "https://www.khl.ru/img/teamplayers_db/15551/17609.jpg",
+        "khl_id": 17609,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 0
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 0
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 18.5333333333333
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 32
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 2
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 0
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 1
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 31.0
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 3.78
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 12
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 10
+          }
+        ],
+        "name": "Береглазов Алексей",
+        "role_key": "defensemen",
+        "shirt_number": 5
+      },
+      {
+        "id": 29185,
+        "image": "https://www.khl.ru/img/teamplayers_db/15551/30198.jpg",
+        "khl_id": 30198,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 4
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 0
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 12.9333333333333
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 22
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 2
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 0
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 33.08
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 3.08
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 7
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 6
+          }
+        ],
+        "name": "Берёзкин Максим",
+        "role_key": "forward",
+        "shirt_number": 72
+      },
+      {
+        "id": 38967,
+        "image": "https://www.khl.ru/img/teamplayers_db/15454/18984.jpg",
+        "khl_id": 18984,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 3
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 0
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 20.6166666666667
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 31
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 2
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 0
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 2
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 27.68
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 4.26
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 19
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 17
+          }
+        ],
+        "name": "Гернат Мартин",
+        "role_key": "defensemen",
+        "shirt_number": 28
+      },
+      {
+        "id": 8903,
+        "image": "https://www.khl.ru/img/teamplayers_db/15551/20955.jpg",
+        "khl_id": 20955,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 0
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 0
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 20.0666666666667
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 31
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 2
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 1
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 30.74
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 3.97
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 8
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 5
+          }
+        ],
+        "name": "Елесин Александр",
+        "role_key": "defensemen",
+        "shirt_number": 4
+      },
+      {
+        "id": 22197,
+        "image": "https://www.khl.ru/img/teamplayers_db/15551/25400.jpg",
+        "khl_id": 25400,
+        "match_stats": [
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 60.0
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 0.0
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 0.0
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 6
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 5
+          }
+        ],
+        "name": "Исаев Даниил А.",
+        "role_key": "goaltender",
+        "shirt_number": 92
+      },
+      {
+        "id": 16819,
+        "image": "https://www.khl.ru/img/teamplayers_db/15551/22607.jpg",
+        "khl_id": 22607,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 3
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 0
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 15.3833333333333
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 26
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 0
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 0
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 35.24
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 3.78
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 9
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 9
+          }
+        ],
+        "name": "Каюмов Артур",
+        "role_key": "forward",
+        "shirt_number": 16
+      },
+      {
+        "id": 40363,
+        "image": "https://www.khl.ru/img/teamplayers_db/15454/32396.jpg",
+        "khl_id": 32396,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 1
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 0
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 1
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 1
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 14.0666666666667
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 25
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 0
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 0
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 33.05
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 3.48
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 6
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 4
+          }
+        ],
+        "name": "Кирьянов Никита В.",
+        "role_key": "forward",
+        "shirt_number": 7
+      },
+      {
+        "id": 3789,
+        "image": "https://www.khl.ru/img/teamplayers_db/15454/20310.jpg",
+        "khl_id": 20310,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 2
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 0
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 7
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 3
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 11.3833333333333
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 22
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 0
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 2
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 34.09
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 3.04
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 8
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 7
+          }
+        ],
+        "name": "Красковский Павел",
+        "role_key": "forward",
+        "shirt_number": 63
+      },
+      {
+        "id": 47539,
+        "image": "https://www.khl.ru/img/teamplayers_db/15454/41370.jpg",
+        "khl_id": 41370,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 0
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 0
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 0.216666666666667
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 1
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 0
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 0
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 21.82
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 0.05
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 0
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 0
+          }
+        ],
+        "name": "Кузин Артём В.",
+        "role_key": "forward",
+        "shirt_number": 27
+      },
+      {
+        "id": 20965,
+        "image": "https://www.khl.ru/img/teamplayers_db/15551/23462.jpg",
+        "khl_id": 23462,
+        "match_stats": [
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 0.0
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 0.0
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 0.0
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 0
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 0
+          }
+        ],
+        "name": "Мельничук Алексей",
+        "role_key": "goaltender",
+        "shirt_number": 38
+      },
+      {
+        "id": 25677,
+        "image": "https://www.khl.ru/img/teamplayers_db/15551/25404.jpg",
+        "khl_id": 25404,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 0
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 0
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 0.0
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 0
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 0
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 0
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 0.0
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 0
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 0
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 0
+          }
+        ],
+        "name": "Мисюль Даниил",
+        "role_key": "defensemen",
+        "shirt_number": 93
+      },
+      {
+        "id": 45167,
+        "image": "https://www.khl.ru/img/teamplayers_db/15454/29944.jpg",
+        "khl_id": 29944,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 0
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 0
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 6
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 1
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 10.1666666666667
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 16
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 3
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 0
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 30.35
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 2.43
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 2
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 2
+          }
+        ],
+        "name": "Николаев Илья Е.",
+        "role_key": "forward",
+        "shirt_number": 9
+      },
+      {
+        "id": 44739,
+        "image": "https://www.khl.ru/img/teamplayers_db/15454/16071.jpg",
+        "khl_id": 16071,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 1
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 0
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 20.9
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 33
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 0
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 1
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 34.7
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 5.05
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 11
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 8
+          }
+        ],
+        "name": "Паник Рихард",
+        "role_key": "forward",
+        "shirt_number": 14
+      },
+      {
+        "id": 5475,
+        "image": "https://www.khl.ru/img/teamplayers_db/15551/22050.jpg",
+        "khl_id": 22050,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 0
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 0
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 10.35
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 20
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 2
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 0
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 30.31
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 2.62
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 7
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 6
+          }
+        ],
+        "name": "Полунин Александр",
+        "role_key": "forward",
+        "shirt_number": 90
+      },
+      {
+        "id": 1348,
+        "image": "https://www.khl.ru/img/teamplayers_db/15551/496.jpg",
+        "khl_id": 496,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 1
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 0
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 16.2333333333333
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 27
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 0
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 0
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 33.66
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 4.21
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 13
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 11
+          }
+        ],
+        "name": "Радулов Александр",
+        "role_key": "forward",
+        "shirt_number": 47
+      },
+      {
+        "id": 5471,
+        "image": "https://www.khl.ru/img/teamplayers_db/15551/17954.jpg",
+        "khl_id": 17954,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 0
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 0
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 17.8666666666667
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 32
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 0
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 4
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 31.57
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 3.65
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 17
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 15
+          }
+        ],
+        "name": "Рафиков Рушан",
+        "role_key": "defensemen",
+        "shirt_number": 87
+      },
+      {
+        "id": 1430,
+        "image": "https://www.khl.ru/img/teamplayers_db/15551/15416.jpg",
+        "khl_id": 15416,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 1
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 0
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 19.9333333333333
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 34
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 1
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 2
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 28.91
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 4.02
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 8
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 4
+          }
+        ],
+        "name": "Сергеев Андрей",
+        "role_key": "defensemen",
+        "shirt_number": 99
+      },
+      {
+        "id": 41227,
+        "image": "https://www.khl.ru/img/teamplayers_db/15454/42070.jpg",
+        "khl_id": 42070,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 2
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 2
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 13.35
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 21
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 2
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 0
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 34.56
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 3.25
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 17
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 13
+          }
+        ],
+        "name": "Сурин Егор",
+        "role_key": "forward",
+        "shirt_number": 70
+      },
+      {
+        "id": 43279,
+        "image": "https://www.khl.ru/img/teamplayers_db/15454/44229.jpg",
+        "khl_id": 44229,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 2
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 0
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 24
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 12
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 20.85
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 34
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 4
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 2
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 1
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 32.18
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 5.09
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 4
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 2
+          }
+        ],
+        "name": "Фрэз Байрон",
+        "role_key": "forward",
+        "shirt_number": 51
+      },
+      {
+        "id": 5635,
+        "image": "https://www.khl.ru/img/teamplayers_db/15551/17786.jpg",
+        "khl_id": 17786,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 1
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 0
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 0
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 18.1833333333333
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 28
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 0
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 1
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 30.85
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 3.87
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 12
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 8
+          }
+        ],
+        "name": "Черепанов Никита В.",
+        "role_key": "defensemen",
+        "shirt_number": 73
+      },
+      {
+        "id": 2293,
+        "image": "https://www.khl.ru/img/teamplayers_db/15551/15995.jpg",
+        "khl_id": 15995,
+        "match_stats": [
+          {
+            "id": "shots",
+            "max": 4,
+            "title": "Броски",
+            "val": 2
+          },
+          {
+            "id": "goals",
+            "max": 2,
+            "title": "Голы",
+            "val": 1
+          },
+          {
+            "id": "fo",
+            "max": 24,
+            "title": "Вбрасывания",
+            "val": 14
+          },
+          {
+            "id": "fow",
+            "max": 12,
+            "title": "Выигранные вбрасывания",
+            "val": 4
+          },
+          {
+            "id": "toi",
+            "max": 60.0,
+            "title": "Время на льду",
+            "val": 14.7666666666667
+          },
+          {
+            "id": "si",
+            "max": 34,
+            "title": "Смены",
+            "val": 25
+          },
+          {
+            "id": "pim",
+            "max": 4,
+            "title": "Время штрафа",
+            "val": 0
+          },
+          {
+            "id": "hits",
+            "max": 6,
+            "title": "Силовые приемы",
+            "val": 2
+          },
+          {
+            "id": "bls",
+            "max": 4,
+            "title": "Блокированные броски",
+            "val": 1
+          },
+          {
+            "id": "topSpeed",
+            "max": 38.23,
+            "title": "Лучшая скорость, км/ч",
+            "val": 30.17
+          },
+          {
+            "id": "distanceTravelled",
+            "max": 6.85,
+            "title": "Пройденная дистанция, км",
+            "val": 3.56
+          },
+          {
+            "id": "allPasses",
+            "max": 54,
+            "title": "Пасы",
+            "val": 13
+          },
+          {
+            "id": "successfulPasses",
+            "max": 47,
+            "title": "Успешные пасы",
+            "val": 10
+          }
+        ],
+        "name": "Шалунов Максим",
+        "role_key": "forward",
+        "shirt_number": 78
+      }
+    ],
+    "ppc": 4,
+    "ppg": 0,
+    "shg": 0,
+    "shots": 24,
+    "start_fives": [
+      {
+        "id": 3313,
+        "image": "https://www.khl.ru/img/teamplayers_db/15551/17609.jpg",
+        "khl_id": 17609,
+        "name": "Береглазов Алексей",
+        "role_key": "defensemen",
+        "shirt_number": 5
+      },
+      {
+        "id": 8903,
+        "image": "https://www.khl.ru/img/teamplayers_db/15551/20955.jpg",
+        "khl_id": 20955,
+        "name": "Елесин Александр",
+        "role_key": "defensemen",
+        "shirt_number": 4
+      },
+      {
+        "id": 22197,
+        "image": "https://www.khl.ru/img/teamplayers_db/15551/25400.jpg",
+        "khl_id": 25400,
+        "name": "Исаев Даниил А.",
+        "role_key": "goaltender",
+        "shirt_number": 92
+      },
+      {
+        "id": 44739,
+        "image": "https://www.khl.ru/img/teamplayers_db/15454/16071.jpg",
+        "khl_id": 16071,
+        "name": "Паник Рихард",
+        "role_key": "forward",
+        "shirt_number": 14
+      },
+      {
+        "id": 1348,
+        "image": "https://www.khl.ru/img/teamplayers_db/15551/496.jpg",
+        "khl_id": 496,
+        "name": "Радулов Александр",
+        "role_key": "forward",
+        "shirt_number": 47
+      },
+      {
+        "id": 43279,
+        "image": "https://www.khl.ru/img/teamplayers_db/15454/44229.jpg",
+        "khl_id": 44229,
+        "name": "Фрэз Байрон",
+        "role_key": "forward",
+        "shirt_number": 51
+      }
+    ],
+    "vbr": 22
+  },
+  "text_events": [
+    {
+      "period": null,
+      "score": "2:3",
+      "seconds": 3467,
+      "text": "Окончание игры",
+      "time_s": "21:55",
+      "type": "state"
+    },
+    {
+      "period": null,
+      "score": "2:3",
+      "seconds": 3466,
+      "text": "Статистика матча: Броски: 56-45 ; Броски в створ: 28-24 ; Голы: 2-3 ; Вбрасывания: 31-22 ; Блокированные броски: 12-16 ; Силовые приемы: 30-16 ; Отборы: 4-1 ; Потери: 13-8 ; Перехваты: 4-3 ; Время в атаке: 17:47-07:43 ; Штраф: 6-8",
+      "time_s": "- мин",
+      "type": "info"
+    },
+    {
+      "period": null,
+      "score": "2:3",
+      "seconds": 3465,
+      "text": "Статистика 3-го периода: Броски: 26-10 ; Броски в створ: 14-7 ; Голы: 2-1 ; Вбрасывания: 12-5 ; Блокированные броски: 1-7 ; Силовые приемы: 6-2 ; Отборы: 1-0 ; Потери: 3-0 ; Перехваты: 2-1 ; Время в атаке: 08:55-00:58 ; Штраф: 2-2",
+      "time_s": "- мин",
+      "type": "info"
+    },
+    {
+      "period": 3,
+      "score": "2:3",
+      "seconds": 3464,
+      "text": "Окончание 3 периода",
+      "time_s": "21:55",
+      "type": "state"
+    },
+    {
+      "period": 3,
+      "score": "2:3",
+      "seconds": 3428,
+      "text": "Изменение счета. 2:3. 96.Лямкин Никита (17.Барабанов Александр, 58.Миллер Митчелл). Ак Барс. В равенстве",
+      "time_s": "57:08",
+      "type": "goal"
+    },
+    {
+      "period": 3,
+      "score": "1:3",
+      "seconds": 3267,
+      "text": "Изменение счета. 1:3. 29.Тодд Нэйтан (96.Лямкин Никита, 17.Барабанов Александр). Ак Барс. В равенстве",
+      "time_s": "54:27",
+      "type": "goal"
+    },
+    {
+      "period": 3,
+      "score": "0:3",
+      "seconds": 3150,
+      "text": "Изменение счета. 0:3. 78.Шалунов Максим. Локомотив. В равенстве",
+      "time_s": "52:30",
+      "type": "goal"
+    },
+    {
+      "period": 3,
+      "score": "0:2",
+      "seconds": 2843,
+      "text": "Удаление. 28.Гернат Мартин (Локомотив). 2 мин. Толчок клюшкой.",
+      "time_s": "47:23",
+      "type": "violation"
+    },
+    {
+      "period": 3,
+      "score": "0:2",
+      "seconds": 2843,
+      "text": "Удаление. 94.Семёнов Кирилл Е. (Ак Барс). 2 мин. Грубость.",
+      "time_s": "47:23",
+      "type": "violation"
+    },
+    {
+      "period": 3,
+      "score": "0:2",
+      "seconds": 2392,
+      "text": "Начало 3 периода",
+      "time_s": "21:18",
+      "type": "state"
+    },
+    {
+      "period": null,
+      "score": "0:2",
+      "seconds": 2391,
+      "text": "Статистика после двух периодов: Броски: 30-35 ; Броски в створ: 14-17 ; Голы: 0-2 ; Вбрасывания: 19-17 ; Блокированные броски: 11-9 ; Силовые приемы: 24-14 ; Отборы: 3-1 ; Потери: 10-8 ; Перехваты: 2-2 ; Время в атаке: 08:52-06:45 ; Штраф: 4-6",
+      "time_s": "- мин",
+      "type": "info"
+    },
+    {
+      "period": null,
+      "score": "0:2",
+      "seconds": 2390,
+      "text": "Статистика 2-го периода: Броски: 16-15 ; Броски в створ: 12-10 ; Голы: 0-0 ; Вбрасывания: 9-9 ; Блокированные броски: 3-1 ; Силовые приемы: 15-5 ; Отборы: 2-1 ; Потери: 7-2 ; Перехваты: 0-1 ; Время в атаке: 05:17-03:07 ; Штраф: 0-4",
+      "time_s": "- мин",
+      "type": "info"
+    },
+    {
+      "period": 2,
+      "score": "0:2",
+      "seconds": 2389,
+      "text": "Окончание 2 периода",
+      "time_s": "20:59",
+      "type": "state"
+    },
+    {
+      "period": 2,
+      "score": "0:2",
+      "seconds": 2388,
+      "text": "Удаление. 5.Береглазов Алексей (Локомотив). 2 мин. Толчок клюшкой.",
+      "time_s": "39:48",
+      "type": "violation"
+    },
+    {
+      "period": 2,
+      "score": "0:2",
+      "seconds": 1370,
+      "text": "Удаление. 51.Фрэз Байрон (Локомотив). 2 мин. Подножка.",
+      "time_s": "22:50",
+      "type": "violation"
+    },
+    {
+      "period": 2,
+      "score": "0:2",
+      "seconds": 1070,
+      "text": "Начало 2 периода",
+      "time_s": "20:24",
+      "type": "state"
+    },
+    {
+      "period": null,
+      "score": "0:2",
+      "seconds": 1069,
+      "text": "Статистика 1-го периода: Броски: 14-20 ; Броски в створ: 2-7 ; Голы: 0-2 ; Вбрасывания: 10-8 ; Блокированные броски: 8-8 ; Силовые приемы: 9-9 ; Отборы: 1-0 ; Потери: 3-6 ; Перехваты: 2-1 ; Время в атаке: 03:35-03:38 ; Штраф: 4-2",
+      "time_s": "- мин",
+      "type": "info"
+    },
+    {
+      "period": 1,
+      "score": "0:2",
+      "seconds": 1068,
+      "text": "Окончание 1 периода",
+      "time_s": "20:06",
+      "type": "state"
+    },
+    {
+      "period": 1,
+      "score": "0:2",
+      "seconds": 1067,
+      "text": "Удаление. 51.Фрэз Байрон (Локомотив). 2 мин. Удар клюшкой.",
+      "time_s": "17:47",
+      "type": "violation"
+    },
+    {
+      "period": 1,
+      "score": "0:2",
+      "seconds": 992,
+      "text": "Удаление. 86.Дыняк Никита (Ак Барс). 2 мин. Толчок клюшкой.",
+      "time_s": "16:32",
+      "type": "violation"
+    },
+    {
+      "period": 1,
+      "score": "0:2",
+      "seconds": 835,
+      "text": "Изменение счета. 0:2. 70.Сурин Егор (63.Красковский Павел, 7.Кирьянов Никита В.). Локомотив. В равенстве",
+      "time_s": "13:55",
+      "type": "goal"
+    },
+    {
+      "period": 1,
+      "score": "0:1",
+      "seconds": 303,
+      "text": "Удаление. 24.Сафонов Илья (Ак Барс). 2 мин. Выброс шайбы.",
+      "time_s": "05:03",
+      "type": "violation"
+    },
+    {
+      "period": 1,
+      "score": "0:1",
+      "seconds": 245,
+      "text": "Изменение счета. 0:1. 70.Сурин Егор (7.Кирьянов Никита В., 63.Красковский Павел). Локомотив. В равенстве",
+      "time_s": "04:05",
+      "type": "goal"
+    },
+    {
+      "period": 1,
+      "score": "0:0",
+      "seconds": 5,
+      "text": "Начало 1 периода",
+      "time_s": "19:32",
+      "type": "state"
+    },
+    {
+      "period": null,
+      "score": "0:0",
+      "seconds": 4,
+      "text": "Начало игры",
+      "time_s": "19:30",
+      "type": "state"
+    },
+    {
+      "period": null,
+      "score": "0:0",
+      "seconds": 3,
+      "text": "Ак Барс: Билялов, Миллер-Лямкин, Барабанов-Сафонов-Галимов",
+      "time_s": "- мин",
+      "type": "info"
+    },
+    {
+      "period": null,
+      "score": "0:0",
+      "seconds": 2,
+      "text": "Локомотив: Исаев, Елесин-Береглазов, Паник-Фрэз-Радулов",
+      "time_s": "- мин",
+      "type": "info"
+    },
+    {
+      "period": null,
+      "score": "0:0",
+      "seconds": 1,
+      "text": "Стартовые составы команд:",
+      "time_s": "- мин",
+      "type": "info"
+    }
+  ],
+  "violations": [
+    {
+      "penalty_reason": "Толчок клюшкой",
+      "penalty_time": 2,
+      "period": 3,
+      "time": 2843,
+      "violator": {
+        "name": "Гернат Мартин",
+        "shirt_number": 28,
+        "team": {
+          "id": 26
+        },
+        "team_id": 26
+      }
+    },
+    {
+      "penalty_reason": "Грубость",
+      "penalty_time": 2,
+      "period": 3,
+      "time": 2843,
+      "violator": {
+        "name": "Семёнов Кирилл Е.",
+        "shirt_number": 94,
+        "team": {
+          "id": 40
+        },
+        "team_id": 40
+      }
+    },
+    {
+      "penalty_reason": "Толчок клюшкой",
+      "penalty_time": 2,
+      "period": 2,
+      "time": 2388,
+      "violator": {
+        "name": "Береглазов Алексей",
+        "shirt_number": 5,
+        "team": {
+          "id": 26
+        },
+        "team_id": 26
+      }
+    },
+    {
+      "penalty_reason": "Подножка",
+      "penalty_time": 2,
+      "period": 2,
+      "time": 1370,
+      "violator": {
+        "name": "Фрэз Байрон",
+        "shirt_number": 51,
+        "team": {
+          "id": 26
+        },
+        "team_id": 26
+      }
+    },
+    {
+      "penalty_reason": "Удар клюшкой",
+      "penalty_time": 2,
+      "period": 1,
+      "time": 1067,
+      "violator": {
+        "name": "Фрэз Байрон",
+        "shirt_number": 51,
+        "team": {
+          "id": 26
+        },
+        "team_id": 26
+      }
+    },
+    {
+      "penalty_reason": "Толчок клюшкой",
+      "penalty_time": 2,
+      "period": 1,
+      "time": 992,
+      "violator": {
+        "name": "Дыняк Никита",
+        "shirt_number": 86,
+        "team": {
+          "id": 40
+        },
+        "team_id": 40
+      }
+    },
+    {
+      "penalty_reason": "Выброс шайбы",
+      "penalty_time": 2,
+      "period": 1,
+      "time": 303,
+      "violator": {
+        "name": "Сафонов Илья",
+        "shirt_number": 24,
+        "team": {
+          "id": 40
+        },
+        "team_id": 40
+      }
+    }
+  ]
+}

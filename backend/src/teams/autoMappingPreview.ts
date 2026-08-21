@@ -10,7 +10,7 @@ import {
 import { buildTeamMappingLookup, findTeamMapping } from "@backend/teams/mappingLookup";
 import { isPlaceholderTeam, normalizeTeamName } from "@backend/teams/teams";
 
-const AUTO_MAP_MIN_SCORE = 90;
+const AUTO_MAP_MIN_SCORE = 85;
 const AUTO_MAP_SUGGESTED_MIN_SCORE = 75;
 const MANUAL_CONFLICT_MIN_SCORE = 92;
 const MAX_FULL_SCAN_CANDIDATES = 800;

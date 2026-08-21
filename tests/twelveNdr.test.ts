@@ -35,6 +35,7 @@ test("12ndr calendar parser keeps CSVP rows and extracts tcode", () => {
     calendarMode: "csvp",
     season: 2026,
     gender: "men",
+    now: new Date("2026-06-11T00:00:00.000Z"),
   });
   const women = parseTwelveNdrCalendarJson(json, {
     source: "twelvendrcsvp",
@@ -134,6 +135,7 @@ test("12ndr tournament filter drops completed tournaments", () => {
     calendarMode: "csvp",
     season: 2099,
     gender: "men",
+    now: new Date("2026-06-11T00:00:00.000Z"),
   });
 
   assert.deepEqual(

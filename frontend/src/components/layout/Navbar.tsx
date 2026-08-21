@@ -26,6 +26,10 @@ const tabletNavItems = [
   { href: "/tablet/wtt", label: "WTT" }
 ];
 
+const resultsNavItems = [
+  { href: "/results/khl", label: "КХЛ" }
+];
+
 function isActivePath(pathname: string, href: string) {
   return pathname === href || (href !== "/" && pathname.startsWith(href));
 }
@@ -42,12 +46,17 @@ function isTableTPath(pathname: string) {
   return isActivePath(pathname, "/tablet");
 }
 
+function isResultsPath(pathname: string) {
+  return isActivePath(pathname, "/results");
+}
+
 export function PlatformTabs() {
   const pathname = usePathname();
   const isTdataActive = isTdataPath(pathname);
   const isManualImportActive = isActivePath(pathname, "/manual-import");
   const isTbvolleyActive = isTbvolleyPath(pathname);
   const isTableTActive = isTableTPath(pathname);
+  const isResultsActive = isResultsPath(pathname);
   const isSettingsActive = isActivePath(pathname, "/settings");
   const isSandboxActive = isActivePath(pathname, "/sandbox");
 
@@ -103,6 +112,19 @@ export function PlatformTabs() {
         <span className="relative z-10">TableT</span>
         {isTableTActive && (
           <span className="absolute inset-x-3 bottom-1 h-0.5 rounded-full bg-cyan-600 animate-slide-in" />
+        )}
+      </Link>
+      <Link
+        href="/results/khl"
+        className={`relative shrink-0 rounded-lg px-3 py-2 text-sm font-bold transition-all duration-200 active:scale-[0.95] will-change-transform ${
+          isResultsActive
+            ? "bg-blue-50 text-blue-700 ring-1 ring-blue-100 shadow-sm"
+            : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+        }`}
+      >
+        <span className="relative z-10">Результаты</span>
+        {isResultsActive && (
+          <span className="absolute inset-x-3 bottom-1 h-0.5 rounded-full bg-blue-600 animate-slide-in" />
         )}
       </Link>
       <Link
@@ -188,6 +210,35 @@ export default function Navbar() {
               <span className="relative z-10">{item.label}</span>
               {isActive && (
                 <span className="absolute inset-x-3 bottom-1 h-0.5 rounded-full bg-cyan-600 animate-slide-in" />
+              )}
+            </Link>
+          );
+        })}
+      </nav>
+    );
+  }
+
+  if (isResultsPath(pathname)) {
+    return (
+      <nav
+        aria-label="Навигация результатов"
+        className="flex min-w-0 items-center gap-1 overflow-x-auto border-t border-slate-200/70 py-2"
+      >
+        {resultsNavItems.map((item) => {
+          const isActive = isActivePath(pathname, item.href);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={`relative shrink-0 rounded-lg px-3 py-2 text-sm font-bold transition-all duration-200 active:scale-[0.95] will-change-transform ${
+                isActive
+                  ? "bg-blue-50 text-blue-700 ring-1 ring-blue-100 shadow-sm"
+                  : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+              }`}
+            >
+              <span className="relative z-10">{item.label}</span>
+              {isActive && (
+                <span className="absolute inset-x-3 bottom-1 h-0.5 rounded-full bg-blue-600 animate-slide-in" />
               )}
             </Link>
           );

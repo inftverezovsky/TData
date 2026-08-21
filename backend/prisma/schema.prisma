@@ -211,7 +211,7 @@ model SourceFetchCache {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
-  @@unique([source, disciplineSlug, resourceType, resourceKey, mode])
+  @@unique([source, disciplineSlug, resourceType, resourceKey, mode], map: "SourceFetchCache_source_disciplineSlug_resourceType_resourceKey")
   @@index([source, disciplineSlug, resourceType])
   @@index([cacheUntil])
   @@index([staleUntil])
@@ -332,7 +332,7 @@ model ManualImportTeamMapping {
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
-  @@unique([disciplineSlug, adminSportId, normalizedTeamName])
+  @@unique([disciplineSlug, adminSportId, normalizedTeamName], map: "ManualImportTeamMapping_disciplineSlug_adminSportId_normalizedT")
   @@index([disciplineSlug, adminSportId])
   @@index([platformId])
 }
@@ -392,4 +392,308 @@ model AdminUploadLog {
   @@index([disciplineSlug])
   @@index([tournamentId])
   @@unique([disciplineSlug, tournamentId, payloadHash])
+}
+
+enum KhlMatchState {
+  SCHEDULED
+  LIVE
+  FINISHED
+  CANCELLED
+  UNKNOWN
+}
+
+enum KhlBindingStatus {
+  UNMAPPED
+  SUGGESTED
+  CONFIRMED
+  REJECTED
+  AMBIGUOUS
+}
+
+enum KhlBindingMode {
+  AUTO
+  MANUAL
+}
+
+enum KhlRevisionState {
+  VALIDATED
+  REJECTED
+}
+
+enum KhlSnapshotResource {
+  BOOTSTRAP
+  SCHEDULE
+  EVENT_DETAIL
+  PROTOCOL
+}
+
+enum KhlStatScope {
+  TEAM
+  PLAYER
+}
+
+enum KhlDeliveryState {
+  PENDING
+  IN_FLIGHT
+  ACKNOWLEDGED
+  FAILED
+  UNKNOWN
+}
+
+model KhlTeam {
+  id                 String           @id @default(cuid())
+  khlTeamId          String           @unique
+  apiTeamId          String?          @unique
+  name               String
+  location           String?
+  logoUrl            String?
+  adminTeamId        String?          @unique
+  adminBindingStatus KhlBindingStatus @default(UNMAPPED)
+  adminConfirmedAt   DateTime?
+  adminConfirmedBy   String?
+  firstSeenAt        DateTime         @default(now())
+  lastSeenAt         DateTime         @default(now())
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  homeMatches     KhlMatch[]            @relation("KhlHomeTeam")
+  awayMatches     KhlMatch[]            @relation("KhlAwayTeam")
+  participants    KhlMatchParticipant[]
+  teamStatTargets KhlTeamStatTarget[]
+
+  @@index([apiTeamId])
+  @@index([adminBindingStatus])
+}
+
+model KhlPlayer {
+  id                 String           @id @default(cuid())
+  khlPlayerId        String           @unique
+  apiPlayerId        String?          @unique
+  name               String
+  role               String?
+  adminPlayerId      String?          @unique
+  adminBindingStatus KhlBindingStatus @default(UNMAPPED)
+  adminConfirmedAt   DateTime?
+  adminConfirmedBy   String?
+  firstSeenAt        DateTime         @default(now())
+  lastSeenAt         DateTime         @default(now())
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  participants KhlMatchParticipant[]
+
+  @@index([apiPlayerId])
+  @@index([adminBindingStatus])
+}
+
+model KhlMatch {
+  id                  String           @id @default(cuid())
+  khlGameId           String           @unique
+  apiEventId          String           @unique
+  sourceMatchId       String           @unique
+  stageId             String
+  khlStageId          String
+  stageName           String?
+  season              String
+  startsAt            DateTime
+  status              KhlMatchState
+  homeTeamId          String
+  awayTeamId          String
+  officialHomeScore   Int?
+  officialAwayScore   Int?
+  regulationHomeScore Int?
+  regulationAwayScore Int?
+  activeRevisionId    String?          @unique
+  adminMatchId        String?          @unique
+  adminBindingStatus  KhlBindingStatus @default(UNMAPPED)
+  adminBindingMode    KhlBindingMode?
+  adminConfirmedAt    DateTime?
+  adminConfirmedBy    String?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  homeTeam        KhlTeam               @relation("KhlHomeTeam", fields: [homeTeamId], references: [id], onDelete: Restrict)
+  awayTeam        KhlTeam               @relation("KhlAwayTeam", fields: [awayTeamId], references: [id], onDelete: Restrict)
+  activeRevision  KhlMatchRevision?     @relation("KhlActiveRevision", fields: [activeRevisionId], references: [id], onDelete: SetNull)
+  revisions       KhlMatchRevision[]    @relation("KhlMatchRevisions")
+  rawSnapshots    KhlRawSnapshot[]
+  participants    KhlMatchParticipant[]
+  teamStatTargets KhlTeamStatTarget[]
+
+  @@index([stageId, startsAt])
+  @@index([khlStageId, startsAt])
+  @@index([homeTeamId, awayTeamId, startsAt])
+  @@index([adminBindingStatus])
+}
+
+model KhlRawSnapshot {
+  id             String              @id @default(cuid())
+  matchId        String?
+  resourceType   KhlSnapshotResource
+  externalKey    String
+  sourceUrl      String              @db.Text
+  contentType    String?
+  contentHash    String              @db.Char(64)
+  rawBody        Bytes
+  firstFetchedAt DateTime
+  lastFetchedAt  DateTime
+  fetchCount     Int                 @default(1)
+  createdAt      DateTime            @default(now())
+
+  match     KhlMatch?          @relation(fields: [matchId], references: [id], onDelete: SetNull)
+  revisions KhlMatchRevision[]
+
+  @@unique([resourceType, externalKey, contentHash])
+  @@index([matchId, lastFetchedAt])
+  @@index([contentHash])
+}
+
+model KhlMatchRevision {
+  id               String           @id @default(cuid())
+  matchId          String
+  snapshotId       String
+  revisionNumber   Int
+  normalizedHash   String           @db.Char(64)
+  parserVersion    String
+  rulesVersion     String
+  state            KhlRevisionState
+  normalizedJson   Json
+  validationIssues Json
+  createdAt        DateTime         @default(now())
+  validatedAt      DateTime?
+
+  match          KhlMatch       @relation("KhlMatchRevisions", fields: [matchId], references: [id], onDelete: Cascade)
+  snapshot       KhlRawSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Restrict)
+  activeForMatch KhlMatch?      @relation("KhlActiveRevision")
+  deliveries     KhlDelivery[]
+
+  @@unique([matchId, revisionNumber])
+  @@unique([matchId, normalizedHash, parserVersion, rulesVersion])
+  @@index([matchId, state, createdAt])
+}
+
+model KhlMatchParticipant {
+  id                      String           @id @default(cuid())
+  matchId                 String
+  teamId                  String
+  playerId                String
+  shirtNumber             Int
+  role                    String
+  isListed                Boolean          @default(true)
+  adminMatchPlayerId      String?          @unique
+  adminBindingStatus      KhlBindingStatus @default(UNMAPPED)
+  adminConfirmedAt        DateTime?
+  adminConfirmedBy        String?
+  firstSeenRevisionNumber Int
+  lastSeenRevisionNumber  Int
+  createdAt               DateTime         @default(now())
+  updatedAt               DateTime         @updatedAt
+
+  match             KhlMatch              @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  team              KhlTeam               @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  player            KhlPlayer             @relation(fields: [playerId], references: [id], onDelete: Restrict)
+  playerStatTargets KhlPlayerStatTarget[]
+
+  @@unique([matchId, playerId])
+  @@index([matchId, teamId, isListed])
+  @@index([adminBindingStatus])
+}
+
+model KhlStatMapping {
+  id                 String           @id @default(cuid())
+  scope              KhlStatScope
+  semanticCode       String
+  adminStatTypeId    String?
+  adminBindingStatus KhlBindingStatus @default(UNMAPPED)
+  adminConfirmedAt   DateTime?
+  adminConfirmedBy   String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  teamTargets   KhlTeamStatTarget[]
+  playerTargets KhlPlayerStatTarget[]
+
+  @@unique([scope, semanticCode])
+  @@unique([scope, adminStatTypeId])
+  @@index([adminBindingStatus])
+}
+
+model KhlTeamStatTarget {
+  id                 String           @id @default(cuid())
+  matchId            String
+  teamId             String
+  statMappingId      String
+  adminMatchStatId   String?          @unique
+  adminBindingStatus KhlBindingStatus @default(UNMAPPED)
+  adminConfirmedAt   DateTime?
+  adminConfirmedBy   String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  match       KhlMatch       @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  team        KhlTeam        @relation(fields: [teamId], references: [id], onDelete: Restrict)
+  statMapping KhlStatMapping @relation(fields: [statMappingId], references: [id], onDelete: Restrict)
+
+  @@unique([matchId, teamId, statMappingId])
+  @@index([adminBindingStatus])
+}
+
+model KhlPlayerStatTarget {
+  id                 String           @id @default(cuid())
+  participantId      String
+  statMappingId      String
+  adminPlayerStatId  String?          @unique
+  adminBindingStatus KhlBindingStatus @default(UNMAPPED)
+  adminConfirmedAt   DateTime?
+  adminConfirmedBy   String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  participant KhlMatchParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  statMapping KhlStatMapping      @relation(fields: [statMappingId], references: [id], onDelete: Restrict)
+
+  @@unique([participantId, statMappingId])
+  @@index([adminBindingStatus])
+}
+
+model KhlDelivery {
+  id              String           @id @default(cuid())
+  revisionId      String
+  adminMatchId    String
+  endpointVersion String
+  payloadHash     String           @db.Char(64)
+  idempotencyKey  String           @unique @db.Char(64)
+  payloadJson     Json
+  state           KhlDeliveryState @default(PENDING)
+  leaseToken      String?
+  leaseUntil      DateTime?
+  acknowledgedAt  DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  revision KhlMatchRevision     @relation(fields: [revisionId], references: [id], onDelete: Restrict)
+  attempts KhlDeliveryAttempt[]
+
+  @@unique([revisionId, adminMatchId, endpointVersion, payloadHash])
+  @@index([state, leaseUntil])
+}
+
+model KhlDeliveryAttempt {
+  id              String           @id @default(cuid())
+  deliveryId      String
+  attemptNumber   Int
+  state           KhlDeliveryState
+  startedAt       DateTime         @default(now())
+  completedAt     DateTime?
+  httpStatus      Int?
+  responseHash    String?          @db.Char(64)
+  responseExcerpt String?          @db.Text
+  errorClass      String?
+  errorMessage    String?          @db.Text
+  createdAt       DateTime         @default(now())
+
+  delivery KhlDelivery @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  @@unique([deliveryId, attemptNumber])
+  @@index([state, startedAt])
 }

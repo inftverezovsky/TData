@@ -36,7 +36,7 @@
     "lucide-react": "^1.14.0",
     "luxon": "^3.7.2",
     "minimist": "^1.2.8",
-    "next": "^16.2.6",
+    "next": "16.3.1",
     "node-fetch": "^2.7.0",
     "playwright": "^1.59.1",
     "playwright-extra": "^4.3.6",
@@ -45,7 +45,7 @@
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "read-excel-file": "^9.0.9",
-    "sharp": "^0.34.5",
+    "sharp": "0.35.3",
     "socks-proxy-agent": "^10.0.0",
     "swr": "^2.4.1",
     "tailwind-merge": "^3.5.0",
@@ -60,8 +60,8 @@
     "autoprefixer": "^10.4.20",
     "cross-env": "^7.0.3",
     "eslint": "^9.39.4",
-    "eslint-config-next": "^16.2.6",
-    "postcss": "8.5.15",
+    "eslint-config-next": "16.3.1",
+    "postcss": "8.5.26",
     "prisma": "^5.22.0",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.19.2",
@@ -76,16 +76,16 @@
   },
   "overrides": {
     "glob": "10.5.0",
-    "postcss": "8.5.15"
+    "postcss": "8.5.26"
   },
   "optionalDependencies": {
-    "@next/swc-darwin-arm64": "16.2.6",
-    "@next/swc-darwin-x64": "16.2.6",
-    "@next/swc-linux-arm64-gnu": "16.2.6",
-    "@next/swc-linux-arm64-musl": "16.2.6",
-    "@next/swc-linux-x64-gnu": "16.2.6",
-    "@next/swc-linux-x64-musl": "16.2.6",
-    "@next/swc-win32-arm64-msvc": "16.2.6",
-    "@next/swc-win32-x64-msvc": "16.2.6"
+    "@next/swc-darwin-arm64": "16.3.1",
+    "@next/swc-darwin-x64": "16.3.1",
+    "@next/swc-linux-arm64-gnu": "16.3.1",
+    "@next/swc-linux-arm64-musl": "16.3.1",
+    "@next/swc-linux-x64-gnu": "16.3.1",
+    "@next/swc-linux-x64-musl": "16.3.1",
+    "@next/swc-win32-arm64-msvc": "16.3.1",
+    "@next/swc-win32-x64-msvc": "16.3.1"
   }
 }
