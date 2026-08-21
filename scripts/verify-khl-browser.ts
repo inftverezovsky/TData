@@ -130,8 +130,7 @@ async function main() {
   await visible(page.getByTestId("khl-settings-workspace")).toBeVisible();
   const settingsTabs = settingsTabList(page);
   for (const [testId, label] of [
-    ["khl-tab-players", "Игроки"],
-    ["khl-tab-teams", "Команды"],
+    ["khl-tab-teams-players", "Команды и игроки"],
     ["khl-tab-matches", "Матчи"],
     ["khl-tab-statistics", "Статистика"],
     ["khl-tab-extras", "Допы"],
@@ -224,17 +223,11 @@ async function main() {
   assert.equal(repeatedIngestBody.idempotency.reusedRevision, true);
   assert.equal(repeatedIngestBody.idempotency.activated, false);
 
-  await selectSettingsTab(page, "players");
-  const playerTeamGroups = settingsWorkspace(page).getByTestId("khl-player-team-group");
+  await selectSettingsTab(page, "teams-players");
+  const playerTeamGroups = settingsWorkspace(page).getByTestId("khl-team-player-group");
   await visible(playerTeamGroups).toHaveCount(2);
-  assert.equal(await playerTeamGroups.evaluateAll((nodes) => (
-    nodes.every((node) => !(node as HTMLDetailsElement).open)
-  )), true);
-  const firstPlayerTeam = playerTeamGroups.first();
-  await firstPlayerTeam.getByTestId("khl-player-team-summary").click();
-  assert.equal(await firstPlayerTeam.evaluate((node) => (node as HTMLDetailsElement).open), true);
-  await visible(firstPlayerTeam.locator("article").first()).toBeVisible();
-  await visible(firstPlayerTeam.getByPlaceholder("Admin player ID").first()).toBeVisible();
+  await visible(settingsWorkspace(page).getByTestId("khl-team-players-locked")).toHaveCount(2);
+  await expect(settingsWorkspace(page).getByTestId("khl-team-players-disclosure")).toHaveCount(0);
 
   await selectRootTab(page, "results");
   await selectResultsTab(page, "archive");
@@ -291,9 +284,18 @@ async function main() {
   assert.ok(blockedPreview.issues.length > 0);
   await visible(matchCard.getByText(/BLOCKED · \d+/)).toBeVisible();
 
-  await selectSettingsTab(page, "teams");
+  await selectSettingsTab(page, "teams-players");
   await confirmTeam(page, scheduleEvent.teams.home.khlTeamId, "e2e-admin-team-home");
   await confirmTeam(page, scheduleEvent.teams.away.khlTeamId, "e2e-admin-team-away");
+  const unlockedPlayerGroups = settingsWorkspace(page).getByTestId("khl-team-players-disclosure");
+  await visible(unlockedPlayerGroups).toHaveCount(2);
+  assert.equal(await unlockedPlayerGroups.evaluateAll((nodes) => (
+    nodes.every((node) => !(node as HTMLDetailsElement).open)
+  )), true);
+  const firstPlayerTeam = settingsWorkspace(page).getByTestId("khl-team-player-group").first();
+  await firstPlayerTeam.getByTestId("khl-team-players-summary").click();
+  await expect(firstPlayerTeam.getByTestId("khl-team-players-disclosure")).toHaveAttribute("open", "");
+  await visible(firstPlayerTeam.getByPlaceholder("Admin player ID").first()).toBeVisible();
 
   await selectSettingsTab(page, "matches");
   matchCard = settingsMatchCard(page);
@@ -537,7 +539,7 @@ async function selectRootTab(page: Page, tab: "settings" | "results") {
 
 async function selectSettingsTab(
   page: Page,
-  tab: "players" | "teams" | "matches" | "statistics" | "extras"
+  tab: "teams-players" | "matches" | "statistics" | "extras"
 ) {
   await settingsTabList(page).getByTestId(`khl-tab-${tab}`).click();
 }
@@ -575,13 +577,13 @@ async function openDetails(details: Locator) {
 }
 
 async function confirmTeam(page: Page, khlTeamId: string, adminTeamId: string) {
-  const teamRow = settingsWorkspace(page).locator("article").filter({
+  const teamRow = settingsWorkspace(page).getByTestId("khl-team-player-group").filter({
     hasText: `KHL ${khlTeamId} ·`,
   }).first();
   const input = teamRow.getByPlaceholder("Admin team ID");
   await input.fill(adminTeamId);
   const responsePromise = waitForApiResponse(page, "/api/results/khl/bindings/team", "POST");
-  await teamRow.getByRole("button", { name: "Подтвердить", exact: true }).click();
+  await teamRow.getByRole("button", { name: "Подтвердить команду", exact: true }).click();
   assert.equal((await responsePromise).status(), 200);
 }
 

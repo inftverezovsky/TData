@@ -15,8 +15,7 @@ test("KHL operator navigation keeps settings and results concerns separate", () 
     ["results", "Результаты"],
   ]);
   assert.deepEqual(KHL_SETTINGS_TABS.map((tab) => [tab.id, tab.label]), [
-    ["players", "Игроки"],
-    ["teams", "Команды"],
+    ["teams-players", "Команды и игроки"],
     ["matches", "Матчи"],
     ["statistics", "Статистика"],
     ["extras", "Допы"],
