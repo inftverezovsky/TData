@@ -9,6 +9,7 @@ import {
   type KhlTargetBindingsTemplate,
 } from "@/components/results/khl/KhlTargetBindingsForm";
 import { KhlTabs } from "@/components/results/khl/KhlTabs";
+import { groupKhlSettingsPlayersByTeam } from "@/components/results/khl/khlSettingsViewModel";
 import {
   KHL_EXTRA_MAPPING_DRAFTS,
   KHL_SETTINGS_TABS,
@@ -114,6 +115,7 @@ function PlayersSettings({
         .some((value) => value.toLocaleLowerCase("ru-RU").includes(normalized));
     });
   }, [directory?.players, query, status]);
+  const playerGroups = useMemo(() => groupKhlSettingsPlayersByTeam(players), [players]);
 
   return (
     <SettingsPanel
@@ -127,54 +129,87 @@ function PlayersSettings({
         onStatusChange={setStatus}
         placeholder="ФИО, KHL ID, команда или Admin ID"
       />
-      <div className="mt-4 grid gap-3 xl:grid-cols-2">
-        {players.map((player) => {
-          const key = `player-global:${player.khlPlayerId}`;
-          const confirmed = player.adminBindingStatus === "CONFIRMED";
-          return (
-            <article key={player.khlPlayerId} className="rounded-2xl border border-slate-200 bg-white p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h4 className="font-black text-slate-950">{player.name}</h4>
-                  <p className="mt-1 text-[11px] text-slate-500">
-                    KHL {player.khlPlayerId} · {player.role || "роль не указана"} · матчей: {player.matchCount}
-                  </p>
-                  {player.recentAppearance && (
-                    <p className="mt-1 text-[11px] font-bold text-blue-700">
-                      {player.recentAppearance.team.name} · последний матч KHL {player.recentAppearance.khlGameId}
-                    </p>
-                  )}
-                </div>
-                <BindingBadge status={player.adminBindingStatus} />
+      <div className="mt-4 space-y-3">
+        {playerGroups.map((group) => (
+          <details
+            key={group.key}
+            data-testid="khl-player-team-group"
+            className="group overflow-hidden rounded-2xl border border-slate-200 bg-white"
+          >
+            <summary
+              data-testid="khl-player-team-summary"
+              className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 p-4 transition-colors hover:bg-slate-50 [&::-webkit-details-marker]:hidden"
+            >
+              <div>
+                <h4 className="font-black text-slate-950">{group.teamName}</h4>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  {group.khlTeamId ? `KHL team ${group.khlTeamId}` : "Команда не определена"}
+                </p>
               </div>
-              <div className="mt-3">
-                <KhlAdminDirectoryPicker
-                  defaultQuery={player.name}
-                  disabled={confirmed}
-                  placeholder="Фамилия, имя или Admin ID"
-                  onSelect={(suggestion) => onBindingValueChange(key, suggestion.platformId)}
-                />
+              <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold">
+                <span className="rounded-full bg-blue-50 px-3 py-1 text-blue-700">
+                  Игроков: {group.players.length}
+                </span>
+                <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-700">
+                  Привязано: {group.confirmedCount}
+                </span>
+                <span className="min-w-20 text-right text-blue-700">
+                  <span className="group-open:hidden">Открыть</span>
+                  <span className="hidden group-open:inline">Свернуть</span>
+                </span>
               </div>
-              <div className="mt-3 flex gap-2">
-                <input
-                  value={bindingValues[key] ?? player.adminPlayerId ?? ""}
-                  disabled={confirmed}
-                  onChange={(event) => onBindingValueChange(key, event.target.value)}
-                  placeholder="Admin player ID"
-                  className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs disabled:bg-emerald-50"
-                />
-                <button
-                  type="button"
-                  onClick={() => onSavePlayer(player)}
-                  disabled={confirmed || !player.recentAppearance || busyKey === key}
-                  className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-black text-white disabled:opacity-40"
-                >
-                  {confirmed ? "Сохранено" : busyKey === key ? "Сохранение…" : "Подтвердить"}
-                </button>
-              </div>
-            </article>
-          );
-        })}
+            </summary>
+            <div className="grid gap-3 border-t border-slate-200 bg-slate-50/60 p-4 xl:grid-cols-2">
+              {group.players.map((player) => {
+                const key = `player-global:${player.khlPlayerId}`;
+                const confirmed = player.adminBindingStatus === "CONFIRMED";
+                return (
+                  <article key={player.khlPlayerId} className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h5 className="font-black text-slate-950">{player.name}</h5>
+                        <p className="mt-1 text-[11px] text-slate-500">
+                          KHL {player.khlPlayerId} · {player.role || "роль не указана"} · матчей: {player.matchCount}
+                        </p>
+                        {player.recentAppearance && (
+                          <p className="mt-1 text-[11px] font-bold text-blue-700">
+                            Последний матч KHL {player.recentAppearance.khlGameId}
+                          </p>
+                        )}
+                      </div>
+                      <BindingBadge status={player.adminBindingStatus} />
+                    </div>
+                    <div className="mt-3">
+                      <KhlAdminDirectoryPicker
+                        defaultQuery={player.name}
+                        disabled={confirmed}
+                        placeholder="Фамилия, имя или Admin ID"
+                        onSelect={(suggestion) => onBindingValueChange(key, suggestion.platformId)}
+                      />
+                    </div>
+                    <div className="mt-3 flex gap-2">
+                      <input
+                        value={bindingValues[key] ?? player.adminPlayerId ?? ""}
+                        disabled={confirmed}
+                        onChange={(event) => onBindingValueChange(key, event.target.value)}
+                        placeholder="Admin player ID"
+                        className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs disabled:bg-emerald-50"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => onSavePlayer(player)}
+                        disabled={confirmed || !player.recentAppearance || busyKey === key}
+                        className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-black text-white disabled:opacity-40"
+                      >
+                        {confirmed ? "Сохранено" : busyKey === key ? "Сохранение…" : "Подтвердить"}
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </details>
+        ))}
       </div>
       {players.length === 0 && <EmptyState text="Игроки по выбранному фильтру не найдены." />}
     </SettingsPanel>

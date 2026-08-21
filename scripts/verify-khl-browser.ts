@@ -224,6 +224,18 @@ async function main() {
   assert.equal(repeatedIngestBody.idempotency.reusedRevision, true);
   assert.equal(repeatedIngestBody.idempotency.activated, false);
 
+  await selectSettingsTab(page, "players");
+  const playerTeamGroups = settingsWorkspace(page).getByTestId("khl-player-team-group");
+  await visible(playerTeamGroups).toHaveCount(2);
+  assert.equal(await playerTeamGroups.evaluateAll((nodes) => (
+    nodes.every((node) => !(node as HTMLDetailsElement).open)
+  )), true);
+  const firstPlayerTeam = playerTeamGroups.first();
+  await firstPlayerTeam.getByTestId("khl-player-team-summary").click();
+  assert.equal(await firstPlayerTeam.evaluate((node) => (node as HTMLDetailsElement).open), true);
+  await visible(firstPlayerTeam.locator("article").first()).toBeVisible();
+  await visible(firstPlayerTeam.getByPlaceholder("Admin player ID").first()).toBeVisible();
+
   await selectRootTab(page, "results");
   await selectResultsTab(page, "archive");
   const resultArticle = resultMatchArticle(page);
@@ -479,6 +491,7 @@ async function main() {
     transportExecuted: false,
     finalDiff: "UNCHANGED",
     automationControl: "PAUSE_PERSISTED_THEN_RESUMED",
+    playerTeamGroups: 2,
     browserConsoleErrors: unexpectedBrowserErrors.length,
   }, null, 2)}\n`);
   } finally {
