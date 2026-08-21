@@ -2,6 +2,7 @@ import type { KhlMatchProtocolView } from "@backend/results/khl/matchProtocol";
 
 type Props = {
   protocol: KhlMatchProtocolView | null;
+  section?: "all" | "overview" | "players" | "statistics";
 };
 
 const PLAYER_POINT_COLUMNS = [
@@ -10,11 +11,47 @@ const PLAYER_POINT_COLUMNS = [
   { key: "points", label: "О" },
 ] as const;
 
-export function KhlMatchProtocol({ protocol }: Props) {
+export function KhlMatchProtocol({ protocol, section = "all" }: Props) {
   if (!protocol) {
     return (
       <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
         Официальный протокол ещё не сохранён.
+      </div>
+    );
+  }
+
+  const body = (
+    <div className="mt-4 space-y-5">
+      {(section === "all" || section === "overview") && (
+        <>
+          <ScoreSummary protocol={protocol} />
+          <EventTables protocol={protocol} />
+        </>
+      )}
+      {(section === "all" || section === "players") && (
+        <PlayerTables protocol={protocol} />
+      )}
+      {(section === "all" || section === "statistics") && (
+        <TeamMetrics protocol={protocol} />
+      )}
+      {!protocol.validation.ok && (
+        <ul className="rounded-xl bg-red-50 p-4 text-xs text-red-900">
+          {protocol.validation.issues.map((issue, index) => (
+            <li key={`${issue}:${index}`}>• {issue}</li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+
+  if (section !== "all") {
+    return (
+      <div
+        data-testid={`khl-protocol-${section}`}
+        className="rounded-2xl border border-blue-200 bg-blue-50/40 p-4"
+      >
+        <ProtocolHeader protocol={protocol} section={section} />
+        {body}
       </div>
     );
   }
@@ -26,37 +63,41 @@ export function KhlMatchProtocol({ protocol }: Props) {
       className="mt-5 rounded-2xl border border-blue-200 bg-blue-50/40 p-4"
     >
       <summary className="cursor-pointer list-none">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <div className="text-xs font-black uppercase tracking-[0.14em] text-blue-700">
-              1. Официальный протокол КХЛ · доступен без Admin mappings
-            </div>
-            <div className="mt-1 text-sm font-black text-slate-950">
-              Командная статистика, все игроки, голы и штрафы
-            </div>
-          </div>
-          <span className={`rounded-full px-3 py-1 text-xs font-bold ${protocol.validation.ok
-            ? "bg-emerald-100 text-emerald-800"
-            : "bg-red-100 text-red-800"}`}>
-            {protocol.validation.ok ? "Протокол проверен" : "Показан, но доставка заблокирована"}
-          </span>
-        </div>
+        <ProtocolHeader protocol={protocol} section="all" />
       </summary>
-
-      <div className="mt-4 space-y-5">
-        <ScoreSummary protocol={protocol} />
-        <TeamMetrics protocol={protocol} />
-        <PlayerTables protocol={protocol} />
-        <EventTables protocol={protocol} />
-        {!protocol.validation.ok && (
-          <ul className="rounded-xl bg-red-50 p-4 text-xs text-red-900">
-            {protocol.validation.issues.map((issue, index) => (
-              <li key={`${issue}:${index}`}>• {issue}</li>
-            ))}
-          </ul>
-        )}
-      </div>
+      {body}
     </details>
+  );
+}
+
+function ProtocolHeader({
+  protocol,
+  section,
+}: {
+  protocol: KhlMatchProtocolView;
+  section: NonNullable<Props["section"]>;
+}) {
+  const title = section === "overview"
+    ? "Счёт, голы, удаления и события матча"
+    : section === "players"
+      ? "Все заявленные игроки и их статистика"
+      : section === "statistics"
+        ? "Командные показатели по периодам"
+        : "Командная статистика, все игроки, голы и штрафы";
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <div className="text-xs font-black uppercase tracking-[0.14em] text-blue-700">
+          Официальный протокол КХЛ · доступен без Admin mappings
+        </div>
+        <div className="mt-1 text-sm font-black text-slate-950">{title}</div>
+      </div>
+      <span className={`rounded-full px-3 py-1 text-xs font-bold ${protocol.validation.ok
+        ? "bg-emerald-100 text-emerald-800"
+        : "bg-red-100 text-red-800"}`}>
+        {protocol.validation.ok ? "Протокол проверен" : "Показан, но доставка заблокирована"}
+      </span>
+    </div>
   );
 }
 

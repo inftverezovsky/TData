@@ -35,6 +35,13 @@ function scheduleEvent(id: number) {
   };
 }
 
+function scheduleEventAt(id: number, startsAt: number) {
+  const wrapper = scheduleEvent(id);
+  wrapper.event.start_at = startsAt;
+  wrapper.event.event_start_at = startsAt;
+  return wrapper;
+}
+
 test("parses KHL stages and preserves API and web identity namespaces", () => {
   const stages = parseKhlStagesResponse({
     current_stage_id: 407,
@@ -129,11 +136,47 @@ test("paginates bounded KHL schedule queries with unix seconds", async () => {
     const url = new URL(value);
     assert.equal(url.origin + url.pathname, "https://khl.api.webcaster.pro/api/khl_mobile/events_v2.json");
     assert.equal(url.searchParams.get("stage_id"), "407");
-    assert.equal(url.searchParams.get("q[start_at_gt_time_from_unixtime]"), "1788220800");
-    assert.equal(url.searchParams.get("q[start_at_lt_time_from_unixtime]"), "1788825600");
+    assert.equal(url.searchParams.get("q[start_at_gt_time_from_unixtime]"), "1788220799");
+    assert.equal(url.searchParams.get("q[start_at_lt_time_from_unixtime]"), "1788825601");
     assert.equal(url.searchParams.get("order_direction"), "asc");
     assert.equal(url.searchParams.get("page"), String(index + 1));
   }
+});
+
+test("listEvents exposes an exact half-open interval over strict second API bounds", async () => {
+  const from = new Date("2026-09-05T12:00:00.500Z");
+  const to = new Date("2026-09-05T13:00:00.250Z");
+  const requestedUrls: string[] = [];
+  const atFrom = scheduleEventAt(102, from.getTime());
+  const fakeFetch: typeof fetch = async (input) => {
+    requestedUrls.push(String(input));
+    return new Response(JSON.stringify([
+      scheduleEventAt(101, from.getTime() - 1),
+      atFrom,
+      scheduleEventAt(103, to.getTime() - 1),
+      scheduleEventAt(104, to.getTime()),
+      scheduleEventAt(105, to.getTime() + 1),
+      atFrom,
+    ]), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+  const client = new KhlApiClient({ fetchImpl: fakeFetch });
+
+  const events = await client.listEvents({ stageId: "407", from, to });
+
+  assert.deepEqual(events.map((event) => event.apiEventId), ["102", "103"]);
+  assert.equal(requestedUrls.length, 1);
+  const query = new URL(requestedUrls[0]);
+  assert.equal(
+    query.searchParams.get("q[start_at_gt_time_from_unixtime]"),
+    String(Math.floor(from.getTime() / 1_000) - 1)
+  );
+  assert.equal(
+    query.searchParams.get("q[start_at_lt_time_from_unixtime]"),
+    String(Math.ceil(to.getTime() / 1_000) + 1)
+  );
 });
 
 test("detail lookup preserves the exact raw response for audit ingestion", async () => {

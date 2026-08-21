@@ -50,7 +50,12 @@ export async function GET(request: Request) {
           orderBy: { revisionNumber: "desc" },
           take: 1,
           select: {
+            id: true,
+            revisionNumber: true,
+            normalizedHash: true,
             state: true,
+            validationIssues: true,
+            createdAt: true,
             normalizedJson: true,
           },
         },
@@ -81,28 +86,62 @@ export async function GET(request: Request) {
       total,
       hasMore: offset + matches.length < total,
     },
-    matches: matches.map((match) => {
-      const { revisions, ...storedMatch } = match;
-      const revision = match.activeRevision;
-      const protocolRevision = revision || revisions[0] || null;
-      return {
-        ...storedMatch,
-        activeRevision: revision ? {
-          id: revision.id,
-          revisionNumber: revision.revisionNumber,
-          normalizedHash: revision.normalizedHash,
-          state: revision.state,
-          validationIssues: revision.validationIssues,
-          createdAt: revision.createdAt,
-        } : null,
-        protocol: protocolRevision
-          ? buildKhlMatchProtocolView(
-            protocolRevision.normalizedJson as unknown as NormalizedKhlMatch
-          )
-          : null,
-      };
-    }),
+    matches: matches.map(buildKhlMatchResponseItem),
   });
+}
+
+type MatchRevisionViewInput = {
+  id: string;
+  revisionNumber: number;
+  normalizedHash: string;
+  state: string;
+  validationIssues: unknown;
+  createdAt: Date;
+  normalizedJson: unknown;
+};
+
+type MatchViewInput = Record<string, unknown> & {
+  activeRevision: MatchRevisionViewInput | null;
+  revisions: MatchRevisionViewInput[];
+};
+
+export function buildKhlMatchResponseItem(match: MatchViewInput) {
+  const { revisions, ...storedMatch } = match;
+  const activeRevision = match.activeRevision;
+  const latestRevision = revisions[0] || activeRevision || null;
+  const protocolRevision = activeRevision || latestRevision;
+  const source = !protocolRevision
+    ? null
+    : activeRevision?.state === "VALIDATED"
+      ? "ACTIVE_VALIDATED"
+      : protocolRevision.state === "REJECTED"
+        ? "LATEST_REJECTED"
+        : "LATEST_REVISION";
+
+  return {
+    ...storedMatch,
+    activeRevision: revisionMetadata(activeRevision),
+    latestRevision: revisionMetadata(latestRevision),
+    displayRevision: protocolRevision && source
+      ? { ...revisionMetadata(protocolRevision)!, source }
+      : null,
+    protocol: protocolRevision
+      ? buildKhlMatchProtocolView(
+        protocolRevision.normalizedJson as unknown as NormalizedKhlMatch
+      )
+      : null,
+  };
+}
+
+function revisionMetadata(revision: MatchRevisionViewInput | null) {
+  return revision ? {
+    id: revision.id,
+    revisionNumber: revision.revisionNumber,
+    normalizedHash: revision.normalizedHash,
+    state: revision.state,
+    validationIssues: revision.validationIssues,
+    createdAt: revision.createdAt.toISOString(),
+  } : null;
 }
 
 function optionalPositiveInteger(value: string | null) {

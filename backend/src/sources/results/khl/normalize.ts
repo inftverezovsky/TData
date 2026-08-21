@@ -576,7 +576,10 @@ function compareOptionalTotal(
   if (rawValue === null || rawValue === undefined) return;
   const source = Number(rawValue);
   if (Number.isFinite(source) && source !== calculated) {
-    issues.push(`KHL ${label} mismatch: source=${source}, segments=${calculated}.`);
+    issues.push(
+      `KHL ${label} source aggregate mismatch: source=${source}, segments=${calculated}. `
+        + "Period segments were retained; validation remains fail-closed."
+    );
   }
 }
 

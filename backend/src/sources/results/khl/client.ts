@@ -97,8 +97,10 @@ export class KhlApiClient {
 
   async listEvents(options: ListEventsOptions): Promise<KhlScheduleEvent[]> {
     validateListOptions(options);
-    const fromSeconds = Math.floor(options.from.getTime() / 1000);
-    const toSeconds = Math.floor(options.to.getTime() / 1000);
+    const fromMilliseconds = options.from.getTime();
+    const toMilliseconds = options.to.getTime();
+    const fromSeconds = Math.floor(fromMilliseconds / 1000) - 1;
+    const toSeconds = Math.ceil(toMilliseconds / 1000) + 1;
     const result: KhlScheduleEvent[] = [];
     const seen = new Set<string>();
 
@@ -114,6 +116,8 @@ export class KhlApiClient {
       const raw = await this.fetchJson(url);
       const events = parseKhlScheduleResponse(raw);
       for (const event of events) {
+        const startsAt = Date.parse(event.startsAt);
+        if (startsAt < fromMilliseconds || startsAt >= toMilliseconds) continue;
         if (seen.has(event.apiEventId)) continue;
         seen.add(event.apiEventId);
         result.push(event);

@@ -11,7 +11,8 @@ import {
   type KhlTeamStatCode,
 } from "@backend/results/khl/adminPayload";
 
-const PLAYER_CODES: KhlPlayerStatCode[] = ["goals", "assists", "points"];
+export const KHL_PLAYER_STAT_CODES = ["goals", "assists", "points"] as const satisfies readonly KhlPlayerStatCode[];
+const STAT_BINDING_TRANSACTION_ATTEMPTS = 3;
 
 type TeamTargets = {
   stats: Record<KhlTeamStatCode, { adminMatchStatId: string }>;
@@ -30,6 +31,12 @@ export type ConfirmKhlResultTargetsInput = {
   playerStatTypes: Record<KhlPlayerStatCode, string>;
   teams: Record<"home" | "away", TeamTargets>;
   players: PlayerTargets[];
+  confirmedBy: string;
+};
+
+export type ConfirmKhlStatTypesInput = {
+  teamStatTypes: Record<KhlTeamStatCode, string>;
+  playerStatTypes: Record<KhlPlayerStatCode, string>;
   confirmedBy: string;
 };
 
@@ -111,7 +118,7 @@ export async function confirmKhlResultTargets(
         );
         statMappingIds.set(`TEAM:${code}`, mapping.id);
       }
-      for (const code of PLAYER_CODES) {
+      for (const code of KHL_PLAYER_STAT_CODES) {
         const mapping = await upsertImmutableStatMapping(
           tx,
           KhlStatScope.PLAYER,
@@ -207,7 +214,7 @@ export async function confirmKhlResultTargets(
             adminConfirmedBy: validated.confirmedBy,
           },
         });
-        for (const code of PLAYER_CODES) {
+        for (const code of KHL_PLAYER_STAT_CODES) {
           const statMappingId = statMappingIds.get(`PLAYER:${code}`)!;
           const adminPlayerStatId = supplied.stats[code];
           const current = await tx.khlPlayerStatTarget.findUnique({
@@ -254,7 +261,7 @@ export async function confirmKhlResultTargets(
         adminMatchId: match.adminMatchId,
         teamTargets: KHL_TEAM_STAT_CODES.length * 2,
         players: match.participants.length,
-        playerTargets: match.participants.length * PLAYER_CODES.length,
+        playerTargets: match.participants.length * KHL_PLAYER_STAT_CODES.length,
       };
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (error) {
@@ -267,6 +274,56 @@ export async function confirmKhlResultTargets(
     }
     throw error;
   }
+}
+
+export async function confirmKhlStatTypes(
+  prisma: PrismaClient,
+  input: ConfirmKhlStatTypesInput
+) {
+  const validated = validateStatTypesInput(input);
+  for (let attempt = 1; attempt <= STAT_BINDING_TRANSACTION_ATTEMPTS; attempt += 1) {
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const now = new Date();
+        const mappings = [];
+        for (const code of KHL_TEAM_STAT_CODES) {
+          mappings.push(await upsertImmutableStatMapping(
+            tx,
+            KhlStatScope.TEAM,
+            code,
+            validated.teamStatTypes[code],
+            validated.confirmedBy,
+            now
+          ));
+        }
+        for (const code of KHL_PLAYER_STAT_CODES) {
+          mappings.push(await upsertImmutableStatMapping(
+            tx,
+            KhlStatScope.PLAYER,
+            code,
+            validated.playerStatTypes[code],
+            validated.confirmedBy,
+            now
+          ));
+        }
+        return { mappings };
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (error) {
+      if (error instanceof KhlTargetBindingError) throw error;
+      const code = String((error as { code?: string })?.code || "");
+      if ((code === "P2002" || code === "P2034") && attempt < STAT_BINDING_TRANSACTION_ATTEMPTS) {
+        continue;
+      }
+      if (code === "P2002") {
+        throw new KhlTargetBindingError(
+          "ADMIN_ID_COLLISION",
+          "One of the Admin stat type ids is already bound to another semantic code."
+        );
+      }
+      throw error;
+    }
+  }
+  throw new Error("Unreachable stat binding retry state.");
 }
 
 async function upsertImmutableStatMapping(
@@ -286,6 +343,12 @@ async function upsertImmutableStatMapping(
     adminStatTypeId,
     `${scope} ${semanticCode} Admin stat type`
   );
+  if (
+    current?.adminBindingStatus === KhlBindingStatus.CONFIRMED
+    && current.adminStatTypeId === adminStatTypeId
+  ) {
+    return current;
+  }
   return tx.khlStatMapping.upsert({
     where: { scope_semanticCode: { scope, semanticCode } },
     create: {
@@ -326,7 +389,7 @@ function validateInput(input: ConfirmKhlResultTargetsInput): ConfirmKhlResultTar
     code,
     identifier(input.teamStatTypes?.[code], `team ${code} stat type id`),
   ])) as Record<KhlTeamStatCode, string>;
-  const playerStatTypes = Object.fromEntries(PLAYER_CODES.map((code) => [
+  const playerStatTypes = Object.fromEntries(KHL_PLAYER_STAT_CODES.map((code) => [
     code,
     identifier(input.playerStatTypes?.[code], `player ${code} stat type id`),
   ])) as Record<KhlPlayerStatCode, string>;
@@ -353,13 +416,47 @@ function validateInput(input: ConfirmKhlResultTargetsInput): ConfirmKhlResultTar
         player?.adminMatchPlayerId,
         `player ${khlPlayerId} Admin match-player id`
       ),
-      stats: Object.fromEntries(PLAYER_CODES.map((code) => [
+      stats: Object.fromEntries(KHL_PLAYER_STAT_CODES.map((code) => [
         code,
         identifier(player?.stats?.[code], `player ${khlPlayerId} ${code} record id`),
       ])) as Record<KhlPlayerStatCode, string>,
     };
   });
   return { khlGameId, teamStatTypes, playerStatTypes, teams, players, confirmedBy };
+}
+
+function validateStatTypesInput(input: unknown): ConfirmKhlStatTypesInput {
+  const root = exactObject(input, ["teamStatTypes", "playerStatTypes", "confirmedBy"], "request");
+  const team = exactObject(root.teamStatTypes, KHL_TEAM_STAT_CODES, "teamStatTypes");
+  const player = exactObject(root.playerStatTypes, KHL_PLAYER_STAT_CODES, "playerStatTypes");
+  return {
+    teamStatTypes: Object.fromEntries(KHL_TEAM_STAT_CODES.map((code) => [
+      code,
+      identifier(team[code], `team ${code} stat type id`),
+    ])) as Record<KhlTeamStatCode, string>,
+    playerStatTypes: Object.fromEntries(KHL_PLAYER_STAT_CODES.map((code) => [
+      code,
+      identifier(player[code], `player ${code} stat type id`),
+    ])) as Record<KhlPlayerStatCode, string>,
+    confirmedBy: identifier(root.confirmedBy, "confirmation actor"),
+  };
+}
+
+function exactObject(
+  value: unknown,
+  expectedKeys: readonly string[],
+  label: string
+): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    invalid(`${label} must be a JSON object.`);
+  }
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record).sort();
+  const expected = [...expectedKeys].sort();
+  if (keys.length !== expected.length || keys.some((key, index) => key !== expected[index])) {
+    invalid(`${label} must contain exactly: ${expectedKeys.join(", ")}.`);
+  }
+  return record;
 }
 
 function externalId(value: unknown, label: string) {

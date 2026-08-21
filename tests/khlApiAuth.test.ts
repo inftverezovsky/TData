@@ -7,12 +7,14 @@ import { createAdminSessionResponse } from "../backend/src/auth/adminAuth";
 import { GET as getAdminDirectorySuggestions } from "../frontend/src/app/api/results/khl/admin-directory/suggest/route";
 import { POST as postAutomation } from "../frontend/src/app/api/results/khl/automation/route";
 import { POST as postPlayerBinding } from "../frontend/src/app/api/results/khl/bindings/player/route";
+import { POST as postStatTypeBinding } from "../frontend/src/app/api/results/khl/bindings/stat-types/route";
 import { GET as getDiff } from "../frontend/src/app/api/results/khl/diff/route";
 import { POST as postStageDelivery } from "../frontend/src/app/api/results/khl/delivery/stage/route";
 import { GET as getSchedule } from "../frontend/src/app/api/results/khl/schedule/route";
 import { GET as getStages } from "../frontend/src/app/api/results/khl/stages/route";
 import { POST as postIngest } from "../frontend/src/app/api/results/khl/ingest/route";
 import { GET as getMatches } from "../frontend/src/app/api/results/khl/matches/route";
+import { GET as getSettings } from "../frontend/src/app/api/results/khl/settings/route";
 
 const routesRoot = join(process.cwd(), "frontend", "src", "app", "api", "results", "khl");
 
@@ -45,6 +47,11 @@ test("KHL API handlers reject unauthenticated requests before validation or netw
   );
   assert.equal(matches.status, 401);
 
+  const settings = await getSettings(
+    new Request("http://localhost/api/results/khl/settings")
+  );
+  assert.equal(settings.status, 401);
+
   const diff = await getDiff(
     new Request("http://localhost/api/results/khl/diff?khlGameId=not-valid")
   );
@@ -64,6 +71,16 @@ test("KHL API handlers reject unauthenticated requests before validation or netw
     }
   ));
   assert.equal(playerBinding.status, 401);
+
+  const statTypeBinding = await postStatTypeBinding(new Request(
+    "http://localhost/api/results/khl/bindings/stat-types",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "not-json",
+    }
+  ));
+  assert.equal(statTypeBinding.status, 401);
 
   const automation = await postAutomation(new Request(
     "http://localhost/api/results/khl/automation",
@@ -123,6 +140,34 @@ test("authenticated KHL mutations require same-origin JSON requests", async () =
       body: "{}",
     }));
     assert.equal(nonJson.status, 415);
+
+    const crossOriginStatTypes = await postStatTypeBinding(new Request(
+      "http://localhost/api/results/khl/bindings/stat-types",
+      {
+        method: "POST",
+        headers: {
+          cookie,
+          origin: "https://attacker.example",
+          "content-type": "application/json",
+        },
+        body: "{}",
+      }
+    ));
+    assert.equal(crossOriginStatTypes.status, 403);
+
+    const oversizedStatTypes = await postStatTypeBinding(new Request(
+      "http://localhost/api/results/khl/bindings/stat-types",
+      {
+        method: "POST",
+        headers: {
+          cookie,
+          origin: "http://localhost",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ padding: "x".repeat(20_000) }),
+      }
+    ));
+    assert.equal(oversizedStatTypes.status, 413);
 
     const sameOriginJson = await postIngest(new Request("http://localhost/api/results/khl/ingest", {
       method: "POST",

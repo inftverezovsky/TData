@@ -59,6 +59,7 @@ export function KhlTargetBindingsForm({
   busyKey,
   onChange,
   onConfirmPlayer,
+  showStatTypes = true,
 }: {
   template: KhlTargetBindingsTemplate;
   labels: KhlTargetBindingLabels;
@@ -66,6 +67,7 @@ export function KhlTargetBindingsForm({
   busyKey: string | null;
   onChange: (template: KhlTargetBindingsTemplate) => void;
   onConfirmPlayer: (player: KhlTargetBindingsTemplate["players"][number]) => void;
+  showStatTypes?: boolean;
 }) {
   const update = (mutate: (next: KhlTargetBindingsTemplate) => void) => {
     const next = structuredClone(template);
@@ -78,7 +80,7 @@ export function KhlTargetBindingsForm({
 
   return (
     <div data-testid="khl-target-bindings-form" className="mt-4 space-y-5">
-      <section className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4">
+      {showStatTypes && <section className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4">
         <h4 className="text-sm font-black text-slate-950">Типы статистики Admin</h4>
         <p className="mt-1 text-xs text-slate-600">
           Это semantic type ID. Они общие для метрики; конкретные target record ID ниже задаются отдельно каждой команде и каждому игроку.
@@ -103,7 +105,7 @@ export function KhlTargetBindingsForm({
             }))}
           />
         </div>
-      </section>
+      </section>}
 
       <section>
         <h4 className="text-sm font-black text-slate-950">Статистика команд — отдельные привязки</h4>

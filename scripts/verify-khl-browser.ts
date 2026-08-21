@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
 import { PrismaClient } from "@prisma/client";
-import { chromium, expect, type Page, type Response } from "@playwright/test";
+import { chromium, expect, type Locator, type Page, type Response } from "@playwright/test";
 
 import { KHL_RESULTS_AUTO_SYNC_PAUSED_KEY } from "@backend/results/khl/automation";
 import { requireSameDatabaseUrl } from "./helpers/isolatedKhlDatabase";
@@ -12,18 +12,36 @@ const STAGE_ID = "395";
 const MATCH_DATE = "2026-05-21";
 const DIRECTORY_PLAYER_ID = "99000001";
 const DIRECTORY_PLAYER_NAME = "KHL Browser Candidate Player";
+const TEAM_STAT_CODES = [
+  "shots_on_goal",
+  "faceoffs_won",
+  "power_play_goals",
+  "penalty_minutes_2_4",
+] as const;
+const PLAYER_STAT_CODES = ["goals", "assists", "points"] as const;
 
 type TargetTemplate = {
   khlGameId: string;
   teamStatTypes: Record<string, string>;
   playerStatTypes: Record<string, string>;
-  teams: Record<string, { stats: Record<string, { adminMatchStatId: string }> }>;
+  teams: Record<"home" | "away", {
+    stats: Record<string, { adminMatchStatId: string }>;
+  }>;
   players: Array<{
     khlPlayerId: string;
     adminPlayerId: string;
     adminMatchPlayerId: string;
     stats: Record<string, string>;
   }>;
+};
+
+type ScheduleEventSummary = {
+  khlGameId: string;
+  apiEventId: string;
+  teams: {
+    home: { khlTeamId: string; name: string };
+    away: { khlTeamId: string; name: string };
+  };
 };
 
 type StageResponse = {
@@ -94,6 +112,37 @@ async function main() {
   await visible(page.getByRole("heading", { name: "Автоматическое обновление включено" })).toBeVisible();
   await visible(page.getByText(/Только завершённые матчи с 01\.05\.2026/)).toBeVisible();
 
+  const rootTabs = rootTabList(page);
+  await visible(rootTabs.getByRole("tab", { name: "Настройки", exact: true })).toBeVisible();
+  await visible(rootTabs.getByRole("tab", { name: "Результаты", exact: true })).toBeVisible();
+  await visible(page.getByTestId("khl-results-workspace")).toBeVisible();
+
+  const resultsTabs = resultsTabList(page);
+  await visible(resultsTabs.getByTestId("khl-tab-today")).toContainText("Матчи сегодня");
+  await visible(resultsTabs.getByTestId("khl-tab-daily")).toContainText("Статистика игрового дня");
+  await visible(resultsTabs.getByTestId("khl-tab-archive")).toContainText("Архив");
+  await resultsTabs.getByTestId("khl-tab-daily").click();
+  await visible(page.getByRole("heading", { name: "Статистика игрового дня" })).toBeVisible();
+  await resultsTabs.getByTestId("khl-tab-archive").click();
+  await visible(page.getByRole("heading", { name: "Архив с 1 мая 2026 года" })).toBeVisible();
+
+  await rootTabs.getByRole("tab", { name: "Настройки", exact: true }).click();
+  await visible(page.getByTestId("khl-settings-workspace")).toBeVisible();
+  const settingsTabs = settingsTabList(page);
+  for (const [testId, label] of [
+    ["khl-tab-players", "Игроки"],
+    ["khl-tab-teams", "Команды"],
+    ["khl-tab-matches", "Матчи"],
+    ["khl-tab-statistics", "Статистика"],
+    ["khl-tab-extras", "Допы"],
+  ] as const) {
+    await visible(settingsTabs.getByTestId(testId)).toHaveText(label);
+  }
+  await settingsTabs.getByTestId("khl-tab-extras").click();
+  await visible(page.getByRole("heading", { name: "Дополнительные привязки" })).toBeVisible();
+  await rootTabs.getByRole("tab", { name: "Результаты", exact: true }).click();
+  await visible(page.getByTestId("khl-results-workspace")).toBeVisible();
+
   const pauseResponsePromise = waitForApiResponse(page, "/api/results/khl/automation", "POST");
   await page.getByRole("button", { name: "Остановить автообновление" }).click();
   const pauseResponse = await pauseResponsePromise;
@@ -124,27 +173,31 @@ async function main() {
     where: { key: KHL_RESULTS_AUTO_SYNC_PAUSED_KEY },
   }))?.value, "0");
 
-  await page.getByText("Ручная проверка расписания (резервный режим)", { exact: true }).click();
-  await page.waitForFunction(() => document.querySelectorAll("select option").length > 1);
-  await page.locator("select").selectOption(STAGE_ID);
-  const dates = page.locator('input[type="date"]');
+  await selectRootTab(page, "settings");
+  await selectSettingsTab(page, "matches");
+  const manualSchedule = settingsWorkspace(page).locator("details").filter({
+    hasText: "Ручная проверка расписания · резервный режим",
+  }).first();
+  await manualSchedule.locator("summary").click();
+  await manualSchedule.locator("select option").nth(1).waitFor({ state: "attached" });
+  await manualSchedule.locator("select").selectOption(STAGE_ID);
+  const dates = manualSchedule.locator('input[type="date"]');
   await dates.nth(0).fill(MATCH_DATE);
   await dates.nth(1).fill(MATCH_DATE);
 
   const scheduleResponsePromise = waitForApiResponse(page, "/api/results/khl/schedule", "GET");
-  await page.getByRole("button", { name: "Получить" }).click();
+  await manualSchedule.getByRole("button", { name: "Получить" }).click();
   const scheduleResponse = await scheduleResponsePromise;
   assert.equal(scheduleResponse.status(), 200);
   const scheduleBody = await scheduleResponse.json() as {
-    events: Array<{ khlGameId: string; apiEventId: string }>;
+    events: ScheduleEventSummary[];
   };
-  assert.ok(scheduleBody.events.some((event) => (
+  const scheduleEvent = scheduleBody.events.find((event) => (
     event.khlGameId === KHL_GAME_ID && event.apiEventId === API_EVENT_ID
-  )));
+  ));
+  assert.ok(scheduleEvent);
 
-  const scheduleRow = page.locator("details").filter({
-    has: page.getByRole("heading", { name: "Расписание КХЛ" }),
-  }).locator("div").filter({
+  const scheduleRow = manualSchedule.locator("div").filter({
     hasText: `KHL ${KHL_GAME_ID}`,
   }).filter({
     has: page.getByRole("button", { name: "Ingest / обновить" }),
@@ -171,39 +224,71 @@ async function main() {
   assert.equal(repeatedIngestBody.idempotency.reusedRevision, true);
   assert.equal(repeatedIngestBody.idempotency.activated, false);
 
-  const matchDisclosure = matchArticle(page).getByTestId("khl-match-disclosure");
+  await selectRootTab(page, "results");
+  await selectResultsTab(page, "archive");
+  const resultArticle = resultMatchArticle(page);
+  const matchDisclosure = resultArticle.getByTestId("khl-match-disclosure");
   const matchSummary = matchDisclosure.getByTestId("khl-match-summary");
-  const protocol = matchDisclosure.getByTestId("khl-protocol");
   await visible(matchSummary).toContainText(`KHL game ${KHL_GAME_ID}`);
   await visible(matchSummary).toContainText("Игроков: 43");
   await expect(matchDisclosure).not.toHaveAttribute("open", "");
-  await expect(protocol).not.toBeVisible();
+  await expect(matchDisclosure.getByTestId("khl-protocol-overview")).not.toBeVisible();
   await matchSummary.click();
   await expect(matchDisclosure).toHaveAttribute("open", "");
-  await visible(protocol).toBeVisible();
-  await visible(protocol.getByText("Официальный протокол КХЛ · доступен без Admin mappings")).toBeVisible();
-  await visible(protocol.getByText("Броски в створ")).toBeVisible();
-  await visible(protocol.getByText("Все заявленные игроки · 43")).toBeVisible();
-  await visible(protocol.getByTestId("khl-protocol-player")).toHaveCount(43);
-  assert.equal(
-    await matchArticle(page).getByPlaceholder("Admin team ID").first().inputValue(),
-    ""
-  );
+  const matchTabs = matchDisclosure.getByRole("tablist", { name: /^Данные матча/ });
+  await visible(matchTabs.getByTestId("khl-tab-overview")).toHaveText("Матч / допы");
+  await visible(matchTabs.getByTestId("khl-tab-players")).toHaveText("Игроки");
+  await visible(matchTabs.getByTestId("khl-tab-statistics")).toHaveText("Статистика");
+
+  const overviewProtocol = matchDisclosure.getByTestId("khl-protocol-overview");
+  await visible(overviewProtocol).toBeVisible();
+  await visible(overviewProtocol.getByText("Официальный протокол КХЛ · доступен без Admin mappings")).toBeVisible();
+  await visible(overviewProtocol.getByRole("heading", { name: "Счёт по периодам" })).toBeVisible();
+  await visible(overviewProtocol.getByText(/Голы · \d+/)).toBeVisible();
+  await visible(overviewProtocol.getByText(/Штрафы · \d+/)).toBeVisible();
+
+  await matchTabs.getByTestId("khl-tab-players").click();
+  const playersProtocol = matchDisclosure.getByTestId("khl-protocol-players");
+  await visible(playersProtocol.getByText("Все заявленные игроки · 43")).toBeVisible();
+  await visible(playersProtocol.getByTestId("khl-protocol-player")).toHaveCount(43);
+
+  await matchTabs.getByTestId("khl-tab-statistics").click();
+  const statisticsProtocol = matchDisclosure.getByTestId("khl-protocol-statistics");
+  await visible(statisticsProtocol.getByRole("heading", { name: "Командная статистика" })).toBeVisible();
+  await visible(statisticsProtocol.getByText("Броски в створ", { exact: true })).toBeVisible();
+
+  const unmappedMatch = await prisma.khlMatch.findUnique({
+    where: { khlGameId: KHL_GAME_ID },
+    include: { homeTeam: true, awayTeam: true },
+  });
+  assert.equal(unmappedMatch?.homeTeam.adminTeamId, null);
+  assert.equal(unmappedMatch?.awayTeam.adminTeamId, null);
+  assert.equal(unmappedMatch?.adminMatchId, null);
+
+  await selectRootTab(page, "settings");
+  await selectSettingsTab(page, "matches");
+  let matchCard = settingsMatchCard(page);
+  await openDetails(matchCard);
 
   const previewBlockedPromise = waitForApiResponse(page, "/api/results/khl/preview", "GET");
-  await matchArticle(page).getByRole("button", { name: "Сформировать preview" }).click();
+  await matchCard.getByRole("button", { name: "Preview", exact: true }).click();
   const blockedResponse = await previewBlockedPromise;
   assert.equal(blockedResponse.status(), 200);
   const blockedPreview = await blockedResponse.json() as { ready: boolean; issues: string[] };
   assert.equal(blockedPreview.ready, false);
   assert.ok(blockedPreview.issues.length > 0);
-  await visible(matchArticle(page).getByText(/BLOCKED · причин:/)).toBeVisible();
+  await visible(matchCard.getByText(/BLOCKED · \d+/)).toBeVisible();
 
-  await confirmTeam(page, 0, "e2e-admin-team-home");
-  await confirmTeam(page, 1, "e2e-admin-team-away");
-  await visible(matchArticle(page).getByRole("button", { name: "Подтвердить матч" })).toBeEnabled();
-  await matchArticle(page).getByPlaceholder("Admin match ID").fill("e2e-admin-match-901973");
-  await matchArticle(page).getByPlaceholder("Admin match candidates JSON").fill(JSON.stringify([{
+  await selectSettingsTab(page, "teams");
+  await confirmTeam(page, scheduleEvent.teams.home.khlTeamId, "e2e-admin-team-home");
+  await confirmTeam(page, scheduleEvent.teams.away.khlTeamId, "e2e-admin-team-away");
+
+  await selectSettingsTab(page, "matches");
+  matchCard = settingsMatchCard(page);
+  await openDetails(matchCard);
+  await visible(matchCard.getByRole("button", { name: "Подтвердить матч" })).toBeEnabled();
+  await matchCard.getByPlaceholder("Admin match ID").fill("e2e-admin-match-901973");
+  await matchCard.getByPlaceholder("[]", { exact: true }).fill(JSON.stringify([{
     adminMatchId: "e2e-admin-match-901973",
     startsAt: "2026-05-21T16:30:00.000Z",
     homeAdminTeamId: "e2e-admin-team-home",
@@ -212,21 +297,28 @@ async function main() {
     stageId: STAGE_ID,
   }], null, 2));
   const matchBindingPromise = waitForApiResponse(page, "/api/results/khl/bindings/match", "POST");
-  await matchArticle(page).getByRole("button", { name: "Подтвердить матч" }).click();
+  await matchCard.getByRole("button", { name: "Подтвердить матч" }).click();
   assert.equal((await matchBindingPromise).status(), 200);
 
-  await targetMappingsDetails(page).locator("summary").click();
+  await selectSettingsTab(page, "statistics");
+  await saveStatTypeMappings(page);
+  await selectStatisticsMatch(page);
   const templateResponsePromise = waitForApiResponse(page, "/api/results/khl/bindings/targets", "GET");
-  await matchArticle(page).getByRole("button", { name: "Загрузить шаблон" }).click();
-  assert.equal((await templateResponsePromise).status(), 200);
-  const targetTextarea = targetMappingsDetails(page).locator("textarea");
-  await visible(targetTextarea).toBeVisible();
-  await visible(targetMappingsDetails(page).getByTestId("khl-target-bindings-form")).toBeVisible();
-  await visible(targetMappingsDetails(page).getByTestId("khl-team-targets-home")).toBeVisible();
-  await visible(targetMappingsDetails(page).getByTestId("khl-team-targets-away")).toBeVisible();
+  await settingsWorkspace(page).getByRole("button", { name: "Загрузить сохранённые IDs" }).click();
+  const templateResponse = await templateResponsePromise;
+  assert.equal(templateResponse.status(), 200);
+  const templateBody = await templateResponse.json() as { template: TargetTemplate };
+  assert.deepEqual(templateBody.template.teamStatTypes, expectedTeamStatTypes());
+  assert.deepEqual(templateBody.template.playerStatTypes, expectedPlayerStatTypes());
+  const targetForm = settingsWorkspace(page).getByTestId("khl-target-bindings-form");
+  await visible(targetForm).toBeVisible();
+  await visible(targetForm.getByTestId("khl-team-targets-home")).toBeVisible();
+  await visible(targetForm.getByTestId("khl-team-targets-away")).toBeVisible();
 
-  const firstPlayerBinding = targetMappingsDetails(page).getByTestId("khl-player-binding").first();
-  await firstPlayerBinding.locator("summary").click();
+  const firstPlayer = templateBody.template.players[0];
+  assert.ok(firstPlayer);
+  const firstPlayerBinding = targetPlayerBinding(page, firstPlayer.khlPlayerId);
+  await openDetails(firstPlayerBinding);
   const directoryResponsePromise = waitForApiResponse(
     page,
     "/api/results/khl/admin-directory/suggest",
@@ -242,20 +334,34 @@ async function main() {
     "/api/results/khl/bindings/player",
     "POST"
   );
+  const playerTemplateRefreshPromise = waitForApiResponse(
+    page,
+    "/api/results/khl/bindings/targets",
+    "GET"
+  );
   await firstPlayerBinding.getByRole("button", { name: "Подтвердить игрока" }).click();
   assert.equal((await playerBindingResponsePromise).status(), 200);
+  assert.equal((await playerTemplateRefreshPromise).status(), 200);
   assert.equal(await prisma.khlPlayer.count({
     where: { adminPlayerId: DIRECTORY_PLAYER_ID, adminBindingStatus: "CONFIRMED" },
   }), 1);
+  await visible(
+    targetPlayerBinding(page, firstPlayer.khlPlayerId).getByPlaceholder("Admin player ID")
+  ).toBeDisabled();
 
-  const targetTemplate = JSON.parse(await targetTextarea.inputValue()) as TargetTemplate;
-  fillTargetTemplate(targetTemplate);
-  const expectedTargetJson = JSON.stringify(targetTemplate, null, 2);
-  await targetTextarea.fill(expectedTargetJson);
+  const targetTemplate = buildExpectedTargetTemplate({
+    ...templateBody.template,
+    players: templateBody.template.players.map((player) => (
+      player.khlPlayerId === firstPlayer.khlPlayerId
+        ? { ...player, adminPlayerId: DIRECTORY_PLAYER_ID }
+        : player
+    )),
+  });
+  await fillTargetEditor(page, targetTemplate);
 
   const targetSavePromise = waitForApiResponse(page, "/api/results/khl/bindings/targets", "POST");
   const readyPreviewPromise = waitForApiResponse(page, "/api/results/khl/preview", "GET");
-  await matchArticle(page).getByRole("button", { name: "Проверить и подтвердить IDs" }).click();
+  await settingsWorkspace(page).getByRole("button", { name: "Подтвердить target IDs" }).click();
   assert.equal((await targetSavePromise).status(), 200);
   const readyResponse = await readyPreviewPromise;
   assert.equal(readyResponse.status(), 200);
@@ -268,28 +374,34 @@ async function main() {
   assert.equal(readyPreview.ready, true);
   assert.match(readyPreview.payloadHash, /^[a-f0-9]{64}$/);
   assert.ok(readyPreview.payload);
-  await visible(matchArticle(page).getByText(/READY · SHA-256/)).toBeVisible();
-  await matchArticle(page).getByText("Canonical payload").click();
-  await visible(matchArticle(page).locator("pre")).toContainText("e2e-admin-match-901973");
+
+  await selectSettingsTab(page, "matches");
+  matchCard = settingsMatchCard(page);
+  await openDetails(matchCard);
+  await visible(matchCard.getByText("READY", { exact: true })).toBeVisible();
+  await visible(matchCard.getByText(`SHA-256 ${readyPreview.payloadHash}`)).toBeVisible();
+  await matchCard.getByText("Canonical payload").click();
+  await visible(matchCard.locator("pre")).toContainText("e2e-admin-match-901973");
 
   await page.reload();
   await visible(page.getByRole("heading", { name: "КХЛ", exact: true })).toBeVisible();
-  await visible(matchArticle(page)).toBeVisible();
-  const reloadedMatchDisclosure = matchArticle(page).getByTestId("khl-match-disclosure");
-  await expect(reloadedMatchDisclosure).not.toHaveAttribute("open", "");
-  await reloadedMatchDisclosure.getByTestId("khl-match-summary").click();
-  await expect(reloadedMatchDisclosure).toHaveAttribute("open", "");
-  await targetMappingsDetails(page).locator("summary").click();
+  await selectRootTab(page, "settings");
+  await selectSettingsTab(page, "statistics");
+  await selectStatisticsMatch(page);
   const prefillResponsePromise = waitForApiResponse(page, "/api/results/khl/bindings/targets", "GET");
-  await matchArticle(page).getByRole("button", { name: "Загрузить шаблон" }).click();
-  assert.equal((await prefillResponsePromise).status(), 200);
-  assert.deepEqual(
-    JSON.parse(await targetMappingsDetails(page).locator("textarea").inputValue()),
-    targetTemplate
-  );
+  await settingsWorkspace(page).getByRole("button", { name: "Загрузить сохранённые IDs" }).click();
+  const prefillResponse = await prefillResponsePromise;
+  assert.equal(prefillResponse.status(), 200);
+  const prefillBody = await prefillResponse.json() as { template: TargetTemplate };
+  assert.deepEqual(prefillBody.template, targetTemplate);
+  await assertTargetEditorPrefill(page, targetTemplate);
+
+  await selectSettingsTab(page, "matches");
+  matchCard = settingsMatchCard(page);
+  await openDetails(matchCard);
 
   const postReloadPreviewPromise = waitForApiResponse(page, "/api/results/khl/preview", "GET");
-  await matchArticle(page).getByRole("button", { name: "Сформировать preview" }).click();
+  await matchCard.getByRole("button", { name: "Preview", exact: true }).click();
   const postReloadPreview = await (await postReloadPreviewPromise).json() as {
     ready: boolean;
     revisionId: string;
@@ -300,16 +412,16 @@ async function main() {
   assert.equal(postReloadPreview.payloadHash, readyPreview.payloadHash);
 
   const newDiffPromise = waitForApiResponse(page, "/api/results/khl/diff", "GET");
-  await matchArticle(page).getByRole("button", { name: "Diff со staging" }).click();
+  await matchCard.getByRole("button", { name: "Diff", exact: true }).click();
   const newDiffResponse = await newDiffPromise;
   const newDiff = await newDiffResponse.json() as { status: string };
   assert.equal(newDiff.status, "NEW");
-  await visible(matchArticle(page).getByText("DIFF · NEW")).toBeVisible();
+  await visible(matchCard.getByText("DIFF · NEW")).toBeVisible();
 
   const firstStageResponse = await stageThroughUi(page);
   assert.equal(firstStageResponse.transportExecuted, false);
   assert.equal(firstStageResponse.reused, false);
-  await visible(matchArticle(page).getByText("DIFF · UNCHANGED")).toBeVisible();
+  await visible(matchCard.getByText("DIFF · UNCHANGED")).toBeVisible();
 
   const repeatedStageResponse = await stageThroughUi(page);
   assert.equal(repeatedStageResponse.transportExecuted, false);
@@ -339,7 +451,7 @@ async function main() {
   }
 
   const unchangedDiffPromise = waitForApiResponse(page, "/api/results/khl/diff", "GET");
-  await matchArticle(page).getByRole("button", { name: "Diff со staging" }).click();
+  await settingsMatchCard(page).getByRole("button", { name: "Diff", exact: true }).click();
   const unchangedDiff = await (await unchangedDiffPromise).json() as { status: string };
   assert.equal(unchangedDiff.status, "UNCHANGED");
 
@@ -387,48 +499,218 @@ main().catch((error: unknown) => {
   process.exitCode = 1;
 });
 
-function matchArticle(page: Page) {
-  return page.locator("article").filter({ hasText: `KHL game ${KHL_GAME_ID}` }).first();
+function rootTabList(page: Page) {
+  return page.getByRole("tablist", { name: "КХЛ: настройки или результаты" });
 }
 
-function targetMappingsDetails(page: Page) {
-  return matchArticle(page).getByTestId("khl-target-bindings");
+function settingsWorkspace(page: Page) {
+  return page.getByTestId("khl-settings-workspace");
 }
 
-async function confirmTeam(page: Page, index: number, adminTeamId: string) {
-  const input = matchArticle(page).getByPlaceholder("Admin team ID").nth(index);
+function settingsTabList(page: Page) {
+  return settingsWorkspace(page).getByRole("tablist", { name: "Разделы настроек КХЛ" });
+}
+
+function resultsTabList(page: Page) {
+  return page.getByTestId("khl-results-workspace").getByRole("tablist", {
+    name: "Разделы результатов КХЛ",
+  });
+}
+
+async function selectRootTab(page: Page, tab: "settings" | "results") {
+  await rootTabList(page).getByTestId(`khl-tab-${tab}`).click();
+  await expect(page.getByTestId(`khl-${tab}-workspace`)).toBeVisible();
+}
+
+async function selectSettingsTab(
+  page: Page,
+  tab: "players" | "teams" | "matches" | "statistics" | "extras"
+) {
+  await settingsTabList(page).getByTestId(`khl-tab-${tab}`).click();
+}
+
+async function selectResultsTab(page: Page, tab: "today" | "daily" | "archive") {
+  await resultsTabList(page).getByTestId(`khl-tab-${tab}`).click();
+}
+
+function resultMatchArticle(page: Page) {
+  return page.getByTestId("khl-results-workspace").locator("article").filter({
+    hasText: `KHL game ${KHL_GAME_ID}`,
+  }).first();
+}
+
+function settingsMatchCard(page: Page) {
+  return settingsWorkspace(page).locator("details").filter({
+    hasText: `KHL ${KHL_GAME_ID}`,
+  }).filter({
+    has: page.getByPlaceholder("Admin match ID"),
+  }).first();
+}
+
+function targetPlayerBinding(page: Page, khlPlayerId: string) {
+  return settingsWorkspace(page).getByTestId("khl-target-bindings-form")
+    .getByTestId("khl-player-binding")
+    .filter({ hasText: `KHL ${khlPlayerId} ·` })
+    .first();
+}
+
+async function openDetails(details: Locator) {
+  if (await details.getAttribute("open") === null) {
+    await details.locator("summary").first().click();
+  }
+  await expect(details).toHaveAttribute("open", "");
+}
+
+async function confirmTeam(page: Page, khlTeamId: string, adminTeamId: string) {
+  const teamRow = settingsWorkspace(page).locator("article").filter({
+    hasText: `KHL ${khlTeamId} ·`,
+  }).first();
+  const input = teamRow.getByPlaceholder("Admin team ID");
   await input.fill(adminTeamId);
   const responsePromise = waitForApiResponse(page, "/api/results/khl/bindings/team", "POST");
-  await input.locator("xpath=..").getByRole("button", { name: "Подтвердить" }).click();
+  await teamRow.getByRole("button", { name: "Подтвердить", exact: true }).click();
   assert.equal((await responsePromise).status(), 200);
 }
 
-function fillTargetTemplate(template: TargetTemplate) {
+async function saveStatTypeMappings(page: Page) {
+  const panel = settingsWorkspace(page).locator("section").filter({
+    has: page.getByRole("heading", { name: "Типы статистики Admin", exact: true }),
+  }).first();
+  for (const [code, adminStatTypeId] of Object.entries({
+    ...expectedTeamStatTypes(),
+    ...expectedPlayerStatTypes(),
+  })) {
+    const label = panel.getByText(code, { exact: true }).locator("xpath=ancestor::label");
+    await label.getByPlaceholder("Admin stat type ID").fill(adminStatTypeId);
+  }
+  const responsePromise = waitForApiResponse(
+    page,
+    "/api/results/khl/bindings/stat-types",
+    "POST"
+  );
+  await panel.getByRole("button", { name: "Подтвердить типы статистики" }).click();
+  assert.equal((await responsePromise).status(), 200);
+  await expect(panel.getByPlaceholder("Admin stat type ID").first()).toBeDisabled();
+}
+
+async function selectStatisticsMatch(page: Page) {
+  const select = settingsWorkspace(page).locator(
+    `select:has(option[value="${KHL_GAME_ID}"])`
+  );
+  await select.selectOption(KHL_GAME_ID);
+}
+
+function expectedTeamStatTypes() {
+  return Object.fromEntries(TEAM_STAT_CODES.map((code) => [
+    code,
+    `e2e-team-stat-type-${code}`,
+  ]));
+}
+
+function expectedPlayerStatTypes() {
+  return Object.fromEntries(PLAYER_STAT_CODES.map((code) => [
+    code,
+    `e2e-player-stat-type-${code}`,
+  ]));
+}
+
+function buildExpectedTargetTemplate(template: TargetTemplate): TargetTemplate {
   assert.equal(template.khlGameId, KHL_GAME_ID);
-  for (const code of Object.keys(template.teamStatTypes)) {
-    template.teamStatTypes[code] = `e2e-team-stat-type-${code}`;
-  }
-  for (const code of Object.keys(template.playerStatTypes)) {
-    template.playerStatTypes[code] = `e2e-player-stat-type-${code}`;
-  }
-  for (const [side, team] of Object.entries(template.teams)) {
+  const next = structuredClone(template);
+  next.teamStatTypes = expectedTeamStatTypes();
+  next.playerStatTypes = expectedPlayerStatTypes();
+  for (const [side, team] of Object.entries(next.teams)) {
     for (const [code, target] of Object.entries(team.stats)) {
       target.adminMatchStatId = `e2e-${side}-match-stat-${code}`;
     }
   }
-  for (const player of template.players) {
-    if (!player.adminPlayerId) player.adminPlayerId = `e2e-player-${player.khlPlayerId}`;
-    player.adminMatchPlayerId = `e2e-match-player-${player.khlPlayerId}`;
-    for (const code of Object.keys(player.stats)) {
-      player.stats[code] = `e2e-player-${player.khlPlayerId}-stat-${code}`;
+  next.players = next.players.map((player) => ({
+    ...player,
+    adminPlayerId: player.adminPlayerId || `e2e-player-${player.khlPlayerId}`,
+    adminMatchPlayerId: `e2e-match-player-${player.khlPlayerId}`,
+    stats: Object.fromEntries(Object.keys(player.stats).map((code) => [
+      code,
+      `e2e-player-${player.khlPlayerId}-stat-${code}`,
+    ])),
+  }));
+  return next;
+}
+
+async function fillTargetEditor(page: Page, template: TargetTemplate) {
+  const form = settingsWorkspace(page).getByTestId("khl-target-bindings-form");
+  for (const side of ["home", "away"] as const) {
+    const teamGroup = form.getByTestId(`khl-team-targets-${side}`);
+    for (const code of TEAM_STAT_CODES) {
+      await teamGroup.getByPlaceholder(`Admin target ID · ${teamStatLabel(code)}`).fill(
+        template.teams[side].stats[code].adminMatchStatId
+      );
     }
   }
+
+  for (const player of template.players) {
+    const binding = targetPlayerBinding(page, player.khlPlayerId);
+    await openDetails(binding);
+    await fillEditableInput(
+      binding.getByPlaceholder("Admin player ID"),
+      player.adminPlayerId
+    );
+    await fillEditableInput(
+      binding.getByPlaceholder("Admin match-player ID"),
+      player.adminMatchPlayerId
+    );
+    for (const code of PLAYER_STAT_CODES) {
+      await fillEditableInput(
+        binding.getByPlaceholder(`Admin ${code} record ID`),
+        player.stats[code]
+      );
+    }
+  }
+}
+
+async function assertTargetEditorPrefill(page: Page, template: TargetTemplate) {
+  const form = settingsWorkspace(page).getByTestId("khl-target-bindings-form");
+  await expect(form).toBeVisible();
+  for (const side of ["home", "away"] as const) {
+    const teamGroup = form.getByTestId(`khl-team-targets-${side}`);
+    for (const code of TEAM_STAT_CODES) {
+      await expect(
+        teamGroup.getByPlaceholder(`Admin target ID · ${teamStatLabel(code)}`)
+      ).toHaveValue(template.teams[side].stats[code].adminMatchStatId);
+    }
+  }
+  for (const player of template.players) {
+    const binding = targetPlayerBinding(page, player.khlPlayerId);
+    await expect(binding.getByPlaceholder("Admin player ID")).toHaveValue(player.adminPlayerId);
+    await expect(binding.getByPlaceholder("Admin match-player ID")).toHaveValue(
+      player.adminMatchPlayerId
+    );
+    for (const code of PLAYER_STAT_CODES) {
+      await expect(binding.getByPlaceholder(`Admin ${code} record ID`)).toHaveValue(
+        player.stats[code]
+      );
+    }
+  }
+}
+
+async function fillEditableInput(input: Locator, value: string) {
+  if (await input.isDisabled()) {
+    await expect(input).toHaveValue(value);
+  } else {
+    await input.fill(value);
+  }
+}
+
+function teamStatLabel(code: typeof TEAM_STAT_CODES[number]) {
+  if (code === "shots_on_goal") return "Броски в створ";
+  if (code === "faceoffs_won") return "Выигранные вбрасывания";
+  if (code === "power_play_goals") return "Голы в большинстве";
+  return "Штрафные минуты 2/4";
 }
 
 async function stageThroughUi(page: Page) {
   const stageResponsePromise = waitForApiResponse(page, "/api/results/khl/delivery/stage", "POST");
   const diffResponsePromise = waitForApiResponse(page, "/api/results/khl/diff", "GET");
-  await matchArticle(page).getByRole("button", { name: "Зафиксировать staging (без отправки)" }).click();
+  await settingsMatchCard(page).getByRole("button", { name: "Staging без отправки" }).click();
   const response = await stageResponsePromise;
   assert.equal(response.status(), 200);
   const body = await response.json() as StageResponse;

@@ -107,6 +107,26 @@ test("normalizes KHL game 901973 into regulation team and player statistics", ()
   assert.deepEqual(match.validation, { ok: true, issues: [] });
 });
 
+test("retains official period faceoffs but fails closed when the source aggregate disagrees", () => {
+  const raw = loadFixture("regulation-901973.json");
+  raw.team_b.vbr = 23;
+
+  const match = normalizeKhlEventDetail(raw);
+
+  assert.deepEqual(match.teamStats.away.faceoffsWon, {
+    segments: { P1: 8, P2: 9, P3: 5 },
+    regulationTotal: 22,
+    fullMatchTotal: 22,
+  });
+  assert.deepEqual(match.validation, {
+    ok: false,
+    issues: [
+      "KHL away faceoffs won source aggregate mismatch: source=23, segments=22. "
+        + "Period segments were retained; validation remains fail-closed.",
+    ],
+  });
+});
+
 test("keeps overtime source facts but excludes them from Admin regulation values", () => {
   const match = normalizeKhlEventDetail(loadFixture("overtime-901952.json"));
 

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import {
   KhlDeliveryState,
+  KhlRevisionState,
   Prisma,
   type PrismaClient,
 } from "@prisma/client";
@@ -52,7 +53,7 @@ export async function stageKhlAdminDelivery(
         `);
         const match = await tx.khlMatch.findUnique({
           where: { khlGameId: input.khlGameId },
-          select: { activeRevisionId: true, adminMatchId: true },
+          select: { id: true, activeRevisionId: true, adminMatchId: true },
         });
         if (
           !match
@@ -62,6 +63,20 @@ export async function stageKhlAdminDelivery(
         ) {
           throw new KhlDeliveryBlockedError([
             "KHL active revision or Admin match mapping changed while staging delivery.",
+          ]);
+        }
+        const latestRevision = await tx.khlMatchRevision.findFirst({
+          where: { matchId: match.id },
+          orderBy: { revisionNumber: "desc" },
+          select: { id: true, state: true },
+        });
+        if (
+          !latestRevision
+          || latestRevision.id !== match.activeRevisionId
+          || latestRevision.state !== KhlRevisionState.VALIDATED
+        ) {
+          throw new KhlDeliveryBlockedError([
+            "KHL latest revision is not the active validated revision while staging delivery.",
           ]);
         }
         const existing = await tx.khlDelivery.findUnique({ where: { idempotencyKey } });

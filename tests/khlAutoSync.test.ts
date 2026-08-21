@@ -5,12 +5,20 @@ import type { PrismaClient } from "@prisma/client";
 
 import {
   KHL_RESULTS_CUTOFF,
+  KHL_RESULTS_CUTOFF_DAY,
+  KHL_RESULTS_TIME_ZONE,
   syncKhlResults,
   type KhlResultsSyncClient,
 } from "@backend/results/khl/autoSync";
 import type { KhlScheduleEvent, KhlStage } from "@backend/sources/results/khl/client";
 
 const MAY_10 = new Date("2026-05-10T18:00:00.000Z");
+
+test("KHL results cutoff starts at midnight in Europe/Moscow", () => {
+  assert.equal(KHL_RESULTS_CUTOFF_DAY, "2026-05-01");
+  assert.equal(KHL_RESULTS_TIME_ZONE, "Europe/Moscow");
+  assert.equal(KHL_RESULTS_CUTOFF.toISOString(), "2026-04-30T21:00:00.000Z");
+});
 
 test("automatic KHL sync clamps the range, ignores old/non-finished games and deduplicates", async () => {
   const listCalls: Array<{ stageId: string; from: Date; to: Date }> = [];
@@ -28,7 +36,7 @@ test("automatic KHL sync clamps the range, ignores old/non-finished games and de
       listCalls.push(options);
       return options.stageId === "395"
         ? [
-            event("old", "old-event", "395", new Date("2026-04-30T23:59:59.000Z"), "finished"),
+            event("old", "old-event", "395", new Date("2026-04-30T20:59:59.000Z"), "finished"),
             finished,
             finished,
             event("live", "live-event", "395", MAY_10, "live"),
@@ -51,7 +59,7 @@ test("automatic KHL sync clamps the range, ignores old/non-finished games and de
       status: "finished",
     }),
     from: new Date("2026-01-01T00:00:00.000Z"),
-    to: new Date("2026-05-31T23:59:59.999Z"),
+    to: new Date("2026-05-31T20:59:59.999Z"),
     ingest: async (_prisma, input) => {
       ingested.push(JSON.parse(input.rawBody).event.id);
       return { reusedSnapshot: false, reusedRevision: false };
@@ -137,7 +145,7 @@ test("automatic KHL sync rejects a detail response outside the configured scope"
     inspectDetail: () => ({
       khlGameId: scheduled.khlGameId,
       stageId: scheduled.stageId,
-      startsAt: new Date("2026-04-30T23:59:59.000Z"),
+      startsAt: new Date("2026-04-30T20:59:59.000Z"),
       status: "finished",
     }),
     ingest: async () => {

@@ -412,3 +412,45 @@ test("fully confirmed target records produce deterministic preview without sendi
     delivery.revisionId === first.revisionId && delivery.payloadHash === first.payloadHash
   )));
 });
+
+test("preview, diff and staging block when a rejected revision is newer than active", async () => {
+  const reviewed = await buildKhlAdminPreview(prisma, "901973");
+  assert.equal(reviewed.ready, true);
+  if (!reviewed.ready) return;
+
+  const rejectedRaw = JSON.parse(
+    readFileSync(join(process.cwd(), "tests/fixtures/khl/regulation-901973.json"), "utf8")
+  ) as { start_at: unknown; team_b: Record<string, unknown> };
+  rejectedRaw.start_at = Number(rejectedRaw.start_at) + 60_000;
+  rejectedRaw.team_b.vbr = Number(rejectedRaw.team_b.vbr) + 1;
+  const rejected = await ingestKhlEventDetail(prisma, {
+    rawBody: JSON.stringify(rejectedRaw),
+    sourceUrl: "https://khl.api.webcaster.pro/api/khl_mobile/event_v2.json?id=2986031&stage_id=395",
+  });
+  assert.equal(rejected.revision.state, "REJECTED");
+  assert.equal(rejected.match.activeRevisionId, reviewed.revisionId);
+
+  const deliveryCountBefore = await prisma.khlDelivery.count();
+  const [preview, diff, stage] = await Promise.all([
+    buildKhlAdminPreview(prisma, "901973"),
+    buildKhlAdminDeliveryDiff(prisma, "901973"),
+    stageKhlAdminDelivery(prisma, {
+      khlGameId: "901973",
+      endpointVersion: "admin-results-contract-rejected-latest-v1",
+      expectedRevisionId: reviewed.revisionId,
+      expectedPayloadHash: reviewed.payloadHash,
+    }).then(
+      () => ({ status: "fulfilled" as const, reason: "" }),
+      (cause: unknown) => ({ status: "rejected" as const, reason: String(cause) })
+    ),
+  ]);
+
+  assert.equal(preview.ready, false);
+  if (!preview.ready) {
+    assert.ok(preview.issues.some((issue) => /latest revision.*active validated revision/i.test(issue)));
+  }
+  assert.equal(diff.status, "BLOCKED");
+  assert.equal(stage.status, "rejected");
+  assert.match(stage.reason, /latest revision.*active validated revision/i);
+  assert.equal(await prisma.khlDelivery.count(), deliveryCountBefore);
+});

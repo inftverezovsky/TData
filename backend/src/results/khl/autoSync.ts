@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
+import { DateTime } from "luxon";
 
 import {
   KhlApiClient,
@@ -13,12 +14,34 @@ import {
 } from "@backend/sources/results/khl/normalize";
 import { ingestKhlEventDetail } from "./repository";
 
-export const KHL_RESULTS_CUTOFF = new Date("2026-05-01T00:00:00.000Z");
+export const KHL_RESULTS_CUTOFF_DAY = "2026-05-01";
+export const KHL_RESULTS_TIME_ZONE = "Europe/Moscow";
+export const KHL_RESULTS_CUTOFF = localDayStart(
+  KHL_RESULTS_CUTOFF_DAY,
+  KHL_RESULTS_TIME_ZONE
+);
 export const KHL_RESULTS_DEFAULT_LOOKBACK_DAYS = 14;
 export const KHL_RESULTS_REFRESH_HOURS = 6;
 
 const SCHEDULE_WINDOW_DAYS = 31;
 const DAY_MS = 86_400_000;
+
+function localDayStart(day: string, timeZone: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+    throw new Error(`Invalid KHL results cutoff day: ${day}`);
+  }
+  const local = DateTime.fromISO(day, { zone: timeZone }).startOf("day");
+  if (!local.isValid || local.toISODate() !== day) {
+    throw new Error(
+      `Invalid KHL results cutoff day or time zone: ${day} (${timeZone}).`
+    );
+  }
+  const instant = local.toUTC().toJSDate();
+  if (!Number.isFinite(instant.getTime())) {
+    throw new Error(`Invalid KHL results cutoff instant: ${day} (${timeZone}).`);
+  }
+  return instant;
+}
 
 export type KhlResultsSyncClient = {
   listStages(): Promise<KhlStage[]>;

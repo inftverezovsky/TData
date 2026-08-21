@@ -1,5 +1,6 @@
 import {
   KhlBindingStatus,
+  KhlRevisionState,
   KhlStatScope,
   type PrismaClient,
 } from "@prisma/client";
@@ -46,6 +47,11 @@ export async function buildKhlAdminPreview(
       homeTeam: true,
       awayTeam: true,
       activeRevision: { include: { snapshot: true } },
+      revisions: {
+        orderBy: { revisionNumber: "desc" },
+        take: 1,
+        select: { id: true, revisionNumber: true, state: true },
+      },
       teamStatTargets: { include: { statMapping: true } },
       participants: {
         where: { isListed: true },
@@ -59,6 +65,21 @@ export async function buildKhlAdminPreview(
   if (!match) return blocked(khlGameId, null, ["KHL match was not ingested."]);
   if (!match.activeRevision) {
     return blocked(khlGameId, null, ["KHL match has no active validated revision."]);
+  }
+  if (match.activeRevision.state !== KhlRevisionState.VALIDATED) {
+    return blocked(khlGameId, match.activeRevision.revisionNumber, [
+      "KHL active revision is not validated.",
+    ]);
+  }
+  const latestRevision = match.revisions[0];
+  if (!latestRevision || latestRevision.id !== match.activeRevision.id) {
+    const latest = latestRevision
+      ? `#${latestRevision.revisionNumber} (${latestRevision.state})`
+      : "missing";
+    return blocked(khlGameId, match.activeRevision.revisionNumber, [
+      `KHL latest revision ${latest} is not the active validated revision `
+        + `#${match.activeRevision.revisionNumber}.`,
+    ]);
   }
 
   const normalized = match.activeRevision.normalizedJson as unknown as NormalizedKhlMatch;
