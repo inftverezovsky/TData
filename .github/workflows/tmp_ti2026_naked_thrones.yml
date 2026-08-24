@@ -1,0 +1,209 @@
+name: Temporary TI 2026 naked thrones verification
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Query and verify all TI 2026 maps
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import time
+          import urllib.parse
+          import urllib.request
+          from collections import defaultdict
+          from datetime import datetime, timezone
+
+          LEAGUE_ID = 19719
+          START = 1786579200  # 2026-08-13 00:00:00 UTC
+          END = 1787529600    # 2026-08-24 00:00:00 UTC
+          T4_BOTTOM = 1 << 10
+          T4_TOP = 1 << 9
+          T4_MASK = T4_BOTTOM | T4_TOP
+
+          def get_json(url, attempts=4):
+              last_error = None
+              for attempt in range(attempts):
+                  try:
+                      req = urllib.request.Request(
+                          url,
+                          headers={
+                              "User-Agent": "TI2026-naked-thrones-verifier/1.0",
+                              "Accept": "application/json",
+                          },
+                      )
+                      with urllib.request.urlopen(req, timeout=90) as response:
+                          return json.loads(response.read().decode("utf-8"))
+                  except Exception as exc:
+                      last_error = exc
+                      time.sleep(3 * (attempt + 1))
+              raise RuntimeError(f"GET failed after {attempts} attempts: {url}: {last_error}")
+
+          sql = f"""
+          SELECT match_id, start_time, duration, radiant_win,
+                 tower_status_radiant, tower_status_dire,
+                 radiant_team_id, dire_team_id, series_id, series_type
+          FROM matches
+          WHERE leagueid = {LEAGUE_ID}
+            AND start_time >= {START}
+            AND start_time < {END}
+          ORDER BY start_time
+          """
+          explorer_url = "https://api.opendota.com/api/explorer?" + urllib.parse.urlencode({"sql": sql})
+          explorer = get_json(explorer_url)
+          rows = explorer.get("rows", []) if isinstance(explorer, dict) else []
+          print(f"EXPLORER_ROWS={len(rows)}")
+
+          league_url = f"https://api.opendota.com/api/leagues/{LEAGUE_ID}/matches"
+          try:
+              league_payload = get_json(league_url)
+          except Exception as exc:
+              print(f"LEAGUE_ENDPOINT_WARNING={exc}")
+              league_payload = []
+
+          if isinstance(league_payload, dict):
+              league_matches = league_payload.get("matches", league_payload.get("rows", []))
+          elif isinstance(league_payload, list):
+              league_matches = league_payload
+          else:
+              league_matches = []
+
+          league_by_id = {}
+          for item in league_matches:
+              try:
+                  mid = int(item.get("match_id"))
+              except Exception:
+                  continue
+              league_by_id[mid] = item
+
+          # Fallback: if Explorer did not return complete rows, retrieve match details.
+          expected_ids = sorted(
+              mid for mid, item in league_by_id.items()
+              if START <= int(item.get("start_time") or 0) < END
+          )
+          if len(rows) < 140 and expected_ids:
+              print(f"FALLBACK_MATCH_DETAILS={len(expected_ids)}")
+              rows = []
+              for index, mid in enumerate(expected_ids, start=1):
+                  detail = get_json(f"https://api.opendota.com/api/matches/{mid}")
+                  rows.append({
+                      "match_id": mid,
+                      "start_time": detail.get("start_time"),
+                      "duration": detail.get("duration"),
+                      "radiant_win": detail.get("radiant_win"),
+                      "tower_status_radiant": detail.get("tower_status_radiant"),
+                      "tower_status_dire": detail.get("tower_status_dire"),
+                      "radiant_team_id": detail.get("radiant_team_id"),
+                      "dire_team_id": detail.get("dire_team_id"),
+                      "series_id": detail.get("series_id"),
+                      "series_type": detail.get("series_type"),
+                      "radiant_name": (detail.get("radiant_team") or {}).get("name"),
+                      "dire_name": (detail.get("dire_team") or {}).get("name"),
+                  })
+                  if index % 25 == 0:
+                      print(f"FETCHED_DETAILS={index}/{len(expected_ids)}")
+                  time.sleep(1.15)
+
+          def as_bool(value):
+              if isinstance(value, bool):
+                  return value
+              return str(value).strip().lower() in {"1", "true", "t", "yes"}
+
+          clean = []
+          missing_status = []
+          for row in rows:
+              try:
+                  mid = int(row["match_id"])
+                  start_time = int(float(row["start_time"]))
+              except Exception:
+                  continue
+              if not (START <= start_time < END):
+                  continue
+              rs = row.get("tower_status_radiant")
+              ds = row.get("tower_status_dire")
+              if rs is None or ds is None:
+                  missing_status.append(mid)
+                  continue
+              rs, ds = int(rs), int(ds)
+              league_item = league_by_id.get(mid, {})
+              radiant_name = (
+                  row.get("radiant_name")
+                  or league_item.get("radiant_name")
+                  or league_item.get("radiant_team_name")
+                  or f"team {row.get('radiant_team_id')}"
+              )
+              dire_name = (
+                  row.get("dire_name")
+                  or league_item.get("dire_name")
+                  or league_item.get("dire_team_name")
+                  or f"team {row.get('dire_team_id')}"
+              )
+              clean.append({
+                  **row,
+                  "match_id": mid,
+                  "start_time": start_time,
+                  "tower_status_radiant": rs,
+                  "tower_status_dire": ds,
+                  "radiant_win": as_bool(row.get("radiant_win")),
+                  "radiant_name": radiant_name,
+                  "dire_name": dire_name,
+              })
+
+          # Assign map number inside each series by chronological order.
+          by_series = defaultdict(list)
+          for row in clean:
+              series_id = row.get("series_id")
+              key = str(series_id) if series_id not in (None, 0, "0") else f"single-{row['match_id']}"
+              by_series[key].append(row)
+          for series_rows in by_series.values():
+              for game_no, row in enumerate(sorted(series_rows, key=lambda x: (x["start_time"], x["match_id"])), start=1):
+                  row["series_game_number"] = game_no
+
+          candidates = []
+          for row in sorted(clean, key=lambda x: x["start_time"]):
+              rs = row["tower_status_radiant"]
+              ds = row["tower_status_dire"]
+              both_radiant_t4_destroyed = (rs & T4_MASK) == 0
+              both_dire_t4_destroyed = (ds & T4_MASK) == 0
+              if both_radiant_t4_destroyed and both_dire_t4_destroyed:
+                  candidates.append({
+                      "match_id": row["match_id"],
+                      "date_utc": datetime.fromtimestamp(row["start_time"], tz=timezone.utc).isoformat(),
+                      "radiant": row["radiant_name"],
+                      "dire": row["dire_name"],
+                      "winner": row["radiant_name"] if row["radiant_win"] else row["dire_name"],
+                      "series_id": row.get("series_id"),
+                      "map": row.get("series_game_number"),
+                      "tower_status_radiant": rs,
+                      "tower_status_dire": ds,
+                      "radiant_t4_top_alive": bool(rs & T4_TOP),
+                      "radiant_t4_bottom_alive": bool(rs & T4_BOTTOM),
+                      "dire_t4_top_alive": bool(ds & T4_TOP),
+                      "dire_t4_bottom_alive": bool(ds & T4_BOTTOM),
+                  })
+
+          result = {
+              "league_id": LEAGUE_ID,
+              "period_utc": [START, END],
+              "maps_returned": len(rows),
+              "maps_with_complete_tower_status": len(clean),
+              "missing_tower_status_match_ids": missing_status,
+              "two_naked_thrones_count": len(candidates),
+              "criterion": "Both T4 bits (9 and 10; mask 1536) absent in both radiant and dire final tower status",
+              "matches": candidates,
+          }
+
+          print("TI2026_RESULT_BEGIN")
+          print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+          print("TI2026_RESULT_END")
+
+          if len(clean) != 147:
+              raise SystemExit(f"Coverage check failed: expected 147 complete maps, got {len(clean)}; missing={missing_status}")
+          PY
