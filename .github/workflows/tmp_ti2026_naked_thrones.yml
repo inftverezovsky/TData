@@ -8,43 +8,34 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
-      - name: Verify full tournament and identify candidate
+      - name: Verify count and T4 timeline
         shell: bash
         run: |
           python3 - <<'PY'
           import json
           import urllib.parse
           import urllib.request
-          from collections import defaultdict
-          from datetime import datetime, timezone
 
           LEAGUE_ID = 19719
           START = 1786579200
           END = 1787529600
-          T4_TOP = 1 << 9
-          T4_BOTTOM = 1 << 10
-          T4_MASK = T4_TOP | T4_BOTTOM
+          T4_MASK = (1 << 9) | (1 << 10)
+          MATCH_ID = 8955549026
 
           def get_json(url):
-              req = urllib.request.Request(url, headers={"User-Agent": "TI2026-verifier/2.0", "Accept": "application/json"})
+              req = urllib.request.Request(url, headers={"User-Agent": "TI2026-verifier/3.0", "Accept": "application/json"})
               with urllib.request.urlopen(req, timeout=90) as r:
                   return json.loads(r.read().decode("utf-8"))
 
-          def explorer(sql):
-              url = "https://api.opendota.com/api/explorer?" + urllib.parse.urlencode({"sql": sql})
-              payload = get_json(url)
-              return payload.get("rows", [])
-
-          rows = explorer(f"""
+          sql = f"""
               SELECT m.match_id, m.start_time, m.duration, m.radiant_win,
                      m.radiant_score, m.dire_score,
                      m.tower_status_radiant, m.tower_status_dire,
-                     m.barracks_status_radiant, m.barracks_status_dire,
                      m.radiant_team_id, m.dire_team_id,
                      rt.name AS radiant_name, dt.name AS dire_name,
-                     m.series_id, m.series_type
+                     m.series_id
               FROM matches m
               LEFT JOIN teams rt ON rt.team_id = m.radiant_team_id
               LEFT JOIN teams dt ON dt.team_id = m.dire_team_id
@@ -52,83 +43,44 @@ jobs:
                 AND m.start_time >= {START}
                 AND m.start_time < {END}
               ORDER BY m.start_time, m.match_id
-          """)
+          """
+          url = "https://api.opendota.com/api/explorer?" + urllib.parse.urlencode({"sql": sql})
+          rows = get_json(url).get("rows", [])
+          complete = [r for r in rows if r.get("tower_status_radiant") is not None and r.get("tower_status_dire") is not None]
+          candidates = [
+              r for r in complete
+              if (int(r["tower_status_radiant"]) & T4_MASK) == 0
+              and (int(r["tower_status_dire"]) & T4_MASK) == 0
+          ]
 
-          clean = []
-          for row in rows:
-              if row.get("tower_status_radiant") is None or row.get("tower_status_dire") is None:
-                  continue
-              row["match_id"] = int(row["match_id"])
-              row["start_time"] = int(float(row["start_time"]))
-              row["tower_status_radiant"] = int(row["tower_status_radiant"])
-              row["tower_status_dire"] = int(row["tower_status_dire"])
-              row["radiant_win"] = str(row.get("radiant_win")).lower() in {"true", "t", "1"}
-              clean.append(row)
+          detail = get_json(f"https://api.opendota.com/api/matches/{MATCH_ID}")
+          tower4_events = []
+          for obj in detail.get("objectives") or []:
+              key = str(obj.get("key") or "")
+              if "tower4" in key.lower():
+                  tower4_events.append(obj)
 
-          by_series = defaultdict(list)
-          for row in clean:
-              sid = row.get("series_id")
-              by_series[str(sid) if sid not in (None, 0, "0") else f"single-{row['match_id']}"] .append(row)
-          for series_rows in by_series.values():
-              for n, row in enumerate(sorted(series_rows, key=lambda x: (x["start_time"], x["match_id"])), 1):
-                  row["map_number"] = n
-
-          candidates = []
-          for row in clean:
-              rs, ds = row["tower_status_radiant"], row["tower_status_dire"]
-              if (rs & T4_MASK) == 0 and (ds & T4_MASK) == 0:
-                  candidates.append(row)
-
-          print(f"COVERAGE={len(clean)}/147")
-          print(f"COUNT={len(candidates)}")
-          for candidate in candidates:
-              mid = candidate["match_id"]
-              detail = get_json(f"https://api.opendota.com/api/matches/{mid}")
-              sid = candidate.get("series_id")
-              series_rows = sorted(
-                  [r for r in clean if str(r.get("series_id")) == str(sid)],
-                  key=lambda x: (x["start_time"], x["match_id"]),
-              )
-              out = {
-                  "candidate": candidate,
-                  "match_detail_names": {
-                      "radiant": (detail.get("radiant_team") or {}).get("name"),
-                      "dire": (detail.get("dire_team") or {}).get("name"),
-                  },
-                  "match_detail": {
-                      "radiant_win": detail.get("radiant_win"),
-                      "radiant_score": detail.get("radiant_score"),
-                      "dire_score": detail.get("dire_score"),
-                      "duration": detail.get("duration"),
-                      "tower_status_radiant": detail.get("tower_status_radiant"),
-                      "tower_status_dire": detail.get("tower_status_dire"),
-                      "barracks_status_radiant": detail.get("barracks_status_radiant"),
-                      "barracks_status_dire": detail.get("barracks_status_dire"),
-                  },
-                  "series_maps": [
-                      {
-                          "map": r.get("map_number"),
-                          "match_id": r["match_id"],
-                          "start_time_utc": datetime.fromtimestamp(r["start_time"], tz=timezone.utc).isoformat(),
-                          "radiant": r.get("radiant_name"),
-                          "dire": r.get("dire_name"),
-                          "radiant_score": r.get("radiant_score"),
-                          "dire_score": r.get("dire_score"),
-                      }
-                      for r in series_rows
-                  ],
-                  "t4_check": {
-                      "mask": T4_MASK,
-                      "radiant_top_alive": bool(candidate["tower_status_radiant"] & T4_TOP),
-                      "radiant_bottom_alive": bool(candidate["tower_status_radiant"] & T4_BOTTOM),
-                      "dire_top_alive": bool(candidate["tower_status_dire"] & T4_TOP),
-                      "dire_bottom_alive": bool(candidate["tower_status_dire"] & T4_BOTTOM),
-                  },
-              }
-              print("DETAIL_BEGIN")
-              print(json.dumps(out, ensure_ascii=False, indent=2, sort_keys=True))
-              print("DETAIL_END")
-
-          if len(clean) != 147:
-              raise SystemExit(f"Expected 147 maps, got {len(clean)}")
+          result = {
+              "coverage": len(complete),
+              "count": len(candidates),
+              "candidates": candidates,
+              "match": {
+                  "match_id": MATCH_ID,
+                  "radiant": (detail.get("radiant_team") or {}).get("name"),
+                  "dire": (detail.get("dire_team") or {}).get("name"),
+                  "radiant_win": detail.get("radiant_win"),
+                  "radiant_score": detail.get("radiant_score"),
+                  "dire_score": detail.get("dire_score"),
+                  "duration": detail.get("duration"),
+                  "tower_status_radiant": detail.get("tower_status_radiant"),
+                  "tower_status_dire": detail.get("tower_status_dire"),
+              },
+              "tower4_events": tower4_events,
+              "all_objective_types": sorted({str(x.get("type")) for x in (detail.get("objectives") or [])}),
+          }
+          print("RESULT_BEGIN")
+          print(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True))
+          print("RESULT_END")
+          if len(complete) != 147 or len(candidates) != 1:
+              raise SystemExit(f"Unexpected result: coverage={len(complete)} count={len(candidates)}")
           PY
