@@ -1,0 +1,51 @@
+name: Build production image
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-image-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build immutable Docker archive
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: inftverezovsky/tdata-web:tline-${{ github.sha }}
+          outputs: type=docker,dest=${{ runner.temp }}/tdata-image.tar
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Write image checksum
+        shell: bash
+        run: sha256sum "${RUNNER_TEMP}/tdata-image.tar" > "${RUNNER_TEMP}/tdata-image.tar.sha256"
+
+      - name: Upload image archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: tdata-image-${{ github.sha }}
+          path: |
+            ${{ runner.temp }}/tdata-image.tar
+            ${{ runner.temp }}/tdata-image.tar.sha256
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
