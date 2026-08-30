@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { requireAdmin, requireSameOriginJsonMutation } from "@backend/auth/adminAuth";
+import { requireSameOriginJsonMutation } from "@backend/auth/adminAuth";
 import { prisma } from "@backend/db/db";
 import {
   confirmKhlTeamStatBindings,
@@ -14,8 +14,6 @@ export const runtime = "nodejs";
 const MAX_BODY_BYTES = 16 * 1024;
 
 export async function POST(request: Request) {
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
   const unsafeRequest = requireSameOriginJsonMutation(request);
   if (unsafeRequest) return unsafeRequest;
 

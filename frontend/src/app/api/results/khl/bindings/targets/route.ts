@@ -1,7 +1,7 @@
 import { KhlBindingStatus, KhlStatScope } from "@prisma/client";
 import { NextResponse } from "next/server";
 
-import { requireAdmin, requireSameOriginJsonMutation } from "@backend/auth/adminAuth";
+import { requireSameOriginJsonMutation } from "@backend/auth/adminAuth";
 import { prisma } from "@backend/db/db";
 import { KHL_TEAM_STAT_CODES } from "@backend/results/khl/adminPayload";
 import {
@@ -14,9 +14,6 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
-
   const raw = new URL(request.url).searchParams.get("khlGameId");
   const khlGameId = raw && /^[1-9]\d{0,127}$/.test(raw) ? raw : null;
   if (!khlGameId) {
@@ -122,8 +119,6 @@ function confirmedValue(
 }
 
 export async function POST(request: Request) {
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
   const unsafeRequest = requireSameOriginJsonMutation(request);
   if (unsafeRequest) return unsafeRequest;
 

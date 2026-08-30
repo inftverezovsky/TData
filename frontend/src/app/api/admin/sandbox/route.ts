@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@backend/auth/adminAuth";
+import { requireSameOriginJsonMutation } from "@backend/auth/adminAuth";
 import { getNormalizer, hasNormalizer } from "@backend/normalizers/registry";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
+  const invalidMutation = requireSameOriginJsonMutation(request);
+  if (invalidMutation) return invalidMutation;
 
   try {
     const { disciplineSlug, wikitext } = await request.json();

@@ -65,6 +65,13 @@ Frontend UI should use `@backend/*` only for dependency-free types, formatting h
 - Secrets and external admin endpoints must stay out of tracked source files. Use `.env` or runtime platform settings.
 - Temporary diagnostics belong in ignored folders such as `.codex-logs`, `scratch`, or `test-results`, not in tracked source.
 
+## Access Boundaries
+
+- The administrative password gate is limited to the top-level `/settings` (API) section and its configuration endpoints.
+- Operational sections, including Results/KHL, TLine and Sandbox, are available without an admin session.
+- Public operational mutations must still reject cross-origin requests and unexpected content types. Removing the UI password gate never removes these request-integrity checks.
+- Tests must keep both sides of the boundary explicit: public workflows remain callable, while API settings remain admin-gated.
+
 ## Cleanup Policy
 
 Remove a file when all of these are true:

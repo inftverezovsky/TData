@@ -10,7 +10,6 @@ const REQUIRED_ADMIN_GUARDED_ROUTES = new Set([
   "admin-settings/[disciplineSlug]/route.ts",
   "admin-settings/proxy-pool/route.ts",
   "admin/proxies/route.ts",
-  "admin/sandbox/route.ts",
   "cron/check-proxies/route.ts",
   "settings/global/route.ts",
   "settings/route.ts",
@@ -21,6 +20,7 @@ const UI_WORKFLOW_ROUTES = new Set([
   "[disciplineSlug]/search-tournament/route.ts",
   "[disciplineSlug]/tournament/[id]/admin-fixt-preview/route.ts",
   "[disciplineSlug]/tournament/[id]/admin-mapping/route.ts",
+  "admin/sandbox/route.ts",
   "settings/clear-search-cache/route.ts",
 ]);
 
