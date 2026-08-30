@@ -1,164 +1,317 @@
-# 🚀 TData: Advanced Tournament Data Engine
+<div align="center">
 
-Добро пожаловать в **TData** — высокопроизводительный, отказоустойчивый и архитектурно совершенный движок для ручного импорта, нормализации и маппинга турниров из Liquipedia, HLTV, VLR, DLTV, Fandom и volleyball-источников.
+# 🏟️ TData
 
-Проект разработан по высочайшим стандартам программной инженерии: с **100% динамическим роутингом**, **централизованным реестром стратегий-нормализаторов**, **интеллектуальным fuzzy-маппингом команд на базе расстояния Левенштейна** и **встроенной системой телеметрии**.
+### Единый операторский центр турнирных данных
+
+Поиск и импорт турниров, нормализация расписаний, сопоставление команд,
+подготовка Admin/FIxt payload и отдельный контур результатов КХЛ.
+
+[![Next.js](https://img.shields.io/badge/Next.js-16.3.1-000000?style=for-the-badge&logo=nextdotjs&logoColor=white)](https://nextjs.org/)
+[![React](https://img.shields.io/badge/React-19-149ECA?style=for-the-badge&logo=react&logoColor=white)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
+
+[Production](https://www.tdata.info/) ·
+[Health](https://www.tdata.info/api/health) ·
+[KHL Results](https://www.tdata.info/results/khl)
+
+</div>
 
 ---
 
-## 📐 Архитектурная Схема Системы
+## Что такое TData
 
-### 1. Конвейер Инжеста и Нормализации Данных (Data Ingestion Pipeline)
+TData объединяет несколько операторских сценариев в одном Next.js-приложении:
 
-```mermaid
-flowchart TD
-    User([Пользователь]) -->|Запрос в UI / API| Router[Dynamic Router: api/`disciplineSlug`]
-    Router -->|Слаг игры| Registry{Strategy Registry}
-    
-    Registry -->|Dota 2| NormDota2[Dota2Normalizer]
-    Registry -->|CS| NormCS[CounterStrikeNormalizer]
-    Registry -->|LoL| NormLoL[LeagueOfLegendsNormalizer]
-    Registry -->|Valorant| NormValorant[ValorantNormalizer]
-    
-    SourceAPI[MediaWiki API / HLTV Scraper] -->|Raw Wikitext / HTML| Fetcher[Source Fetch Cache]
-    Fetcher -->|Сохранение копии| DB_Raw[(RawSnapshot)]
-    
-    Fetcher -->|Ввод в нормализаторы| Registry
-    NormDota2 & NormCS & NormLoL & NormValorant -->|Извлечение Match/Participants| Deduper[Match & Round Deduplicator]
-    Deduper -->|Fuzzy Match & Canonicalize| TeamMatcher[Levenshtein Fuzzy Match Engine]
-    TeamMatcher -->|Сохранение данных| DB_Prod[(PostgreSQL: Tournaments & Matches)]
-```
+- получает турнирные данные из внешних спортивных источников;
+- приводит разные форматы матчей и участников к общей модели;
+- сохраняет исходные снимки, диагностические данные и нормализованные сущности;
+- помогает сопоставлять команды и игроков с Admin ID;
+- формирует и проверяет payload перед отправкой во внешнюю систему;
+- ведёт отдельный fail-closed процесс сбора и подготовки результатов КХЛ.
 
-### 2. Схема Динамического Маршрутизатора Страниц (Next.js App Router)
+Проект рассчитан на ручную работу оператора, автоматические фоновые задачи и
+воспроизводимое развёртывание через Docker Compose.
+
+## Возможности
+
+| Контур | Что поддерживается |
+|---|---|
+| **Cyber** | Dota 2, Counter-Strike, League of Legends и Valorant: поиск, импорт, расписания, маппинг и экспорт |
+| **KHL Results** | Сбор завершённых матчей, официальный протокол, команды и игроки, статистика, bindings, preview, diff и staging |
+| **TBvolley** | VolleyballWorld, beach.volley.ru, German Beach Tour, CSVP, Austrian Beach Tour, CBV Brasil и Italy Federvolley |
+| **TableT** | Поиск и импорт турниров WTT, категории и пакетная обработка |
+| **Ручной импорт** | Текст, изображения, локальный OCR, пакетная обработка и опциональный AI parser |
+| **Admin integration** | Team mapping, FIxt payload, история отправок, allowlist, Basic/Bearer/API key и mTLS |
+| **Диагностика** | Health API, parser logs, proxy pool, source cache и пользовательские классы ошибок |
+
+## KHL Results
+
+Раздел **«Результаты → КХЛ»** — самостоятельный вертикальный модуль:
+
+- автоматический и ручной ingest расписания и протоколов;
+- хранение raw snapshot и ревизий матча;
+- нормализация командной и индивидуальной статистики;
+- привязки команд, игроков, матча и статистических ID;
+- вкладки «Матчи сегодня», «Статистика игрового дня» и «Архив»;
+- preview канонического Admin payload и SHA-256 hash;
+- diff относительно последней подготовленной версии;
+- идемпотентный staging без скрытой отправки;
+- автоматическая синхронизация через systemd timer;
+- fail-closed поведение при неполных, неоднозначных или отклонённых данных.
+
+Подробная история и правила модуля находятся в [KHL_HANDOFF.md](KHL_HANDOFF.md),
+а настройка фонового таймера — в [deploy/systemd/README.md](deploy/systemd/README.md).
+
+## Архитектура
 
 ```mermaid
 flowchart LR
-    URL["/[disciplineSlug]"] --> Page[Dynamic Discipline Hub]
-    URL1["/[disciplineSlug]/tournament/[id]"] --> Page1[Dynamic Tournament Dashboard]
-    
-    Page --> UI_Search[Search widget]
-    Page --> UI_Settings[Discipline Admin Settings]
-    Page1 --> UI_Mapping[Team Mappings]
-    Page1 --> UI_Fixture[Fixture Payload Sender]
+    Operator[Оператор] --> UI[Next.js UI]
+    UI --> API[Route handlers]
+    API --> Domain[Backend services]
+
+    Sources[Liquipedia · HLTV · VLR · DLTV · Fandom · TBvolley · WTT]
+    Sources --> Fetch[Fetchers, rate limits, proxy policy]
+    Fetch --> Normalize[Normalizers and deduplication]
+    Normalize --> Domain
+
+    KHL[KHL schedule and protocol API] --> KhlPipeline[KHL ingest and revision pipeline]
+    KhlPipeline --> Domain
+
+    Domain --> DB[(PostgreSQL / Prisma)]
+    Domain --> Cache[(Source and parser cache)]
+    Domain --> Preview[Admin payload preview and diff]
+    Preview --> Delivery[Controlled staging / delivery]
 ```
 
----
+### Основные слои
 
-## 📂 Структура каталогов (Clean Architecture)
+- `frontend/src/app` — страницы App Router и HTTP route handlers;
+- `frontend/src/components` — операторский интерфейс;
+- `backend/src` — доменная логика, источники, нормализаторы и политики;
+- `backend/prisma` — схема PostgreSQL и миграции;
+- `scripts` — CLI, проверки, импорт и автоматизация;
+- `tests` — unit, integration и Playwright E2E проверки.
 
-Кодовая база строго разграничена по доменным зонам, исключая "спагетти-импорты" и связывая логику через чистые абстракции.
+## Технологии
+
+| Область | Стек |
+|---|---|
+| Web | Next.js 16.3.1, React 19, TypeScript |
+| Data | PostgreSQL 16, Prisma 5 |
+| Parsing | Cheerio, Playwright, source-specific clients |
+| OCR | Tesseract.js, Sharp |
+| UI | Tailwind CSS, Framer Motion, Lucide |
+| Проверки | Node test runner через TSX, Playwright E2E, ESLint, TypeScript |
+| Runtime | Node.js 24, Docker, Docker Compose, nginx |
+
+## Быстрый запуск
+
+### Требования
+
+- Node.js 24;
+- npm;
+- PostgreSQL 16 или Docker;
+- Git.
+
+### 1. Получить проект
+
+```bash
+git clone https://github.com/inftverezovsky/TData.git
+cd TData
+npm ci
+```
+
+### 2. Создать локальное окружение
+
+Windows PowerShell:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Linux/macOS:
+
+```bash
+cp .env.example .env
+```
+
+Файл `.env` уже исключён из Git. Не добавляйте в репозиторий реальные пароли,
+токены, ключи, сертификаты и URL с учётными данными.
+
+Минимально проверьте следующие настройки:
+
+```dotenv
+DATABASE_URL="postgresql://USER:PASSWORD@localhost:5434/tdata?schema=public"
+LIQUIPEDIA_USER_AGENT="tdata-local/1.0 (contact: you@example.com)"
+ADMIN_PASSWORD="replace-with-a-local-password"
+ADMIN_SESSION_SECRET="replace-with-a-long-random-value"
+ADMIN_UPLOAD_ALLOWED_HOSTS="admin.example.com"
+```
+
+Это только безопасные placeholders. Реальные значения должны оставаться в
+локальном `.env` или в secret storage среды развёртывания.
+
+### 3. Подготовить Prisma и запустить приложение
+
+```bash
+npm run prisma:generate
+npm run db:migrate:deploy
+npm run dev
+```
+
+Приложение будет доступно на `http://localhost:3010`.
+
+## Docker Compose
+
+Перед запуском заполните `.env`, затем проверьте итоговую конфигурацию:
+
+```bash
+docker compose config -q
+docker compose up -d --build
+docker compose ps
+```
+
+Локальная проверка контейнера:
+
+```bash
+curl http://127.0.0.1:3010/api/health
+```
+
+Compose публикует web и PostgreSQL только на loopback-интерфейсе. Публичный
+HTTPS в production обслуживается отдельным nginx.
+
+## Команды разработчика
+
+| Команда | Назначение |
+|---|---|
+| `npm run dev` | Локальный Next.js dev server на порту 3010 |
+| `npm run build` | Production-сборка и генерация Prisma Client |
+| `npm run start` | Запуск готовой production-сборки |
+| `npm run typecheck` | Проверка TypeScript без генерации файлов |
+| `npm run lint` | ESLint для всего репозитория |
+| `npm test` | Основной набор TS-тестов |
+| `npm run test:e2e` | Playwright E2E |
+| `npm run prisma:generate` | Обновление Prisma Client |
+| `npm run db:migrate:deploy` | Применение существующих миграций |
+| `npm run sync:khl-results` | Однократный запуск KHL sync runner |
+
+DB-интеграционные KHL-тесты требуют отдельную loopback-базу с именем,
+содержащим `test`, и переменную `TEST_DATABASE_URL`. Никогда не направляйте их
+на production-базу.
+
+## TData CLI
+
+```bash
+npx tsx scripts/tdata-cli.ts help
+```
+
+Доступные операции:
+
+- `db:check` — соединение с PostgreSQL и основные счётчики;
+- `cache:clear` — очистка search cache и parser logs;
+- `proxy:check` — состояние proxy pool;
+- `deploy` — локальный checklist готовности.
+
+## Структура репозитория
 
 ```text
 TData/
-├── frontend/                  # Next.js приложение: UI, App Router и тонкие API adapters
-│   ├── public/                # Статические ассеты приложения
-│   ├── src/
-│   │   ├── app/               # Pages, layouts и route handlers Next.js
-│   │   │   ├── [disciplineSlug]/
-│   │   │   ├── api/           # HTTP-слой: валидация запроса и вызов backend services
-│   │   │   └── settings/
-│   │   └── components/        # React UI-компоненты без прямого доступа к Prisma/filesystem
-│   ├── next.config.mjs
-│   ├── postcss.config.js
-│   └── tailwind.config.ts
-├── backend/                   # Серверная доменная логика и интеграции
-│   ├── prisma/                # Схема БД (PostgreSQL), миграции и seed
+├── frontend/
+│   ├── public/
 │   └── src/
-│       ├── adminUpload/       # FIxt payload, upload policy и Admin API client
-│       ├── adminTeams/        # Импорт и подсказки команд админки
-│       ├── auth/              # Admin session/password guard
-│       ├── db/                # Prisma client
-│       ├── imports/           # Оркестрация импорта турниров
-│       ├── matches/           # Дедупликация, расписание, качество матчей
-│       ├── normalizers/       # Нормализаторы Wikitext/HTML
-│       ├── sources/           # Liquipedia, HLTV, VLR, DLTV, Fandom, TBvolley, WTT
-│       ├── sync/              # Identity sync
-│       └── teams/             # Canonicalize, fuzzy match, automapping
-├── scripts/                   # Утилиты автоматизации и CLI
-│   └── tdata-cli.ts          # Единый пульт разработчика TData CLI
-├── tests/                     # Unit/integration/e2e проверки
-├── docker-compose.yml         # Canonical compose deployment
-├── Dockerfile                 # Production image build
-└── package.json               # Root orchestration scripts
+│       ├── app/
+│       │   ├── api/
+│       │   └── results/khl/
+│       └── components/
+│           └── results/khl/
+├── backend/
+│   ├── prisma/
+│   │   └── migrations/
+│   └── src/
+│       ├── results/khl/
+│       ├── sources/
+│       ├── normalizers/
+│       ├── teams/
+│       ├── manualImport/
+│       └── adminUpload/
+├── deploy/systemd/
+├── scripts/
+├── tests/
+│   ├── e2e/
+│   └── fixtures/khl/
+├── .env.example
+├── docker-compose.yml
+├── Dockerfile
+└── package.json
 ```
 
----
+## Безопасность
 
-## 🛠 Единый CLI-пульт Разработчика
+- все mutation routes KHL защищены admin session и same-origin проверками;
+- исходящие URL проходят host allowlist и SSRF-политику;
+- Admin delivery поддерживает Basic, Bearer, API key и mTLS;
+- секреты читаются только из окружения и не должны попадать в Git;
+- raw snapshots и rejected revisions сохраняются для диагностики;
+- неполный binding или неоднозначный матч блокирует payload целиком;
+- автоматические проверки используют только явно изолированную тестовую БД.
 
-Для упрощения отладки в терминале создан единый пульт `tdata-cli.ts`. Запустите его командой:
+## Проверка качества
+
+Базовый локальный gate:
 
 ```bash
-npx tsx scripts/tdata-cli.ts
+npm run typecheck
+npm run lint
+npm test
+npm run build
 ```
 
-## GitHub Save Agent
+Расширенный E2E gate запускается отдельно, когда доступны браузеры и безопасная
+тестовая база:
 
-Для сохранения, коммита и пуша проекта в GitHub используйте локального агента:
+```bash
+npm run test:e2e
+npm run test:e2e:db
+```
+
+## Как убедиться, что GitHub показывает актуальную версию
+
+GitHub показывает рядом с каждым файлом или каталогом **последний коммит,
+который менял именно этот путь**. Поэтому `last week` у папки не означает, что
+ветка устарела.
+
+Проверять нужно SHA вершины `main`:
+
+```bash
+git fetch origin main
+git status --short --branch
+git rev-parse HEAD
+git rev-parse origin/main
+```
+
+Оба SHA должны совпадать, а статус должен показывать `main...origin/main` без
+локальных изменений.
+
+## Сохранение в GitHub
+
+Проектный save-agent проверяет корень репозитория, настраивает правильный
+`origin`, создаёт коммит и отправляет его в `main`:
 
 ```powershell
-npm run git:save -- -Message "Describe the saved change"
+npm run git:save -- -Message "docs: update project documentation"
 ```
 
-Агент держит `origin` на `https://github.com/inftverezovsky/TData.git`, коммитит от `inftverezovsky <inf.tverezovsky@gmail.com>` и пушит в `main`. Пароли и токены не сохраняются в проекте.
-
-### Доступные операции:
-* `db:check` — Быстрый замер задержки PostgreSQL и вывод статистики таблиц.
-* `cache:clear` — Освобождение дискового пространства (удаление кэша wikitext и временных логов).
-* `proxy:check` — Сводная статистика здоровья прокси-пула, выявление забаненных адресов.
-* `deploy` — Запуск тестов готовности серверов и резервного копирования.
+Используется репозиторий:
+[`inftverezovsky/TData`](https://github.com/inftverezovsky/TData).
 
 ---
 
-## 📊 Интеллектуальный OCR Fuzzy Match Engine
+<div align="center">
 
-Модуль `backend/src/teams/fuzzyMatch.ts` использует алгоритм вычисления **Расстояния Левенштейна** совместно с substring-весовыми коэффициентами.
+**TData** · Tournament data should be traceable, reviewable and safe to deliver.
 
-Это позволяет движку находить идеальные совпадения в базе данных даже при сильном уровне шума во входящих строках (например, после оптического распознавания скриншотов трансляций операторами):
-
-```typescript
-// Пример работы нечёткого поиска
-const match = await findClosestPlatformTeam("counterstrike", "G2 Esportz!");
-// Результат -> { platformId: "123", platformName: "G2 Esports", score: 0.91 }
-```
-
-API эндпоинт для пакетной обработки:
-`POST /api/team-mapping/fuzzy`
-
----
-
-## 🖥️ Панель диагностики и телеметрии (Health Dashboard)
-
-В разделе **Настройки Системы** интегрирован интерактивный виджет диагностики, опрашивающий эндпоинт `/api/admin/health`:
-* **БД Пинг**: Визуальный индикатор задержки соединения (зелёный <100ms, жёлтый <250ms, красный для аномалий).
-* **Качество Прокси**: Процент активных и заблокированных адресов в пуле с визуальным прогресс-баром.
-* **Parser Activity Log**: Интерактивная таблица последних 8 запросов парсинга с выводом статуса кэша (`CACHED` / `LIVE FETCH`) и классов возникших ошибок.
-
----
-
-## 🚦 Показатели Качества и Тесты
-
-В системе развёрнут строгий юнит-тест-сьют, проверяющий крайние случаи парсинга скобок, дублирующихся раундов, TBD-слотов и proxy-коалдаунов.
-
-```bash
-npm run typecheck   # 0 ошибок компиляции (TypeScript 5.x)
-npm test            # полный unit/integration suite должен проходить без падений
-```
-
-Вывод тестов:
-```text
-✔ Dota2 normalizer preserves empty TBD playoff slots (10.13ms)
-✔ Valorant normalizer only keeps stage subpages from the selected event (1.72ms)
-✔ dedupeTournamentMatches collapses the same dated pair even when sides are swapped (4.40ms)
-✔ team canonicalizer prefers the full participant name for short Liquipedia labels (0.96ms)
-✔ team mapping lookup prefers saved platform IDs over stale unmapped duplicates (0.47ms)
-ℹ tests 387 | pass 387
-```
-
----
-
-## 🔒 Безопасность и Деплой
-
-* **mTLS (Mutual TLS)**: Поддержка аутентификации через клиентские PEM/PFX сертификаты (папка `certs/` надёжно защищена в `.gitignore`).
-* **Identity Sync**: Механизм фонового резервного копирования и синхронизации локального PostgreSQL сервера с продакшеном.
-* **Production Build Ready**: Приложение полностью готово к сборке через `npm run build` с автоматическим запуском миграций БД при запуске Docker-контейнера.
+</div>
