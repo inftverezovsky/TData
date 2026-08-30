@@ -10,6 +10,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/**/*.test.ts",
+    "test:tline": "tsx --test tests/tline*.test.ts",
+    "test:tline:coverage": "tsx --test --experimental-test-coverage --test-coverage-include=backend/src/tline/admin/directory.ts --test-coverage-include=backend/src/tline/domain/** --test-coverage-include=backend/src/tline/mappings/** --test-coverage-include=backend/src/tline/comparison/** --test-coverage-include=backend/src/tline/sources/** --test-coverage-include=backend/src/tline/application/runs.ts --test-coverage-include=backend/src/tline/application/scheduleState.ts --test-coverage-include=backend/src/tline/application/manualDecisions.ts --test-coverage-include=backend/src/tline/application/executor.ts --test-coverage-lines=80 --test-coverage-functions=80 --test-coverage-branches=80 tests/tlineAdminDirectory.test.ts tests/tlineManualMappings.test.ts tests/tlineDomainComparison.test.ts tests/tlineDomainMappings.test.ts tests/tlineDomainSources.test.ts tests/tlineApplicationRuns.test.ts tests/tlineApplicationState.test.ts tests/tlineApiParsers.test.ts tests/tlineExecutor.test.ts",
     "test:e2e": "playwright test",
     "test:e2e:prod": "cross-env PLAYWRIGHT_PROD_SERVER=1 playwright test",
     "test:e2e:db": "cross-env RUN_DB_E2E=1 playwright test tests/e2e/fixt-send.integration.spec.ts",
@@ -22,6 +24,9 @@
     "db:seed": "tsx backend/prisma/seed.ts",
     "audit:tournaments": "tsx scripts/tournament-audit-agent.ts",
     "sync:khl-results": "tsx scripts/sync-khl-results.ts",
+    "worker:tline": "tsx scripts/tline-worker.ts",
+    "tline:bootstrap-pilot": "tsx scripts/tline-bootstrap-pilot.ts",
+    "tline:check-sources": "tsx scripts/tline-source-check.ts",
     "import:dota2-admin-teams": "tsx scripts/import-admin-teams.ts",
     "setup": "npm install && npm run prisma:generate && npm run db:migrate:deploy && npm run db:seed"
   },

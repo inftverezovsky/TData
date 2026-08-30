@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { bootstrapTLineVolleyballPilot } from "../src/tline/pilot/bootstrap";
 
 const prisma = new PrismaClient();
 
@@ -62,6 +63,8 @@ async function main() {
       isEnabled: true
     }
   });
+
+  await bootstrapTLineVolleyballPilot(prisma);
 }
 
 main()

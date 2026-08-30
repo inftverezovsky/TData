@@ -66,6 +66,13 @@ export async function hasValidAdminSession(request: Request) {
 }
 
 export function requireSameOriginJsonMutation(request: Request) {
+  const invalid = requireSameOriginMutation(request, ["application/json"]);
+  return invalid?.status === 415
+    ? NextResponse.json({ error: "Content-Type must be application/json." }, { status: 415 })
+    : invalid;
+}
+
+export function requireSameOriginMutation(request: Request, allowedContentTypes: readonly string[]) {
   const origin = normalizeOrigin(request.headers.get("origin"));
   const allowedOrigins = requestOrigins(request);
   if (!origin || !allowedOrigins.has(origin)) {
@@ -73,9 +80,9 @@ export function requireSameOriginJsonMutation(request: Request) {
   }
 
   const contentType = request.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase();
-  if (contentType !== "application/json") {
+  if (!contentType || !allowedContentTypes.includes(contentType)) {
     return NextResponse.json(
-      { error: "Content-Type must be application/json." },
+      { error: `Content-Type must be one of: ${allowedContentTypes.join(", ")}.` },
       { status: 415 }
     );
   }

@@ -21,6 +21,7 @@ services:
 
   web:
     build: .
+    image: ${TDATA_IMAGE:-tdata-local}
     container_name: tdata-web
     restart: always
     ports:
@@ -74,6 +75,10 @@ services:
       IDENTITY_SYNC_INCLUDE_API_URL: ${IDENTITY_SYNC_INCLUDE_API_URL:-0}
       KHL_RESULTS_AUTO_SYNC_ENABLED: ${KHL_RESULTS_AUTO_SYNC_ENABLED:-1}
       KHL_RESULTS_AUTO_SYNC_INTERVAL_MINUTES: ${KHL_RESULTS_AUTO_SYNC_INTERVAL_MINUTES:-10}
+      TLINE_ENABLED: ${TLINE_ENABLED:-0}
+      TLINE_SCHEDULER_READY: ${TLINE_SCHEDULER_READY:-0}
+      TLINE_ADMIN_MODE: ${TLINE_ADMIN_MODE:-http}
+      TLINE_ADMIN_FIXTURE_PATH: ${TLINE_ADMIN_FIXTURE_PATH:-}
     volumes:
       - ./certs:/app/certs:ro
       - tdata_cache:/app/cache
@@ -87,6 +92,21 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+
+  tline-worker:
+    image: ${TDATA_IMAGE:-tdata-local}
+    container_name: tdata-tline-worker
+    restart: always
+    command: ["npx", "tsx", "scripts/tline-worker.ts"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-tdata}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-tdata}?schema=public
+      TLINE_ENABLED: ${TLINE_ENABLED:-0}
+      TLINE_SCHEDULER_READY: ${TLINE_SCHEDULER_READY:-0}
+      TLINE_ADMIN_MODE: ${TLINE_ADMIN_MODE:-http}
+      TLINE_ADMIN_FIXTURE_PATH: ${TLINE_ADMIN_FIXTURE_PATH:-}
+    depends_on:
+      web:
+        condition: service_healthy
 
 volumes:
   tdata_postgres_data:

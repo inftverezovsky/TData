@@ -31,6 +31,7 @@ model Discipline {
   createdAt         DateTime           @default(now())
   searchRequests    SearchRequest[]
   tournamentImports TournamentImport[]
+  tlineSportConfig  TLineSportConfig?
 }
 
 model SearchRequest {
@@ -154,32 +155,32 @@ model TournamentParticipant {
 }
 
 model TournamentMatch {
-  id            String     @id @default(cuid())
-  matchId       String     @unique
-  tournamentId  String
-  tournament    Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
-  stage         String?
-  round         String?
-  matchDate     DateTime?
-  matchDateTime String?
-  teamAId       String?
-  teamAName     String?
-  teamBId       String?
-  teamBName     String?
-  scoreA        Int?
-  scoreB        Int?
-  format        String?
-  status        String?
-  court         String?
-  sourceUrl     String?
-  lpNumericalId BigInt?     @unique
-  platformId    String?
-  syncedAt      DateTime?
-  rawText       String?    @db.Text
-  hasPlaceholderTeams Boolean @default(false)
+  id                  String     @id @default(cuid())
+  matchId             String     @unique
+  tournamentId        String
+  tournament          Tournament @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  stage               String?
+  round               String?
+  matchDate           DateTime?
+  matchDateTime       String?
+  teamAId             String?
+  teamAName           String?
+  teamBId             String?
+  teamBName           String?
+  scoreA              Int?
+  scoreB              Int?
+  format              String?
+  status              String?
+  court               String?
+  sourceUrl           String?
+  lpNumericalId       BigInt?    @unique
+  platformId          String?
+  syncedAt            DateTime?
+  rawText             String?    @db.Text
+  hasPlaceholderTeams Boolean    @default(false)
   sourceConfidence    Float?
   sourceBreakdown     Json?
-  createdAt     DateTime   @default(now())
+  createdAt           DateTime   @default(now())
 
   @@index([tournamentId])
   @@index([matchDate])
@@ -187,29 +188,29 @@ model TournamentMatch {
 }
 
 model SourceFetchCache {
-  id                 String    @id @default(cuid())
-  source             String
-  disciplineSlug     String    @default("global")
-  resourceType       String
-  resourceKey        String
-  mode               String    @default("cache-first")
-  revisionId         Int?
-  revisionTimestamp  DateTime?
-  contentHash        String?
-  lastGoodAt         DateTime?
-  lastAttemptAt      DateTime?
-  lastErrorClass     String?
-  qualityScore       Float?
-  cacheUntil         DateTime?
-  staleUntil         DateTime?
-  externalRequests   Int       @default(0)
-  bytesIn            Int?
-  bytesOut           Int?
-  cacheLayer         String?
-  rawSnapshotId      String?
-  metadata           Json?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  id                String    @id @default(cuid())
+  source            String
+  disciplineSlug    String    @default("global")
+  resourceType      String
+  resourceKey       String
+  mode              String    @default("cache-first")
+  revisionId        Int?
+  revisionTimestamp DateTime?
+  contentHash       String?
+  lastGoodAt        DateTime?
+  lastAttemptAt     DateTime?
+  lastErrorClass    String?
+  qualityScore      Float?
+  cacheUntil        DateTime?
+  staleUntil        DateTime?
+  externalRequests  Int       @default(0)
+  bytesIn           Int?
+  bytesOut          Int?
+  cacheLayer        String?
+  rawSnapshotId     String?
+  metadata          Json?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   @@unique([source, disciplineSlug, resourceType, resourceKey, mode], map: "SourceFetchCache_source_disciplineSlug_resourceType_resourceKey")
   @@index([source, disciplineSlug, resourceType])
@@ -224,48 +225,55 @@ model GlobalSettings {
 }
 
 model ProxyPool {
-  id            String   @id @default(cuid())
-  url           String   @unique
-  protocol      String   @default("http")
+  id            String    @id @default(cuid())
+  url           String    @unique
+  protocol      String    @default("http")
   host          String
   port          Int
   username      String?
   password      String?
-  isActive      Boolean  @default(true)
-  failCount     Int      @default(0)
-  lastError     String?  @db.Text
+  isActive      Boolean   @default(true)
+  failCount     Int       @default(0)
+  lastError     String?   @db.Text
   cooldownUntil DateTime?
-  successCount  Int      @default(0)
-  blockedCount  Int      @default(0)
+  successCount  Int       @default(0)
+  blockedCount  Int       @default(0)
   avgLatencyMs  Int?
   lastUsed      DateTime?
-  createdAt     DateTime @default(now())
+  createdAt     DateTime  @default(now())
 }
 
 model ParserRequestLog {
-  id             String   @id @default(cuid())
-  source         String
-  mode           String?
-  route          String?
-  disciplineSlug String?
-  queryHash      String?
-  proxyId        String?
-  attempt        Int?
-  statusCode     Int?
-  errorClass     String?
-  durationMs     Int?
-  bytesIn        Int?
-  bytesOut       Int?
-  cacheLayer     String?
-  cacheHit       Boolean  @default(false)
-  matchesCount   Int?
-  eventsCount    Int?
-  createdAt      DateTime @default(now())
+  id                  String   @id @default(cuid())
+  source              String
+  mode                String?
+  route               String?
+  disciplineSlug      String?
+  queryHash           String?
+  proxyId             String?
+  attempt             Int?
+  statusCode          Int?
+  errorClass          String?
+  durationMs          Int?
+  bytesIn             Int?
+  bytesOut            Int?
+  cacheLayer          String?
+  cacheHit            Boolean  @default(false)
+  matchesCount        Int?
+  eventsCount         Int?
+  tlineRunId          String?
+  tlineChampionshipId String?
+  createdAt           DateTime @default(now())
+
+  tlineRun          TLineRun?          @relation(fields: [tlineRunId], references: [id], onDelete: SetNull)
+  tlineChampionship TLineChampionship? @relation(fields: [tlineChampionshipId], references: [id], onDelete: SetNull)
 
   @@index([source, mode, createdAt])
   @@index([disciplineSlug, createdAt])
   @@index([proxyId, createdAt])
   @@index([cacheHit, createdAt])
+  @@index([tlineRunId, createdAt])
+  @@index([tlineChampionshipId, createdAt])
 }
 
 enum MappingStatus {
@@ -278,18 +286,21 @@ enum MappingStatus {
 }
 
 model AdminTeam {
-  id              String   @id @default(cuid())
-  disciplineSlug  String
-  platformId      String
-  platformName    String
-  platformNameRu  String?
-  platformNameEn  String?
-  normalizedName  String
+  id               String   @id @default(cuid())
+  disciplineSlug   String
+  platformId       String
+  platformName     String
+  platformNameRu   String?
+  platformNameEn   String?
+  normalizedName   String
   normalizedNameRu String?
   normalizedNameEn String?
-  sourceFileName  String
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  sourceFileName   String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  tlineMappings      TLineTeamMapping[]
+  tlineGlobalHeaders TLineGlobalHeaderAdminTeam[]
 
   @@index([disciplineSlug])
   @@index([normalizedName])
@@ -338,18 +349,18 @@ model ManualImportTeamMapping {
 }
 
 model DisciplineAdminSettings {
-  id                String   @id @default(cuid())
-  disciplineSlug    String   @unique
-  apiUrl            String?
-  adminSportId      String?
-  adminMax          String?
-  defaultShapkaId   String?
-  timezone          String   @default("Europe/Moscow")
-  dateFormat        String   @default("DD.MM.YYYY HH:mm:ss")
-  requestMode       String   @default("legacy_raw") // legacy_raw, urlencoded, multipart
-  sslVerify         Boolean  @default(true)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id              String   @id @default(cuid())
+  disciplineSlug  String   @unique
+  apiUrl          String?
+  adminSportId    String?
+  adminMax        String?
+  defaultShapkaId String?
+  timezone        String   @default("Europe/Moscow")
+  dateFormat      String   @default("DD.MM.YYYY HH:mm:ss")
+  requestMode     String   @default("legacy_raw") // legacy_raw, urlencoded, multipart
+  sslVerify       Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 model TournamentAdminMapping {
@@ -389,9 +400,9 @@ model AdminUploadLog {
   errorMessage        String?  @db.Text
   createdAt           DateTime @default(now())
 
+  @@unique([disciplineSlug, tournamentId, payloadHash])
   @@index([disciplineSlug])
   @@index([tournamentId])
-  @@unique([disciplineSlug, tournamentId, payloadHash])
 }
 
 enum KhlMatchState {
@@ -456,10 +467,10 @@ model KhlTeam {
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
 
-  homeMatches     KhlMatch[]            @relation("KhlHomeTeam")
-  awayMatches     KhlMatch[]            @relation("KhlAwayTeam")
-  participants    KhlMatchParticipant[]
-  teamStatTargets KhlTeamStatTarget[]
+  homeMatches      KhlMatch[]            @relation("KhlHomeTeam")
+  awayMatches      KhlMatch[]            @relation("KhlAwayTeam")
+  participants     KhlMatchParticipant[]
+  teamStatTargets  KhlTeamStatTarget[]
   teamStatBindings KhlTeamStatBinding[]
 
   @@index([apiTeamId])
@@ -716,4 +727,476 @@ model KhlDeliveryAttempt {
 
   @@unique([deliveryId, attemptNumber])
   @@index([state, startedAt])
+}
+
+enum TLineRunTrigger {
+  MANUAL
+  SCHEDULED
+}
+
+enum TLineRunStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  PARTIAL
+  CANCELLED
+  FAILED
+}
+
+enum TLineJobType {
+  RUN_CHECK
+  RETENTION_CLEANUP
+}
+
+enum TLineJobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  PARTIAL
+  CANCELLED
+  FAILED
+}
+
+enum TLineMappingStatus {
+  UNMAPPED
+  SUGGESTED
+  AUTO_MAPPED
+  MANUAL_MAPPED
+  MANUAL_UNMAPPED
+  AMBIGUOUS
+  EXCLUDED
+}
+
+enum TLineAutomaticStatus {
+  PENDING
+  PROCESSING
+  AUTO_OK
+  TIME_WARNING
+  TIME_ERROR
+  TIME_CRITICAL
+  SOURCE_ONLY
+  ADMIN_ONLY
+  TEAM_UNMAPPED
+  MATCH_AMBIGUOUS
+  DUPLICATE_SOURCE
+  DUPLICATE_ADMIN
+  SOURCE_TIME_UNDEFINED
+  STATUS_MISMATCH
+  PARSER_FAILED
+  CANCELLED
+}
+
+enum TLineEffectiveStatus {
+  PENDING
+  PROCESSING
+  AUTO_OK
+  TIME_WARNING
+  TIME_ERROR
+  TIME_CRITICAL
+  SOURCE_ONLY
+  ADMIN_ONLY
+  TEAM_UNMAPPED
+  MATCH_AMBIGUOUS
+  DUPLICATE_SOURCE
+  DUPLICATE_ADMIN
+  SOURCE_TIME_UNDEFINED
+  STATUS_MISMATCH
+  PARSER_FAILED
+  CANCELLED
+  MANUAL_OK
+  MANUAL_ERROR
+  IGNORED
+}
+
+enum TLineSeverity {
+  OK
+  WARNING
+  ERROR
+  CRITICAL
+  UNPROCESSED
+}
+
+enum TLineManualDecisionType {
+  MANUAL_OK
+  MANUAL_ERROR
+  CONFIRM_CHAMPIONSHIP
+  MANUAL_LINK
+  IGNORE_UNTIL
+  EXCLUDE
+  RESET
+}
+
+enum TLineExceptionType {
+  IGNORE_UNTIL
+  EXCLUDE
+}
+
+model TLineSportConfig {
+  id                             String    @id @default(cuid())
+  disciplineId                   String    @unique
+  adminSportId                   String?
+  active                         Boolean   @default(true)
+  autoEnabled                    Boolean   @default(false)
+  autoPeriodFromOffsetMinutes    Int?
+  autoPeriodToOffsetMinutes      Int?
+  candidateMatchWindowMinutes    Int?
+  defaultAllowedTimeDriftMinutes Int?
+  lastSuccessAt                  DateTime?
+  lastErrorAt                    DateTime?
+  createdAt                      DateTime  @default(now())
+  updatedAt                      DateTime  @updatedAt
+
+  discipline    Discipline          @relation(fields: [disciplineId], references: [id], onDelete: Restrict)
+  globalHeaders TLineGlobalHeader[]
+  championships TLineChampionship[]
+  runs          TLineRun[]
+  jobs          TLineJob[]
+
+  @@index([active, autoEnabled])
+}
+
+model TLineGlobalHeader {
+  id            String   @id @default(cuid())
+  sportConfigId String
+  adminShapkaId String
+  name          String?
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sportConfig   TLineSportConfig             @relation(fields: [sportConfigId], references: [id], onDelete: Restrict)
+  championships TLineChampionship[]
+  adminTeams    TLineGlobalHeaderAdminTeam[]
+
+  @@unique([sportConfigId, adminShapkaId])
+  @@index([sportConfigId, active])
+}
+
+model TLineChampionship {
+  id                          String    @id @default(cuid())
+  sportConfigId               String
+  globalHeaderId              String?
+  name                        String
+  season                      String?
+  sourceProvider              String
+  sourceUrl                   String    @db.Text
+  sourceChampionshipId        String?
+  adminChampionshipId         String?
+  adminChampionshipName       String?
+  sourceTimezone              String    @default("Europe/Moscow")
+  active                      Boolean   @default(true)
+  autoEnabled                 Boolean   @default(false)
+  allowedTimeDriftMinutes     Int?
+  candidateMatchWindowMinutes Int?
+  lastSuccessAt               DateTime?
+  lastErrorAt                 DateTime?
+  deletedAt                   DateTime?
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
+
+  sportConfig       TLineSportConfig           @relation(fields: [sportConfigId], references: [id], onDelete: Restrict)
+  globalHeader      TLineGlobalHeader?         @relation(fields: [globalHeaderId], references: [id], onDelete: Restrict)
+  sourceTeams       TLineSourceTeam[]
+  teamMappings      TLineTeamMapping[]
+  runChampionships  TLineRunChampionship[]
+  persistentLinks   TLinePersistentMatchLink[]
+  exceptions        TLineException[]
+  parserRequestLogs ParserRequestLog[]
+
+  @@unique([sportConfigId, sourceProvider, sourceUrl])
+  @@index([sportConfigId, active, autoEnabled])
+  @@index([globalHeaderId])
+  @@index([adminChampionshipId])
+}
+
+model TLineGlobalHeaderAdminTeam {
+  globalHeaderId  String
+  adminTeamId     String
+  sourceFileName  String?
+  firstImportedAt DateTime @default(now())
+  lastImportedAt  DateTime @default(now())
+
+  globalHeader TLineGlobalHeader @relation(fields: [globalHeaderId], references: [id], onDelete: Restrict)
+  adminTeam    AdminTeam         @relation(fields: [adminTeamId], references: [id], onDelete: Restrict)
+
+  @@id([globalHeaderId, adminTeamId])
+  @@index([adminTeamId])
+}
+
+model TLineSourceTeam {
+  id             String   @id @default(cuid())
+  championshipId String
+  externalId     String?
+  name           String
+  normalizedName String
+  firstSeenAt    DateTime @default(now())
+  lastSeenAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  championship TLineChampionship @relation(fields: [championshipId], references: [id], onDelete: Restrict)
+  mapping      TLineTeamMapping?
+
+  @@unique([championshipId, externalId])
+  @@unique([id, championshipId])
+  @@index([championshipId, normalizedName])
+  @@index([championshipId, lastSeenAt])
+}
+
+model TLineTeamMapping {
+  id              String             @id @default(cuid())
+  championshipId  String
+  sourceTeamId    String             @unique
+  adminTeamId     String
+  status          TLineMappingStatus @default(UNMAPPED)
+  confidenceScore Float?
+  matchMethod     String?
+  alias           String?
+  isLocked        Boolean            @default(false)
+  confirmedAt     DateTime?
+  confirmedBy     String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  championship TLineChampionship @relation(fields: [championshipId], references: [id], onDelete: Restrict)
+  sourceTeam   TLineSourceTeam   @relation(fields: [sourceTeamId, championshipId], references: [id, championshipId], onDelete: Restrict)
+  adminTeam    AdminTeam         @relation(fields: [adminTeamId], references: [id], onDelete: Restrict)
+
+  @@unique([sourceTeamId, championshipId])
+  @@index([championshipId, status])
+  @@index([adminTeamId])
+}
+
+model TLineRun {
+  id                String          @id @default(cuid())
+  sportConfigId     String
+  trigger           TLineRunTrigger
+  status            TLineRunStatus  @default(QUEUED)
+  periodFrom        DateTime
+  periodTo          DateTime
+  scheduledAt       DateTime?
+  progressTotal     Int             @default(0)
+  progressProcessed Int             @default(0)
+  okCount           Int             @default(0)
+  warningCount      Int             @default(0)
+  errorCount        Int             @default(0)
+  criticalCount     Int             @default(0)
+  unprocessedCount  Int             @default(0)
+  startedAt         DateTime?
+  completedAt       DateTime?
+  cancelRequestedAt DateTime?
+  errorCode         String?
+  errorMessage      String?         @db.Text
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  sportConfig       TLineSportConfig       @relation(fields: [sportConfigId], references: [id], onDelete: Restrict)
+  runChampionships  TLineRunChampionship[]
+  job               TLineJob?
+  parserRequestLogs ParserRequestLog[]
+
+  @@unique([sportConfigId, scheduledAt])
+  @@index([sportConfigId, status, createdAt])
+  @@index([status, createdAt])
+}
+
+model TLineRunChampionship {
+  id                String                @id @default(cuid())
+  runId             String
+  championshipId    String
+  status            TLineRunStatus        @default(QUEUED)
+  automaticStatus   TLineAutomaticStatus  @default(PENDING)
+  manualStatus      TLineEffectiveStatus?
+  effectiveStatus   TLineEffectiveStatus  @default(PENDING)
+  severity          TLineSeverity         @default(UNPROCESSED)
+  effectiveSeverity TLineSeverity         @default(UNPROCESSED)
+  reasonCodes       Json
+  startedAt         DateTime?
+  completedAt       DateTime?
+  errorCode         String?
+  errorMessage      String?               @db.Text
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  run             TLineRun                   @relation(fields: [runId], references: [id], onDelete: Cascade)
+  championship    TLineChampionship          @relation(fields: [championshipId], references: [id], onDelete: Restrict)
+  sourceSnapshots TLineSourceMatchSnapshot[]
+  adminSnapshots  TLineAdminMatchSnapshot[]
+  comparisons     TLineComparison[]
+  manualDecisions TLineManualDecision[]
+
+  @@unique([runId, championshipId])
+  @@index([championshipId, createdAt])
+  @@index([runId, status])
+}
+
+model TLineSourceMatchSnapshot {
+  id                 String    @id @default(cuid())
+  runChampionshipId  String
+  sourceKey          String
+  occurrenceIndex    Int       @default(0)
+  externalMatchId    String?
+  sourceUrl          String?   @db.Text
+  homeExternalTeamId String?
+  awayExternalTeamId String?
+  homeTeamName       String
+  awayTeamName       String
+  originalTimeText   String?
+  sourceTimezone     String
+  scheduledAtUtc     DateTime?
+  sourceStatus       String?
+  rawPayload         Json
+  createdAt          DateTime  @default(now())
+
+  runChampionship TLineRunChampionship @relation(fields: [runChampionshipId], references: [id], onDelete: Cascade)
+  comparison      TLineComparison?
+
+  @@unique([runChampionshipId, sourceKey, occurrenceIndex])
+  @@index([runChampionshipId, scheduledAtUtc])
+  @@index([externalMatchId])
+}
+
+model TLineAdminMatchSnapshot {
+  id                      String    @id @default(cuid())
+  runChampionshipId       String
+  adminMatchId            String
+  occurrenceIndex         Int       @default(0)
+  homeAdminTeamPlatformId String?
+  awayAdminTeamPlatformId String?
+  homeTeamName            String
+  awayTeamName            String
+  originalTimeText        String?
+  scheduledAtUtc          DateTime?
+  adminStatus             String?
+  rawPayload              Json
+  createdAt               DateTime  @default(now())
+
+  runChampionship TLineRunChampionship @relation(fields: [runChampionshipId], references: [id], onDelete: Cascade)
+  comparison      TLineComparison?
+
+  @@unique([runChampionshipId, adminMatchId, occurrenceIndex])
+  @@index([runChampionshipId, scheduledAtUtc])
+}
+
+model TLineComparison {
+  id                String                @id @default(cuid())
+  runChampionshipId String
+  sourceSnapshotId  String?               @unique
+  adminSnapshotId   String?               @unique
+  pairKey           String?
+  automaticStatus   TLineAutomaticStatus
+  manualStatus      TLineEffectiveStatus?
+  effectiveStatus   TLineEffectiveStatus
+  severity          TLineSeverity
+  effectiveSeverity TLineSeverity
+  reasonCodes       Json
+  swappedSides      Boolean               @default(false)
+  timeDeltaMinutes  Int?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  runChampionship TLineRunChampionship      @relation(fields: [runChampionshipId], references: [id], onDelete: Cascade)
+  sourceSnapshot  TLineSourceMatchSnapshot? @relation(fields: [sourceSnapshotId], references: [id], onDelete: Restrict)
+  adminSnapshot   TLineAdminMatchSnapshot?  @relation(fields: [adminSnapshotId], references: [id], onDelete: Restrict)
+  manualDecisions TLineManualDecision[]
+
+  @@index([runChampionshipId, effectiveStatus])
+  @@index([pairKey])
+}
+
+model TLineManualDecision {
+  id                String                  @id @default(cuid())
+  runChampionshipId String?
+  comparisonId      String?
+  decisionType      TLineManualDecisionType
+  effectiveStatus   TLineEffectiveStatus?
+  persistent        Boolean                 @default(false)
+  actorId           String?
+  note              String?                 @db.Text
+  expiresAt         DateTime?
+  createdAt         DateTime                @default(now())
+
+  runChampionship TLineRunChampionship? @relation(fields: [runChampionshipId], references: [id], onDelete: Restrict)
+  comparison      TLineComparison?      @relation(fields: [comparisonId], references: [id], onDelete: Restrict)
+
+  @@index([runChampionshipId, createdAt])
+  @@index([comparisonId, createdAt])
+  @@index([actorId, createdAt])
+}
+
+model TLinePersistentMatchLink {
+  id             String   @id @default(cuid())
+  championshipId String
+  sourceMatchKey String
+  adminMatchId   String
+  active         Boolean  @default(true)
+  createdBy      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  championship TLineChampionship @relation(fields: [championshipId], references: [id], onDelete: Restrict)
+
+  @@unique([championshipId, sourceMatchKey])
+  @@index([championshipId, adminMatchId])
+}
+
+model TLineException {
+  id             String             @id @default(cuid())
+  championshipId String
+  type           TLineExceptionType
+  sourceMatchKey String?
+  adminMatchId   String?
+  reason         String?            @db.Text
+  expiresAt      DateTime?
+  active         Boolean            @default(true)
+  createdBy      String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  championship TLineChampionship @relation(fields: [championshipId], references: [id], onDelete: Restrict)
+
+  @@index([championshipId, type, active])
+  @@index([expiresAt])
+}
+
+model TLineJob {
+  id                String         @id @default(cuid())
+  sportConfigId     String?
+  runId             String?        @unique
+  type              TLineJobType
+  status            TLineJobStatus @default(QUEUED)
+  idempotencyKey    String         @unique
+  scheduledAt       DateTime?
+  availableAt       DateTime       @default(now())
+  priority          Int            @default(0)
+  payload           Json
+  attempts          Int            @default(0)
+  maxAttempts       Int            @default(3)
+  leaseOwner        String?
+  leaseExpiresAt    DateTime?
+  heartbeatAt       DateTime?
+  cancelRequestedAt DateTime?
+  startedAt         DateTime?
+  completedAt       DateTime?
+  errorCode         String?
+  errorMessage      String?        @db.Text
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  sportConfig TLineSportConfig? @relation(fields: [sportConfigId], references: [id], onDelete: Restrict)
+  run         TLineRun?         @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([sportConfigId, scheduledAt, type])
+  @@index([status, availableAt, priority])
+  @@index([status, leaseExpiresAt])
+}
+
+model TLineScheduleState {
+  id         String    @id @default("global")
+  enabled    Boolean   @default(false)
+  timezone   String    @default("Europe/Moscow")
+  slotHours  Int[]     @default([8, 12, 16, 22])
+  lastTickAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 }

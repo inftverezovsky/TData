@@ -15,7 +15,8 @@
 
 [Production](https://www.tdata.info/) ·
 [Health](https://www.tdata.info/api/health) ·
-[KHL Results](https://www.tdata.info/results/khl)
+[KHL Results](https://www.tdata.info/results/khl) ·
+[TLine runbook](docs/TLINE.md)
 
 </div>
 
