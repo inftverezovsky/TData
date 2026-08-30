@@ -107,6 +107,67 @@ test("manual run keeps the undated-match filter off by default and sends an expl
   await expect.poll(() => requestBody?.includeUndatedSourceMatches).toBe(true);
 });
 
+test("hockey pilot exposes the unpublished-stage diagnostic and fresh source metrics", async ({ page }) => {
+  const hockeySport = { id: "hockey", slug: "hockey", name: "Хоккей", active: true, autoEnabled: false };
+  await page.route("**/api/tline/sports", (route) => route.fulfill({ json: { ok: true, data: [hockeySport] } }));
+  await page.route("**/api/tline/runs/latest**", (route) => route.fulfill({
+    json: {
+      ok: true,
+      data: {
+        id: "run-hockey",
+        state: "PARTIAL",
+        championships: [{
+          id: "hockey-belarus",
+          name: "Хоккей. Беларусь. Высшая лига",
+          status: "PENDING",
+          reasons: ["ADMIN_LINE_NOT_CONFIGURED", "SOURCE_STAGE_NOT_PUBLISHED"],
+          comparisons: [],
+        }],
+      },
+    },
+  }));
+  await page.route("**/api/tline/schedule", (route) => route.fulfill({
+    json: { ok: true, data: { enabled: false, slots: ["08:00", "12:00", "16:00", "22:00"] } },
+  }));
+
+  await page.goto("/tline/line");
+  await expect(page.getByRole("combobox", { name: "Вид спорта" })).toHaveValue("hockey");
+  await expect(page.getByText("Хоккей. Беларусь. Высшая лига")).toBeVisible();
+  await expect(page.getByText(/Официальные этапы сезона 2026\/27 ещё не опубликованы; товарищеские матчи исключены/)).toBeVisible();
+
+  const championship = {
+    id: "hockey-belarus",
+    name: "Хоккей. Беларусь. Высшая лига",
+    sportId: "hockey",
+    sourceUrl: "https://hockey.by/calendar/",
+    globalHeaderId: null,
+    globalHeader: null,
+    active: true,
+    autoEnabled: false,
+    allowedTimeDriftMinutes: null,
+  };
+  await page.route("**/api/tline/championships", (route) => route.fulfill({ json: { ok: true, data: [championship] } }));
+  await page.route("**/api/tline/admin-connection/status", (route) => route.fulfill({
+    json: { ok: true, data: { configured: false, connected: false } },
+  }));
+  await page.route("**/api/tline/championships/hockey-belarus/test", (route) => route.fulfill({
+    json: {
+      ok: true,
+      data: {
+        teamCount: 15,
+        matchCount: 20,
+        eligibleMatchCount: 0,
+        excludedMatchCount: 20,
+        diagnostics: { reasonCodes: ["SOURCE_STAGE_NOT_PUBLISHED"] },
+      },
+    },
+  }));
+
+  await page.goto("/tline/settings");
+  await page.getByRole("button", { name: "Проверить источник" }).click();
+  await expect(page.getByText(/Команд: 15\. Матчей найдено: 20, допущено: 0, исключено: 20/)).toBeVisible();
+});
+
 test("TLine settings exposes all operator sections", async ({ page }) => {
   let mapping: TLineTeamMapping = {
     id: "unmapped:source-1",

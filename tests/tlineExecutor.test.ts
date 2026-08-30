@@ -90,6 +90,51 @@ test("executor does not report a fresh empty official period as a source-only er
   assert.equal(fake.comparisons.length, 0);
 });
 
+test("executor preserves an official-stage-not-published diagnostic for an empty eligible snapshot", async () => {
+  const fake = createExecutorFake();
+  const result = await executeTLineRun(fake.client, "run-1", {
+    officialSources: createOfficialSourceRegistry([officialAdapter(false, false, true, undefined, true)]),
+    admin: null,
+  });
+
+  assert.equal(result.status, "PARTIAL");
+  assert.equal(fake.runChampionship.automaticStatus, "PENDING");
+  assert.deepEqual(fake.runChampionship.reasonCodes, [
+    "ADMIN_LINE_NOT_CONFIGURED",
+    "SOURCE_STAGE_NOT_PUBLISHED",
+  ]);
+  assert.equal(fake.sourceSnapshots.length, 0);
+  assert.equal(fake.comparisons.length, 0);
+});
+
+test("executor keeps source diagnostics at championship level when Admin comparison is configured", async () => {
+  const fake = createExecutorFake();
+  await executeTLineRun(fake.client, "run-1", {
+    officialSources: createOfficialSourceRegistry([officialAdapter(false, false, true, undefined, true)]),
+    admin: adminAdapter(),
+  });
+
+  assert.equal(fake.runChampionship.automaticStatus, "ADMIN_ONLY");
+  assert.deepEqual(fake.runChampionship.reasonCodes, [
+    "ADMIN_ONLY",
+    "SOURCE_STAGE_NOT_PUBLISHED",
+  ]);
+});
+
+test("an unpublished source stage cannot become a false green when Admin is also empty", async () => {
+  const fake = createExecutorFake();
+  const result = await executeTLineRun(fake.client, "run-1", {
+    officialSources: createOfficialSourceRegistry([officialAdapter(false, false, true, undefined, true)]),
+    admin: adminAdapter(true),
+  });
+
+  assert.equal(result.status, "PARTIAL");
+  assert.equal(fake.runChampionship.status, "PARTIAL");
+  assert.equal(fake.runChampionship.automaticStatus, "PENDING");
+  assert.equal(fake.runChampionship.severity, "WARNING");
+  assert.deepEqual(fake.runChampionship.reasonCodes, ["SOURCE_STAGE_NOT_PUBLISHED"]);
+});
+
 test("replaying a completed source-only run preserves PARTIAL instead of reporting false success", async () => {
   const fake = createExecutorFake();
   const dependencies = {
@@ -327,6 +372,7 @@ function officialAdapter(
   dateOnly = false,
   empty = false,
   observeUndated?: (value: boolean) => void,
+  stageNotPublished = false,
 ): OfficialSourceAdapter {
   return {
     provider: "fixture-official",
@@ -337,6 +383,10 @@ function officialAdapter(
       exactTimeCount: dateOnly ? 0 : 1,
       dateOnlyTimeCount: dateOnly ? 1 : 0,
       undefinedTimeCount: 0,
+      teamCount: 2,
+      eligibleMatchCount: 1,
+      excludedMatchCount: 0,
+      diagnostics: { reasonCodes: [], excludedStageNames: [], eligibleMatchCount: 1, excludedMatchCount: 0 },
       checkedAt: new Date().toISOString(),
     }),
     fetchChampionship: async ({ championship, includeUndatedSourceMatches }) => {
@@ -353,6 +403,9 @@ function officialAdapter(
           { id: "source-home", championshipId: championship.id, externalId: "source-home", nameRu: "Динамо", nameEn: null, aliases: [] },
           { id: "source-away", championshipId: championship.id, externalId: "source-away", nameRu: "Локомотив", nameEn: null, aliases: [] },
         ],
+        diagnostics: stageNotPublished
+          ? { reasonCodes: ["SOURCE_STAGE_NOT_PUBLISHED"], excludedStageNames: ["Товарищеские матчи"], eligibleMatchCount: 0, excludedMatchCount: 20 }
+          : undefined,
         matches: empty ? [] : [{
           id: "source-match",
           championshipId: championship.id,
@@ -371,14 +424,14 @@ function officialAdapter(
   };
 }
 
-function adminAdapter() {
+function adminAdapter(empty = false) {
   return new FixtureAdminLineAdapter({
     championships: [{
       sportId: "admin-sport",
       shapkaId: "admin-shapka",
       championshipId: "admin-champ",
       championshipName: "Высшая лига А. Женщины",
-      matches: [{
+      matches: empty ? [] : [{
         id: "admin-match",
         championshipId: "admin-champ",
         team1Id: "admin-home",

@@ -16,6 +16,7 @@ import {
   readNffrFloorballHtmlResponse,
 } from "../backend/src/tline/sources/nffrFloorball";
 import { createDefaultOfficialSourceRegistry } from "../backend/src/tline/sources/registry";
+import { HOCKEY_BY_PROVIDER } from "../backend/src/tline/sources/hockeyBy";
 
 const fixture = (name: string) => readFileSync(path.join(process.cwd(), "tests", "fixtures", "tline", name), "utf8");
 
@@ -36,10 +37,11 @@ const nffrCurrentConfig = {
   sourceTimezone: "Europe/Moscow",
 } as const;
 
-test("default official source registry includes volleyball and NFFR floorball", () => {
+test("default official source registry includes volleyball, NFFR floorball and Belarus hockey", () => {
   const registry = createDefaultOfficialSourceRegistry();
-  assert.deepEqual(registry.providers, ["volley-ru", NFFR_FLOORBALL_PROVIDER]);
+  assert.deepEqual(registry.providers, ["volley-ru", NFFR_FLOORBALL_PROVIDER, HOCKEY_BY_PROVIDER]);
   assert.equal(registry.get(NFFR_FLOORBALL_PROVIDER).provider, NFFR_FLOORBALL_PROVIDER);
+  assert.equal(registry.get(HOCKEY_BY_PROVIDER).provider, HOCKEY_BY_PROVIDER);
 });
 
 test("NFFR floorball parser extracts all 56 undated matches and eight official teams", () => {

@@ -7,6 +7,7 @@ import {
   defaultMoscowDateTime,
   filterTLineChampionships,
   formatTLineReasons,
+  formatOfficialConnectionMessage,
   emptyChampionshipMessage,
   moscowInputToIso,
   normalizeTLineRun,
@@ -118,6 +119,42 @@ test("fresh empty periods explain the source result without calling it an error"
   });
 });
 
+test("an unpublished official hockey stage has a precise localized empty state", () => {
+  const championship = {
+    id: "hockey-by",
+    name: "Хоккей. Беларусь. Высшая лига",
+    state: "PARTIAL",
+    status: "PENDING",
+    severity: "WARNING",
+    reasons: ["ADMIN_LINE_NOT_CONFIGURED", "SOURCE_STAGE_NOT_PUBLISHED"],
+    comparisons: [],
+  };
+
+  assert.equal(
+    emptyChampionshipMessage(championship),
+    "Официальные этапы сезона 2026/27 ещё не опубликованы; товарищеские матчи исключены. Сверка с Бетсити недоступна: линия Админа не настроена.",
+  );
+  assert.equal(
+    formatTLineReasons(championship.reasons, championship.status, null),
+    "Линия Админа не настроена · Официальные этапы сезона 2026/27 ещё не опубликованы; товарищеские матчи исключены",
+  );
+});
+
+test("official connection diagnostics report raw, eligible and excluded matches", () => {
+  assert.equal(formatOfficialConnectionMessage({
+    teamCount: 15,
+    matchCount: 20,
+    eligibleMatchCount: 0,
+    excludedMatchCount: 20,
+    diagnostics: {
+      reasonCodes: ["SOURCE_STAGE_NOT_PUBLISHED"],
+      excludedStageNames: ["Товарищеские матчи"],
+      eligibleMatchCount: 0,
+      excludedMatchCount: 20,
+    },
+  }), "Источник доступен. Команд: 15. Матчей найдено: 20, допущено: 0, исключено: 20. Официальные этапы сезона 2026/27 ещё не опубликованы; товарищеские матчи исключены.");
+});
+
 test("championship tone keeps source time warnings amber instead of critical red", () => {
   const run = normalizeTLineRun({
     id: "run-warning",
@@ -165,6 +202,37 @@ test("source match links and reason labels survive API normalization", () => {
     formatTLineReasons(run.championships[0].comparisons[0].reasons, "SOURCE_TIME_UNDEFINED", null),
     "Линия Админа не настроена · Официальный источник не указал время",
   );
+});
+
+test("safe source links accept only supported hockey.by and NFFR evidence paths", () => {
+  const normalizeSource = (sourceUrl: string) => normalizeTLineRun({
+    id: "run-hockey",
+    state: "PARTIAL",
+    championships: [{
+      id: "hockey",
+      name: "Hockey",
+      comparisons: [{ id: "match", source: { sourceUrl } }],
+    }],
+  })!.championships[0].comparisons[0].source?.sourceUrl;
+
+  assert.equal(normalizeSource("https://hockey.by/calendar/"), "https://hockey.by/calendar/");
+  assert.equal(normalizeSource("https://hockey.by/gamecenter/12345/"), "https://hockey.by/gamecenter/12345/");
+  assert.equal(normalizeSource("https://hockey.by/gamecenter/12345/?secret=1"), null);
+  assert.equal(normalizeSource("https://evil.example/gamecenter/12345/"), null);
+  assert.equal(
+    normalizeSource("https://xn--m1agla.xn--p1ai/sport/calendar/200"),
+    "https://xn--m1agla.xn--p1ai/sport/calendar/200",
+  );
+  assert.equal(
+    normalizeSource("https://xn--m1agla.xn--p1ai/sport/protocol/98765"),
+    "https://xn--m1agla.xn--p1ai/sport/protocol/98765",
+  );
+  assert.equal(normalizeSource("https://xn--m1agla.xn--p1ai/sport/team/42/200"), null);
+  assert.equal(normalizeSource("https://xn--m1agla.xn--p1ai/sport/protocol/98765?secret=1"), null);
+  assert.equal(normalizeSource("https://volley.ru/games/01ABC"), "https://volley.ru/games/01ABC");
+  assert.equal(normalizeSource("https://sub.volley.ru/games/01ABC"), null);
+  assert.equal(normalizeSource("https://volley.ru/profile/01ABC"), null);
+  assert.equal(normalizeSource("https://volley.ru/games/01ABC?secret=1"), null);
 });
 
 test("period inputs always use Europe/Moscow rather than the browser timezone", () => {

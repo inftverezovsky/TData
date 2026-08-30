@@ -55,11 +55,21 @@ test("official source config infers the provider and external championship ID fr
     resolveOfficialSourceConfig("https://нффр.рф/sport/calendar/200"),
     { provider: "nffr-floorball", externalId: "200", sourceUrl: "https://xn--m1agla.xn--p1ai/sport/calendar/200" },
   );
+  assert.deepEqual(
+    resolveOfficialSourceConfig("https://hockey.by/calendar/"),
+    { provider: "hockey-by", externalId: "11:5", sourceUrl: "https://hockey.by/calendar/" },
+  );
   for (const candidate of [
     "https://xn--m1agla.xn--p1ai/sport/calendar/not-a-number",
     "https://xn--m1agla.xn--p1ai/sport/calendar/200?other=1",
     "https://sub.xn--m1agla.xn--p1ai/sport/calendar/200",
     "https://volley.ru/calendar/01ABC/allgames?other=1",
+    "https://hockey.by/calendar",
+    "https://hockey.by/calendar/?season=11",
+    "https://hockey.by:444/calendar/",
+    "https://user:pass@hockey.by/calendar/",
+    "https://sub.hockey.by/calendar/",
+    "https://hockey.by/gamecenter/123/",
   ]) {
     assert.throws(
       () => resolveOfficialSourceConfig(candidate),
