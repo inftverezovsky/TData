@@ -20,7 +20,11 @@ test("League of Legends portal parser reads tournaments-list items from main pag
     </div>
   `;
 
-  const data = buildLeagueOfLegendsPortalResult(html, "leagueoflegends");
+  const data = buildLeagueOfLegendsPortalResult(
+    html,
+    "leagueoflegends",
+    new Date("2026-06-01T00:00:00.000Z"),
+  );
   assert.ok(data.tournaments.some((tournament) => tournament.title === "Mid-Season Invitational/2026"));
 });
 

@@ -65,6 +65,23 @@ export async function hasValidAdminSession(request: Request) {
   return safeEqual(signature, signSession(issuedAt, sessionSecret));
 }
 
+export function requireSameOriginJsonMutation(request: Request) {
+  const origin = normalizeOrigin(request.headers.get("origin"));
+  const allowedOrigins = requestOrigins(request);
+  if (!origin || !allowedOrigins.has(origin)) {
+    return NextResponse.json({ error: "Forbidden request origin." }, { status: 403 });
+  }
+
+  const contentType = request.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase();
+  if (contentType !== "application/json") {
+    return NextResponse.json(
+      { error: "Content-Type must be application/json." },
+      { status: 415 }
+    );
+  }
+  return null;
+}
+
 export function createAdminLogoutResponse() {
   const response = NextResponse.json({ ok: true });
   response.cookies.set(ADMIN_SESSION_COOKIE, "", {
@@ -125,4 +142,31 @@ function getSessionSecret(configuredPassword: string) {
   if (process.env.NODE_ENV === "production") return null;
 
   return configuredPassword;
+}
+
+function requestOrigins(request: Request) {
+  const origins = new Set<string>();
+  const requestOrigin = normalizeOrigin(request.url);
+  if (requestOrigin) origins.add(requestOrigin);
+
+  const forwardedHost = request.headers.get("x-forwarded-host")?.split(",", 1)[0].trim();
+  const forwardedProtocol = request.headers.get("x-forwarded-proto")?.split(",", 1)[0].trim();
+  if (forwardedHost && (forwardedProtocol === "http" || forwardedProtocol === "https")) {
+    const forwardedOrigin = normalizeOrigin(`${forwardedProtocol}://${forwardedHost}`);
+    if (forwardedOrigin) origins.add(forwardedOrigin);
+  }
+  return origins;
+}
+
+function normalizeOrigin(value: string | null) {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password) {
+      return null;
+    }
+    return url.origin;
+  } catch {
+    return null;
+  }
 }

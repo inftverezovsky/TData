@@ -117,12 +117,20 @@ async function internalFetchDisciplinePortal(slug: string, force = false): Promi
   }
 }
 
-export function buildLeagueOfLegendsPortalResult(html: string, slug: string): DisciplinePortalData {
+export function buildLeagueOfLegendsPortalResult(
+  html: string,
+  slug: string,
+  now = new Date(),
+): DisciplinePortalData {
   const tournaments = extractLeagueOfLegendsPortalCandidates(html);
-  return finalizePortalTournaments(slug, tournaments);
+  return finalizePortalTournaments(slug, tournaments, now);
 }
 
-export function buildGenericPortalResult(html: string, slug: string): DisciplinePortalData {
+export function buildGenericPortalResult(
+  html: string,
+  slug: string,
+  now = new Date(),
+): DisciplinePortalData {
   const $ = cheerio.load(html);
   const tournaments: PortalTournament[] = [];
 
@@ -188,7 +196,7 @@ export function buildGenericPortalResult(html: string, slug: string): Discipline
     });
   }
 
-  return finalizePortalTournaments(slug, tournaments);
+  return finalizePortalTournaments(slug, tournaments, now);
 }
 
 function extractLeagueOfLegendsPortalCandidates(html: string): PortalTournament[] {
@@ -257,8 +265,11 @@ function extractLeagueOfLegendsPortalCandidates(html: string): PortalTournament[
   return tournaments;
 }
 
-function finalizePortalTournaments(slug: string, tournaments: PortalTournament[]): DisciplinePortalData {
-  const now = new Date();
+function finalizePortalTournaments(
+  slug: string,
+  tournaments: PortalTournament[],
+  now: Date,
+): DisciplinePortalData {
   const merged = new Map<string, PortalTournament & { startDate: Date | null; endDate: Date | null }>();
 
   for (const tournament of tournaments) {

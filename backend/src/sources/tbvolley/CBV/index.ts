@@ -270,6 +270,7 @@ export function parseCBVEtapas(
     query?: string;
     fallbackCampeonatoId?: string;
     fallbackTemporadaId?: string;
+    now?: Date;
   },
 ): CBVTournament[] {
   return etapas
@@ -292,7 +293,12 @@ export function parseCBVEtapas(
 
 export function parseCBVEtapa(
   etapa: CBVEtapa,
-  options: { gender: CBVGender; fallbackCampeonatoId?: string; fallbackTemporadaId?: string },
+  options: {
+    gender: CBVGender;
+    fallbackCampeonatoId?: string;
+    fallbackTemporadaId?: string;
+    now?: Date;
+  },
 ): CBVTournament {
   const campeonatoId = clean(etapa.campeonato?.id) || clean(options.fallbackCampeonatoId);
   const temporadaId = clean(etapa.temporada?.id) || clean(options.fallbackTemporadaId);
@@ -327,7 +333,7 @@ export function parseCBVEtapa(
     dates: formatDateRangeLabel(startDate, endDate),
     startDate,
     endDate,
-    status: resolveTournamentStatus(clean(etapa.status), startDate, endDate),
+    status: resolveTournamentStatus(clean(etapa.status), startDate, endDate, options.now),
     courts: clean(etapa.numeroQuadras),
   };
 }
@@ -540,9 +546,14 @@ function parseCBVGameDateTime(dateValue: string | null | undefined, timeValue: s
   return parsed.toUTC().toJSDate();
 }
 
-function resolveTournamentStatus(status: string, startDate: string | null, endDate: string | null): CBVTournament["status"] {
+function resolveTournamentStatus(
+  status: string,
+  startDate: string | null,
+  endDate: string | null,
+  now = new Date(),
+): CBVTournament["status"] {
   if (status.toUpperCase() === "E") return "finished";
-  const today = formatMoscowDate(new Date());
+  const today = formatMoscowDate(now);
   if (endDate && endDate < today) return "finished";
   if (startDate && startDate <= today && (!endDate || endDate >= today)) return "ongoing";
   return "upcoming";

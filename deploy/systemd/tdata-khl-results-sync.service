@@ -1,0 +1,13 @@
+[Unit]
+Description=TData automatic KHL results synchronization
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/flock -n /run/lock/tdata-khl-results-sync.lock /usr/bin/docker exec tdata-web npm run sync:khl-results
+TimeoutStartSec=30min
+
+[Install]
+WantedBy=multi-user.target

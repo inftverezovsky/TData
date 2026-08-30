@@ -34,6 +34,7 @@ test("CBV etapa parser extracts Brasilia metadata", () => {
     gender: "men",
     fallbackCampeonatoId: "37",
     fallbackTemporadaId: "23",
+    now: new Date("2026-06-11T00:00:00.000Z"),
   });
 
   assert.equal(etapas.length, 1);
@@ -108,6 +109,7 @@ test("CBV filters drop completed tournaments and matches", () => {
     gender: "men",
     fallbackCampeonatoId: "37",
     fallbackTemporadaId: "23",
+    now: new Date("2026-06-11T00:00:00.000Z"),
   });
 
   assert.deepEqual(

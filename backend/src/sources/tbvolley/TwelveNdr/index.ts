@@ -241,6 +241,7 @@ export function parseTwelveNdrCalendarJson(
     season: number;
     gender: TwelveNdrGender;
     query?: string;
+    now?: Date;
   },
 ): TwelveNdrTournament[] {
   let rows: CalendarRow[];
@@ -283,7 +284,7 @@ export function parseTwelveNdrCalendarJson(
       dates,
       startDate,
       endDate,
-      status: resolveTournamentStatus(startDate, endDate),
+      status: resolveTournamentStatus(startDate, endDate, options.now),
     };
 
     if (options.query && !normalizeSearch([
@@ -613,8 +614,12 @@ function parseTwelveNdrDateTime(dateText: string, timeText: string, season: numb
   return parsed.toUTC().toJSDate();
 }
 
-function resolveTournamentStatus(startDate: string | null, endDate: string | null): TwelveNdrTournament["status"] {
-  const today = formatMoscowDate(new Date());
+function resolveTournamentStatus(
+  startDate: string | null,
+  endDate: string | null,
+  now = new Date(),
+): TwelveNdrTournament["status"] {
+  const today = formatMoscowDate(now);
   if (endDate && endDate < today) return "finished";
   if (startDate && startDate <= today && (!endDate || endDate >= today)) return "ongoing";
   return "upcoming";
