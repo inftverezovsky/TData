@@ -33,7 +33,7 @@ npm run build
 
 Do not put the runtime password in repository files or shell scripts. If a local file is required, create `C:\Users\Sa1z1ngr0z\Desktop\TData\.env.test.local`, keep it ignored by Git, and define `DATABASE_URL=...` and `TEST_DATABASE_URL=...` there with local-only values. Existing scripts do not automatically load that file; inject it only into the intended test process.
 
-The base additive migration is `backend/prisma/migrations/20260830190000_tline_mvp/migration.sql`; the Admin hierarchy is added by `backend/prisma/migrations/20260830233000_tline_admin_hierarchy/migration.sql`. Before production both must pass a clean test database and a restored production dump rehearsal, followed by a schema diff.
+The base additive migration is `backend/prisma/migrations/20260830190000_tline_mvp/migration.sql`; the Admin hierarchy is added by `backend/prisma/migrations/20260830233000_tline_admin_hierarchy/migration.sql`; the floorball pilot and persisted undated-match option are added by `backend/prisma/migrations/20260831090000_tline_floorball/migration.sql`. Before production all migrations must pass a clean test database and a restored production dump rehearsal, followed by a schema diff.
 
 ## Admin hierarchy and team directory
 
@@ -65,6 +65,18 @@ To repeat the database bootstrap explicitly after applying the migration:
 ```powershell
 npm run tline:bootstrap-pilot
 ```
+
+## Floorball pilot
+
+The same idempotent bootstrap creates the active `Флорбол` sport and one disabled 2026/27 pilot championship:
+
+- `Флорбол. Россия. Высшая лига` — NFFR calendar ID `200` at `https://xn--m1agla.xn--p1ai/sport/calendar/200`.
+
+The `nffr-floorball` adapter performs one fresh HTML request, follows no redirects, and accepts only the exact NFFR HTTPS calendar path. It extracts official match, team and competition IDs directly from calendar links, so it does not request individual protocol pages.
+
+The current calendar has 8 teams and 56 matches without assigned dates. Manual runs exclude those matches by default while still synchronizing all source teams. Enable `Включать матчи без даты` for a run to persist and display them as `Время на сайте не определено`. The choice is stored with the run and its job; scheduled runs always keep it disabled. Historical rows with `dd.MM.yyyy HH:mm` are interpreted in `Europe/Moscow` and stored in UTC together with the original source text.
+
+Until the independent Admin Sport/Shapka/Championship IDs and the read-only Admin adapter are configured, a run intentionally keeps the official evidence and reports `ADMIN_LINE_NOT_CONFIGURED` rather than fabricating Admin matches.
 
 ## Runtime
 
