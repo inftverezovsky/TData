@@ -2,6 +2,7 @@ import { normalizeFuzzyName } from "@backend/teams/fuzzyMatch";
 import { prisma } from "@backend/db/db";
 import { apiError, apiOk, requireTLineAccess, tlineErrorResponse } from "@backend/tline/api/http";
 import { parseId } from "@backend/tline/api/parsers";
+import { buildTLineSourceTeamSyncPeriod } from "@backend/tline/pilot/period";
 import { createDefaultOfficialSourceRegistry } from "@backend/tline/sources/registry";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +19,7 @@ export async function POST(request: Request, context: Context) {
     });
     const adapter = createDefaultOfficialSourceRegistry().get(championship.sourceProvider);
     const now = new Date();
+    const period = buildTLineSourceTeamSyncPeriod(now, championship.sourceTimezone, championship.season);
     const snapshot = await adapter.fetchChampionship({
       championship: {
         id: championship.id,
@@ -26,8 +28,8 @@ export async function POST(request: Request, context: Context) {
         sourceUrl: championship.sourceUrl,
         sourceTimezone: championship.sourceTimezone,
       },
-      from: new Date(now.getTime() - 366 * 24 * 60 * 60 * 1000),
-      to: new Date(now.getTime() + 366 * 24 * 60 * 60 * 1000),
+      from: period.from,
+      to: period.to,
       forceFresh: true,
       includeUndatedSourceMatches: true,
     });

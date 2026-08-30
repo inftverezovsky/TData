@@ -35,10 +35,19 @@ export function createVolleyRuAdapter(options: { readonly fetchHtml?: HtmlFetche
       return Object.freeze({
         ok: true as const,
         provider: VOLLEY_RU_PROVIDER,
+        teamCount: snapshot.teams.length,
         matchCount: snapshot.matches.length,
+        eligibleMatchCount: snapshot.matches.length,
+        excludedMatchCount: 0,
         exactTimeCount: snapshot.matches.filter((match) => match.timePrecision === "EXACT").length,
         dateOnlyTimeCount: snapshot.matches.filter((match) => match.timePrecision === "DATE_ONLY").length,
         undefinedTimeCount: snapshot.matches.filter((match) => match.timePrecision === "UNDEFINED").length,
+        diagnostics: Object.freeze({
+          reasonCodes: Object.freeze([]),
+          excludedStageNames: Object.freeze([]),
+          eligibleMatchCount: snapshot.matches.length,
+          excludedMatchCount: 0,
+        }),
         checkedAt: new Date().toISOString(),
       });
     },

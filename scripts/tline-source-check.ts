@@ -1,5 +1,6 @@
 import {
   TLINE_FLOORBALL_PILOT_CHAMPIONSHIPS,
+  TLINE_HOCKEY_PILOT_CHAMPIONSHIPS,
   TLINE_VOLLEYBALL_PILOT_CHAMPIONSHIPS,
 } from "../backend/src/tline/pilot/bootstrap";
 import { parseTLinePeriodBoundary } from "../backend/src/tline/pilot/period";
@@ -17,9 +18,17 @@ async function main() {
   const championships = [
     ...TLINE_VOLLEYBALL_PILOT_CHAMPIONSHIPS,
     ...TLINE_FLOORBALL_PILOT_CHAMPIONSHIPS,
+    ...TLINE_HOCKEY_PILOT_CHAMPIONSHIPS,
   ];
   for (const championship of championships) {
     const adapter = registry.get(championship.sourceProvider);
+    const connection = await adapter.testConnection({
+      id: championship.sourceChampionshipId,
+      externalId: championship.sourceChampionshipId,
+      name: championship.name,
+      sourceUrl: championship.sourceUrl,
+      sourceTimezone: championship.sourceTimezone,
+    });
     const snapshot = await adapter.fetchChampionship({
       championship: {
         id: championship.sourceChampionshipId,
@@ -48,11 +57,16 @@ async function main() {
       sourceChampionshipId: championship.sourceChampionshipId,
       sourceUrl: championship.sourceUrl,
       fetchedAt: snapshot.fetchedAt,
-      matches: snapshot.matches.length,
-      teams: snapshot.teams.length,
-      exactTime: snapshot.matches.filter((match) => match.timePrecision === "EXACT").length,
-      dateOnly: snapshot.matches.filter((match) => match.timePrecision === "DATE_ONLY").length,
-      undefinedTime: snapshot.matches.filter((match) => match.timePrecision === "UNDEFINED").length,
+      teams: connection.teamCount,
+      matches: connection.matchCount,
+      eligibleMatches: connection.eligibleMatchCount,
+      excludedMatches: connection.excludedMatchCount,
+      diagnostics: connection.diagnostics,
+      sourceTeams: snapshot.teams.length,
+      eligibleSnapshotMatches: snapshot.matches.length,
+      exactTime: connection.exactTimeCount,
+      dateOnly: connection.dateOnlyTimeCount,
+      undefinedTime: connection.undefinedTimeCount,
       firstMatch: snapshot.matches.at(0) ? summarizeMatch(snapshot.matches[0]) : null,
       lastMatch: snapshot.matches.at(-1) ? summarizeMatch(snapshot.matches.at(-1)!) : null,
     });

@@ -1,4 +1,5 @@
 import type { OfficialSourceAdapter } from "./contracts";
+import { createHockeyByAdapter } from "./hockeyBy";
 import { createNffrFloorballAdapter } from "./nffrFloorball";
 import { createVolleyRuAdapter } from "./volleyRu";
 
@@ -29,5 +30,6 @@ export function createDefaultOfficialSourceRegistry(): OfficialSourceRegistry {
   return createOfficialSourceRegistry([
     createVolleyRuAdapter(),
     createNffrFloorballAdapter(),
+    createHockeyByAdapter(),
   ]);
 }

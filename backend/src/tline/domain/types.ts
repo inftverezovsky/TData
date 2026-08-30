@@ -48,6 +48,8 @@ export interface OfficialSourceMatch {
   readonly status: TLineMatchStatus;
   readonly matchNumber?: string | null;
   readonly score?: Readonly<{ home: number | null; away: number | null }>;
+  readonly scoreNote?: string | null;
+  readonly venue?: string | null;
   readonly stage?: string | null;
   readonly round?: string | null;
   readonly sourceUrl?: string | null;

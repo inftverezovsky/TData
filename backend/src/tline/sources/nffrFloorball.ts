@@ -37,10 +37,19 @@ export function createNffrFloorballAdapter(
       return Object.freeze({
         ok: true as const,
         provider: NFFR_FLOORBALL_PROVIDER,
+        teamCount: snapshot.teams.length,
         matchCount: snapshot.matches.length,
+        eligibleMatchCount: snapshot.matches.length,
+        excludedMatchCount: 0,
         exactTimeCount: countPrecision(snapshot.matches, "EXACT"),
         dateOnlyTimeCount: countPrecision(snapshot.matches, "DATE_ONLY"),
         undefinedTimeCount: countPrecision(snapshot.matches, "UNDEFINED"),
+        diagnostics: Object.freeze({
+          reasonCodes: Object.freeze([]),
+          excludedStageNames: Object.freeze([]),
+          eligibleMatchCount: snapshot.matches.length,
+          excludedMatchCount: 0,
+        }),
         checkedAt: new Date().toISOString(),
       });
     },

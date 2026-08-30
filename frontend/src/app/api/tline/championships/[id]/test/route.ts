@@ -25,7 +25,7 @@ export async function POST(request: Request, context: Context) {
       name: championship.name,
       sourceUrl: championship.sourceUrl,
       sourceTimezone: championship.sourceTimezone,
-    });
+    }, { signal: request.signal });
     await writeLog(championshipId, startedAt, 200, result.matchCount);
     return apiOk(result);
   } catch (error) {

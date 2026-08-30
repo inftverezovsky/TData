@@ -2,6 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 
 import { DEFAULT_TLINE_SLOT_HOURS, DEFAULT_TLINE_TIMEZONE } from "../scheduler/slots";
 import { NFFR_FLOORBALL_PROVIDER } from "../sources/nffrFloorball";
+import { HOCKEY_BY_PROVIDER } from "../sources/hockeyBy";
 import { VOLLEY_RU_PROVIDER } from "../sources/volleyRu";
 
 export const TLINE_VOLLEYBALL_PILOT_CHAMPIONSHIPS = Object.freeze([
@@ -34,6 +35,17 @@ export const TLINE_FLOORBALL_PILOT_CHAMPIONSHIPS = Object.freeze([
   }),
 ] as const);
 
+export const TLINE_HOCKEY_PILOT_CHAMPIONSHIPS = Object.freeze([
+  Object.freeze({
+    name: "Хоккей. Беларусь. Высшая лига",
+    season: "2026/27",
+    sourceProvider: HOCKEY_BY_PROVIDER,
+    sourceChampionshipId: "11:5",
+    sourceUrl: "https://hockey.by/calendar/",
+    sourceTimezone: "Europe/Minsk",
+  }),
+] as const);
+
 export async function bootstrapTLineVolleyballPilot(client: PrismaClient) {
   const result = await bootstrapTLineSportPilot(client, {
     slug: "volleyball",
@@ -54,6 +66,16 @@ export async function bootstrapTLineFloorballPilot(client: PrismaClient) {
   return result;
 }
 
+export async function bootstrapTLineHockeyPilot(client: PrismaClient) {
+  const result = await bootstrapTLineSportPilot(client, {
+    slug: "hockey",
+    name: "Хоккей",
+    championships: TLINE_HOCKEY_PILOT_CHAMPIONSHIPS,
+  });
+  await ensureScheduleState(client);
+  return result;
+}
+
 export async function bootstrapTLinePilots(client: PrismaClient) {
   const volleyball = await bootstrapTLineSportPilot(client, {
     slug: "volleyball",
@@ -65,8 +87,13 @@ export async function bootstrapTLinePilots(client: PrismaClient) {
     name: "Флорбол",
     championships: TLINE_FLOORBALL_PILOT_CHAMPIONSHIPS,
   });
+  const hockey = await bootstrapTLineSportPilot(client, {
+    slug: "hockey",
+    name: "Хоккей",
+    championships: TLINE_HOCKEY_PILOT_CHAMPIONSHIPS,
+  });
   await ensureScheduleState(client);
-  return Object.freeze({ sports: Object.freeze([volleyball, floorball]) });
+  return Object.freeze({ sports: Object.freeze([volleyball, floorball, hockey]) });
 }
 
 async function bootstrapTLineSportPilot(

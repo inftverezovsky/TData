@@ -1,4 +1,5 @@
 import { NFFR_FLOORBALL_PROVIDER, resolveNffrFloorballCalendarUrl } from "../sources/nffrFloorball";
+import { HOCKEY_BY_PROVIDER, resolveHockeyByCalendarUrl } from "../sources/hockeyBy";
 import { VOLLEY_RU_PROVIDER } from "../sources/volleyRu";
 import { TLineValidationError } from "./validation";
 
@@ -26,6 +27,18 @@ export function resolveOfficialSourceConfig(value: unknown): ResolvedOfficialSou
     try {
       const resolved = resolveNffrFloorballCalendarUrl(value);
       return Object.freeze({ provider: NFFR_FLOORBALL_PROVIDER, ...resolved });
+    } catch {
+      throw invalidSourceUrl();
+    }
+  }
+  if (url.hostname === "hockey.by") {
+    try {
+      const resolved = resolveHockeyByCalendarUrl(value);
+      return Object.freeze({
+        provider: HOCKEY_BY_PROVIDER,
+        externalId: `${resolved.seasonId}:${resolved.leagueId}`,
+        sourceUrl: resolved.sourceUrl,
+      });
     } catch {
       throw invalidSourceUrl();
     }

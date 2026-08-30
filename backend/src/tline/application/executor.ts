@@ -180,7 +180,7 @@ async function executeChampionship(
       client,
       runChampionship.id,
       sourceMatches,
-      sourceOnlyReason,
+      [sourceOnlyReason, ...(official.diagnostics?.reasonCodes ?? [])],
       dependencies.verifyLease,
     );
     await logStage(client, {
@@ -288,16 +288,23 @@ async function executeChampionship(
         });
       }
     }
-    const aggregate = aggregateChampionship(results.map((result) => result.automaticStatus));
+    const sourceStagePending = results.length === 0
+      && official.diagnostics?.reasonCodes.includes("SOURCE_STAGE_NOT_PUBLISHED") === true;
+    const aggregate = sourceStagePending
+      ? { status: "PENDING" as const, severity: "WARNING" as const }
+      : aggregateChampionship(results.map((result) => result.automaticStatus));
     await transaction.tLineRunChampionship.update({
       where: { id: runChampionship.id },
       data: {
-        status: "SUCCEEDED",
+        status: sourceStagePending ? "PARTIAL" : "SUCCEEDED",
         automaticStatus: aggregate.status,
         effectiveStatus: aggregate.status,
         severity: aggregate.severity,
         effectiveSeverity: aggregate.severity,
-        reasonCodes: [...new Set(results.flatMap((result) => result.reasons))],
+        reasonCodes: [...new Set([
+          ...results.flatMap((result) => result.reasons),
+          ...(official.diagnostics?.reasonCodes ?? []),
+        ])],
         completedAt: new Date(),
         errorCode: null,
         errorMessage: null,
@@ -395,9 +402,10 @@ async function persistSourceOnlyEvidence(
   client: PrismaClient,
   runChampionshipId: string,
   matches: readonly OfficialSourceMatch[],
-  reasonCode: string,
+  reasonCodes: readonly string[],
   verifyLease?: (transaction: Prisma.TransactionClient) => Promise<void>,
 ) {
+  const baseReasonCodes = [...new Set(reasonCodes)];
   await client.$transaction(async (transaction) => {
     if (verifyLease) await verifyLease(transaction);
     const sourceRows = await persistSourceSnapshots(transaction, runChampionshipId, matches);
@@ -407,8 +415,8 @@ async function persistSourceOnlyEvidence(
         ? "SOURCE_TIME_UNDEFINED"
         : "SOURCE_ONLY";
       const reasonCodes = automaticStatus === "SOURCE_TIME_UNDEFINED"
-        ? [reasonCode, "SOURCE_TIME_UNDEFINED"]
-        : [reasonCode];
+        ? [...new Set([...baseReasonCodes, "SOURCE_TIME_UNDEFINED"])]
+        : baseReasonCodes;
       statuses.push(automaticStatus);
       await transaction.tLineComparison.create({
         data: {
@@ -441,8 +449,10 @@ async function persistSourceOnlyEvidence(
         severity: aggregate.severity,
         effectiveSeverity: aggregate.severity,
         reasonCodes: noMatchesInPeriod
-          ? [reasonCode, "NO_MATCHES_IN_PERIOD"]
-          : [reasonCode],
+          ? baseReasonCodes.some((reason) => reason === "SOURCE_STAGE_NOT_PUBLISHED")
+            ? baseReasonCodes
+            : [...baseReasonCodes, "NO_MATCHES_IN_PERIOD"]
+          : baseReasonCodes,
         completedAt: new Date(),
         errorCode: null,
         errorMessage: null,
