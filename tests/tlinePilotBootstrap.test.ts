@@ -5,7 +5,9 @@ import test from "node:test";
 import type { PrismaClient } from "@prisma/client";
 
 import {
+  TLINE_FLOORBALL_PILOT_CHAMPIONSHIPS,
   TLINE_VOLLEYBALL_PILOT_CHAMPIONSHIPS,
+  bootstrapTLinePilots,
   bootstrapTLineVolleyballPilot,
 } from "../backend/src/tline/pilot/bootstrap";
 import { parseTLinePeriodBoundary } from "../backend/src/tline/pilot/period";
@@ -33,6 +35,38 @@ test("volleyball pilot contains the exact two approved championships", () => {
       },
     ],
   );
+});
+
+test("floorball pilot contains the approved NFFR championship with automation disabled", () => {
+  assert.deepEqual(TLINE_FLOORBALL_PILOT_CHAMPIONSHIPS, [{
+    name: "Флорбол. Россия. Высшая лига",
+    season: "2026/27",
+    sourceProvider: "nffr-floorball",
+    sourceChampionshipId: "200",
+    sourceUrl: "https://xn--m1agla.xn--p1ai/sport/calendar/200",
+    sourceTimezone: "Europe/Moscow",
+  }]);
+});
+
+test("combined pilot bootstrap creates volleyball and floorball without enabling Admin or automation", async () => {
+  const calls: Array<{ delegate: string; input: Record<string, unknown> }> = [];
+  const client = {
+    discipline: { upsert: async (input: Record<string, unknown>) => { calls.push({ delegate: "discipline", input }); return { id: `discipline-${calls.length}` }; } },
+    tLineSportConfig: { upsert: async (input: Record<string, unknown>) => { calls.push({ delegate: "sport", input }); return { id: `sport-${calls.length}` }; } },
+    tLineChampionship: { upsert: async (input: Record<string, unknown>) => { calls.push({ delegate: "championship", input }); return { id: `championship-${calls.length}` }; } },
+    tLineScheduleState: { upsert: async (input: Record<string, unknown>) => { calls.push({ delegate: "schedule", input }); return { id: "global" }; } },
+  } as unknown as PrismaClient;
+
+  const result = await bootstrapTLinePilots(client);
+  assert.equal(result.sports.length, 2);
+  assert.deepEqual(calls.filter((item) => item.delegate === "championship").map((item) => {
+    const create = item.input.create as Record<string, unknown>;
+    return { provider: create.sourceProvider, active: create.active, autoEnabled: create.autoEnabled, adminId: create.adminChampionshipId };
+  }), [
+    { provider: "volley-ru", active: true, autoEnabled: false, adminId: null },
+    { provider: "volley-ru", active: true, autoEnabled: false, adminId: null },
+    { provider: "nffr-floorball", active: true, autoEnabled: false, adminId: null },
+  ]);
 });
 
 test("volleyball pilot bootstrap is implemented with idempotent upserts and safe disabled automation", async () => {

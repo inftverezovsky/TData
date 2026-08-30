@@ -5,6 +5,7 @@ import {
   parseOfficialSourceUrl,
   TLineValidationError,
 } from "../backend/src/tline/api/validation";
+import { resolveOfficialSourceConfig } from "../backend/src/tline/api/officialSource";
 
 test("official source URL accepts the registered volley.ru HTTPS origin", () => {
   assert.equal(
@@ -43,4 +44,27 @@ test("official source URL rejects fragments and normalizes the hostname", () => 
     parseOfficialSourceUrl("https://VOLLEY.RU/calendar/test", ["volley.ru"]),
     "https://volley.ru/calendar/test",
   );
+});
+
+test("official source config infers the provider and external championship ID from an exact URL", () => {
+  assert.deepEqual(
+    resolveOfficialSourceConfig("https://volley.ru/calendar/01ABC/allgames"),
+    { provider: "volley-ru", externalId: "01ABC", sourceUrl: "https://volley.ru/calendar/01ABC/allgames" },
+  );
+  assert.deepEqual(
+    resolveOfficialSourceConfig("https://нффр.рф/sport/calendar/200"),
+    { provider: "nffr-floorball", externalId: "200", sourceUrl: "https://xn--m1agla.xn--p1ai/sport/calendar/200" },
+  );
+  for (const candidate of [
+    "https://xn--m1agla.xn--p1ai/sport/calendar/not-a-number",
+    "https://xn--m1agla.xn--p1ai/sport/calendar/200?other=1",
+    "https://sub.xn--m1agla.xn--p1ai/sport/calendar/200",
+    "https://volley.ru/calendar/01ABC/allgames?other=1",
+  ]) {
+    assert.throws(
+      () => resolveOfficialSourceConfig(candidate),
+      (error: unknown) => error instanceof TLineValidationError && error.code === "INVALID_SOURCE_URL",
+      candidate,
+    );
+  }
 });

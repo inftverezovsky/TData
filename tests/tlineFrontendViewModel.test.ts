@@ -17,6 +17,7 @@ import {
 const rawRun = {
   id: "run-1",
   state: "SUCCEEDED",
+  includeUndatedSourceMatches: true,
   championships: [
     {
       id: "women",
@@ -50,6 +51,7 @@ const rawRun = {
 
 test("run normalization preserves groups and computes dashboard counters", () => {
   const run = normalizeTLineRun(rawRun);
+  assert.equal(run?.includeUndatedSourceMatches, true);
   assert.equal(run?.championships.length, 2);
   assert.deepEqual(summarizeTLineRun(run), {
     totalChampionships: 2,
