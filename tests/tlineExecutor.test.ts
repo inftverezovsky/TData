@@ -28,6 +28,17 @@ test("executor persists fresh source/Admin evidence and an automatic comparison"
   ]);
 });
 
+test("executor passes the persisted undated-source choice to the official adapter", async () => {
+  const fake = createExecutorFake();
+  fake.run.includeUndatedSourceMatches = true;
+  let observed: boolean | undefined;
+  await executeTLineRun(fake.client, "run-1", {
+    officialSources: createOfficialSourceRegistry([officialAdapter(false, false, false, (value) => { observed = value; })]),
+    admin: null,
+  });
+  assert.equal(observed, true);
+});
+
 test("executor fails closed after a fresh source failure and stores no stale comparison", async () => {
   const fake = createExecutorFake();
   const result = await executeTLineRun(fake.client, "run-1", {
@@ -177,6 +188,7 @@ function createExecutorFake(
     status: "QUEUED",
     periodFrom: new Date("2026-12-01T00:00:00.000Z"),
     periodTo: new Date("2026-12-02T00:00:00.000Z"),
+    includeUndatedSourceMatches: false,
     startedAt: null as Date | null,
     sportConfig: {
       id: "sport-1",
@@ -292,6 +304,7 @@ function createExecutorFake(
 
   return {
     client: client as unknown as PrismaClient,
+    run,
     runChampionship,
     sourceSnapshots,
     adminSnapshots,
@@ -309,11 +322,25 @@ function storedTeam(externalId: string, platformId: string) {
   };
 }
 
-function officialAdapter(fails: boolean, dateOnly = false, empty = false): OfficialSourceAdapter {
+function officialAdapter(
+  fails: boolean,
+  dateOnly = false,
+  empty = false,
+  observeUndated?: (value: boolean) => void,
+): OfficialSourceAdapter {
   return {
     provider: "fixture-official",
-    testConnection: async () => ({ ok: true, provider: "fixture-official", matchCount: 1, checkedAt: new Date().toISOString() }),
-    fetchChampionship: async ({ championship }) => {
+    testConnection: async () => ({
+      ok: true,
+      provider: "fixture-official",
+      matchCount: 1,
+      exactTimeCount: dateOnly ? 0 : 1,
+      dateOnlyTimeCount: dateOnly ? 1 : 0,
+      undefinedTimeCount: 0,
+      checkedAt: new Date().toISOString(),
+    }),
+    fetchChampionship: async ({ championship, includeUndatedSourceMatches }) => {
+      observeUndated?.(includeUndatedSourceMatches);
       if (fails) throw new Error("fresh source failed");
       return {
         provider: "fixture-official",

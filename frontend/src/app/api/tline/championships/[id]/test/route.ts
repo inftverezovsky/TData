@@ -1,8 +1,7 @@
 import { prisma } from "@backend/db/db";
 import { apiError, apiOk, requireTLineAccess, tlineErrorResponse } from "@backend/tline/api/http";
 import { parseId } from "@backend/tline/api/parsers";
-import { createOfficialSourceRegistry } from "@backend/tline/sources/registry";
-import { createVolleyRuAdapter } from "@backend/tline/sources/volleyRu";
+import { createDefaultOfficialSourceRegistry } from "@backend/tline/sources/registry";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -19,7 +18,7 @@ export async function POST(request: Request, context: Context) {
     const championship = await prisma.tLineChampionship.findUniqueOrThrow({
       where: { id: championshipId },
     });
-    const adapter = createOfficialSourceRegistry([createVolleyRuAdapter()]).get(championship.sourceProvider);
+    const adapter = createDefaultOfficialSourceRegistry().get(championship.sourceProvider);
     const result = await adapter.testConnection({
       id: championship.id,
       externalId: championship.sourceChampionshipId || championship.id,

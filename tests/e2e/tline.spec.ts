@@ -49,6 +49,7 @@ test.beforeEach(async ({ page }) => {
       periodFrom: "2026-08-20T00:00:00.000Z",
       periodTo: "2026-08-21T00:00:00.000Z",
       createdAt: "2026-08-21T01:00:00.000Z",
+      includeUndatedSourceMatches: true,
       counts: { total: 1, processed: 1, error: 1, critical: 0 },
     }] } });
   });
@@ -74,6 +75,36 @@ test("TLine renders the control surface and keeps state while help opens", async
 
   await expect(page.getByText("Статусы", { exact: true })).toHaveCount(0);
   await expect(page.getByText(/профиль/i)).toHaveCount(0);
+});
+
+test("manual run keeps the undated-match filter off by default and sends an explicit choice", async ({ page }) => {
+  let requestBody: Record<string, unknown> | null = null;
+  await page.route("**/api/tline/runs/manual", async (route) => {
+    requestBody = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({
+      status: 202,
+      json: {
+        ok: true,
+        data: {
+          run: {
+            id: "run-floorball",
+            state: "QUEUED",
+            includeUndatedSourceMatches: true,
+            championships: [],
+          },
+          deduplicated: false,
+        },
+      },
+    });
+  });
+
+  await page.goto("/tline/line");
+  await page.getByRole("button", { name: "Фильтры" }).click();
+  const filter = page.getByRole("checkbox", { name: "Включать матчи без даты" });
+  await expect(filter).not.toBeChecked();
+  await filter.check();
+  await page.getByRole("button", { name: "Запустить проверку" }).click();
+  await expect.poll(() => requestBody?.includeUndatedSourceMatches).toBe(true);
 });
 
 test("TLine settings exposes all operator sections", async ({ page }) => {
@@ -131,6 +162,7 @@ test("TLine settings exposes all operator sections", async ({ page }) => {
 test("TLine opens saved history and exposes manual decisions from the status", async ({ page }) => {
   await page.goto("/tline/line");
   await page.getByRole("button", { name: "История запусков" }).click();
+  await expect(page.getByText("Матчи без даты: включены")).toBeVisible();
   await page.getByRole("button", { name: /Ручной.*Ошибка/ }).click();
   await expect(page.getByText("Исторический чемпионат")).toBeVisible();
   await page.getByRole("button", { name: "Вернуться к последнему", exact: true }).click();

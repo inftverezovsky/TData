@@ -12,6 +12,9 @@ export interface ConnectionTestResult {
   readonly ok: true;
   readonly provider: string;
   readonly matchCount: number;
+  readonly exactTimeCount: number;
+  readonly dateOnlyTimeCount: number;
+  readonly undefinedTimeCount: number;
   readonly checkedAt: string;
 }
 
@@ -34,6 +37,7 @@ export interface OfficialSourceAdapter {
     readonly from: Date;
     readonly to: Date;
     readonly forceFresh: boolean;
+    readonly includeUndatedSourceMatches: boolean;
     readonly signal?: AbortSignal;
   }): Promise<OfficialChampionshipSnapshot>;
 }

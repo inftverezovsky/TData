@@ -303,6 +303,7 @@ test("VolleyRu adapter forces a fresh fetch and never falls back after a fetch f
     from: new Date("2026-10-01T00:00:00.000Z"),
     to: new Date("2026-11-01T00:00:00.000Z"),
     forceFresh: true,
+    includeUndatedSourceMatches: false,
   });
   assert.equal(snapshot.matches.length, 1);
   assert.deepEqual(calls, [{ url: championship.sourceUrl, forceFresh: true }]);
@@ -314,6 +315,7 @@ test("VolleyRu adapter forces a fresh fetch and never falls back after a fetch f
       from: new Date("2026-10-01T00:00:00.000Z"),
       to: new Date("2026-11-01T00:00:00.000Z"),
       forceFresh: true,
+      includeUndatedSourceMatches: false,
     }),
     /source unavailable/,
   );

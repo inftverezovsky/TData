@@ -12,6 +12,7 @@ export interface TLineRunRecord {
   status: TLineRunState;
   periodFrom: Date;
   periodTo: Date;
+  includeUndatedSourceMatches: boolean;
   createdAt: Date;
 }
 
@@ -19,6 +20,7 @@ export interface ManualTLineRunInput {
   sportId: string;
   from: Date;
   to: Date;
+  includeUndatedSourceMatches: boolean;
 }
 
 export interface CreateTLineRunWithJobInput extends ManualTLineRunInput {
@@ -58,6 +60,7 @@ export async function requestManualTLineRun(
       sportId: input.sportId,
       from: new Date(input.from),
       to: new Date(input.to),
+      includeUndatedSourceMatches: input.includeUndatedSourceMatches,
       trigger: "MANUAL",
     });
     return { run, deduplicated: false };

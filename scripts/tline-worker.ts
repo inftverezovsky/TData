@@ -10,8 +10,7 @@ import { assertTLineSchedulerReady } from "../backend/src/tline/application/sche
 import { createTLineLeaseGuard, TLineJobLeaseLostError } from "../backend/src/tline/jobs/leaseGuard";
 import { claimNextJob, completeJob, failJobAndRun, heartbeatJob, recoverExpiredJobs } from "../backend/src/tline/jobs/repository";
 import { computeDueScheduleSlots } from "../backend/src/tline/scheduler/slots";
-import { createOfficialSourceRegistry } from "../backend/src/tline/sources/registry";
-import { createVolleyRuAdapter } from "../backend/src/tline/sources/volleyRu";
+import { createDefaultOfficialSourceRegistry } from "../backend/src/tline/sources/registry";
 
 const POLL_INTERVAL_MS = 2_000;
 const SCHEDULER_INTERVAL_MS = 30_000;
@@ -102,7 +101,7 @@ async function processJob(job: { id: string; attempt: number }) {
       throw new Error("Unsupported TLine job payload");
     }
     const run = await executeTLineRun(client, storedJob.runId, {
-      officialSources: createOfficialSourceRegistry([createVolleyRuAdapter()]),
+      officialSources: createDefaultOfficialSourceRegistry(),
       admin: createOptionalConfiguredAdminLineAdapter(),
       signal: guard.signal,
       verifyLease: async (transaction) => {
@@ -201,6 +200,7 @@ async function scheduleDueRuns(now: Date) {
               scheduledAt,
               periodFrom,
               periodTo,
+              includeUndatedSourceMatches: false,
               progressTotal: sport.championships.length,
               unprocessedCount: sport.championships.length,
               runChampionships: {
@@ -215,7 +215,11 @@ async function scheduleDueRuns(now: Date) {
               type: "RUN_CHECK",
               idempotencyKey: `tline:schedule:${sport.id}:${scheduledAt.toISOString()}`,
               scheduledAt,
-              payload: { runId: run.id, scheduledAt: scheduledAt.toISOString() },
+              payload: {
+                runId: run.id,
+                scheduledAt: scheduledAt.toISOString(),
+                includeUndatedSourceMatches: false,
+              },
             },
           });
         });

@@ -16,6 +16,7 @@ const runSelection = {
   status: true,
   periodFrom: true,
   periodTo: true,
+  includeUndatedSourceMatches: true,
   createdAt: true,
 } as const;
 
@@ -60,6 +61,7 @@ export class PrismaTLineRunStore implements TLineRunStore {
             status: "QUEUED",
             periodFrom: input.from,
             periodTo: input.to,
+            includeUndatedSourceMatches: input.includeUndatedSourceMatches,
             progressTotal: sport.championships.length,
             unprocessedCount: sport.championships.length,
             runChampionships: {
@@ -83,6 +85,7 @@ export class PrismaTLineRunStore implements TLineRunStore {
               runId: run.id,
               periodFrom: input.from.toISOString(),
               periodTo: input.to.toISOString(),
+              includeUndatedSourceMatches: input.includeUndatedSourceMatches,
             },
           },
         });

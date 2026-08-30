@@ -1,8 +1,8 @@
 import { prisma } from "@backend/db/db";
 import { apiOk, readJsonBody, requireTLineAccess, tlineErrorResponse } from "@backend/tline/api/http";
 import { objectBody, optionalInteger, optionalText, parseIanaTimezone, parseId, requiredText } from "@backend/tline/api/parsers";
-import { parseOfficialSourceUrl, TLineValidationError } from "@backend/tline/api/validation";
-import { VOLLEY_RU_PROVIDER } from "@backend/tline/sources/volleyRu";
+import { TLineValidationError } from "@backend/tline/api/validation";
+import { resolveOfficialSourceConfig } from "@backend/tline/api/officialSource";
 import { normalizeAdminExternalId } from "@backend/tline/admin/directory";
 
 export const dynamic = "force-dynamic";
@@ -41,9 +41,8 @@ export async function POST(request: Request) {
   if (denied) return denied;
   try {
     const body = objectBody(await readJsonBody(request));
-    const sourceUrl = parseOfficialSourceUrl(requiredText(body, "sourceUrl", 2_048), ["volley.ru"]);
+    const source = resolveOfficialSourceConfig(requiredText(body, "sourceUrl", 2_048));
     const sourceTimezone = parseIanaTimezone(optionalText(body, "sourceTimezone", 64) || "Europe/Moscow");
-    const sourceChampionshipId = championshipIdFromVolleyUrl(sourceUrl);
     const sportConfigId = parseId(requiredText(body, "sportId", 128), "sportId");
     const globalHeaderText = optionalText(body, "globalHeaderId", 128);
     const globalHeaderId = globalHeaderText ? parseId(globalHeaderText, "globalHeaderId") : null;
@@ -55,9 +54,9 @@ export async function POST(request: Request) {
         globalHeaderId,
         name: requiredText(body, "name", 256),
         season: optionalText(body, "season", 64),
-        sourceProvider: VOLLEY_RU_PROVIDER,
-        sourceUrl,
-        sourceChampionshipId,
+        sourceProvider: source.provider,
+        sourceUrl: source.sourceUrl,
+        sourceChampionshipId: source.externalId,
         sourceTimezone,
         adminChampionshipId: adminChampionshipText ? normalizeAdminExternalId(adminChampionshipText) : null,
         adminChampionshipName: optionalText(body, "adminChampionshipName", 256),
@@ -76,10 +75,4 @@ async function assertHeaderSport(globalHeaderId: string, sportConfigId: string) 
   if (!header || header.sportConfigId !== sportConfigId) {
     throw new TLineValidationError("CROSS_SPORT_GLOBAL_HEADER", "Global Header/Shapka must belong to the championship sport.");
   }
-}
-
-function championshipIdFromVolleyUrl(sourceUrl: string) {
-  const id = new URL(sourceUrl).pathname.match(/^\/calendar\/([^/]+)\/allgames\/?$/)?.[1];
-  if (!id) throw new TLineValidationError("INVALID_SOURCE_URL", "A volley.ru calendar URL is required.");
-  return id;
 }

@@ -325,7 +325,7 @@ function ChampionshipForm({ sports, globalHeaders, disabled, onSubmit }: { sport
       <TextField label="Название" value={name} onChange={setName} placeholder="Высшая лига А. Женщины" required />
       <label><span className="mb-1 block text-xs font-black text-slate-600">Вид спорта</span><select value={sportId} onChange={(event) => setSportId(event.target.value)} required className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="">Выберите</option>{sports.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
       <label><span className="mb-1 block text-xs font-black text-slate-600">Global Header / Shapka</span><select value={globalHeaderId} onChange={(event) => setGlobalHeaderId(event.target.value)} className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm"><option value="">Настроить позже</option>{globalHeaders.filter((header) => header.sportId === sportId && header.active).map((header) => <option key={header.id} value={header.id}>{header.name || `Shapka #${header.adminShapkaId}`}</option>)}</select></label>
-      <TextField label="Официальный URL" type="url" value={sourceUrl} onChange={setSourceUrl} placeholder="https://volley.ru/calendar/..." required />
+      <TextField label="Официальный URL" type="url" value={sourceUrl} onChange={setSourceUrl} placeholder="https://volley.ru/calendar/... или https://нффр.рф/sport/calendar/..." required />
       <TextField label="Допуск, минуты" type="number" value={tolerance} onChange={setTolerance} placeholder="5" required />
       <button disabled={disabled} className="mt-5 h-10 rounded-xl bg-slate-950 px-4 text-sm font-black text-white disabled:opacity-50">Добавить</button>
     </form>

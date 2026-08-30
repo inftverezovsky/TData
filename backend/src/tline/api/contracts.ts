@@ -18,6 +18,7 @@ export interface ManualRunRequest {
   sportId: string;
   from: Date;
   to: Date;
+  includeUndatedSourceMatches: boolean;
 }
 
 export function parseManualRunRequest(value: unknown): ManualRunRequest {
@@ -28,14 +29,23 @@ export function parseManualRunRequest(value: unknown): ManualRunRequest {
   const sportId = typeof value.sportId === "string" ? value.sportId.trim() : "";
   const from = parseUtcDate(value.from);
   const to = parseUtcDate(value.to);
-  if (!sportId || sportId.length > 128 || !from || !to) {
+  const includeUndatedSourceMatches = value.includeUndatedSourceMatches === undefined
+    ? false
+    : value.includeUndatedSourceMatches;
+  if (
+    !sportId
+    || sportId.length > 128
+    || !from
+    || !to
+    || typeof includeUndatedSourceMatches !== "boolean"
+  ) {
     throw invalidManualRun();
   }
   if (from.getTime() >= to.getTime()) {
     throw new TLineInputError("INVALID_PERIOD", "The run period must end after it starts.");
   }
 
-  return { sportId, from, to };
+  return { sportId, from, to, includeUndatedSourceMatches };
 }
 
 export function serializeTLineJson(value: unknown): unknown {

@@ -134,6 +134,7 @@ async function executeChampionship(
     from: run.periodFrom,
     to: run.periodTo,
     forceFresh: true,
+    includeUndatedSourceMatches: run.includeUndatedSourceMatches,
     signal: dependencies.signal,
   });
   assertExecutionActive(dependencies.signal);

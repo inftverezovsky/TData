@@ -30,6 +30,7 @@ export function normalizeTLineRun(value: unknown): TLineRun | null {
     progress: numberValue(value.progress) ?? progressFromChampionships(championships, state),
     startedAt: nullableString(value.startedAt),
     finishedAt: nullableString(value.finishedAt),
+    includeUndatedSourceMatches: value.includeUndatedSourceMatches === true,
     championships,
   };
 }
