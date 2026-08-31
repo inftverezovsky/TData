@@ -3,6 +3,10 @@ import { prisma } from "@backend/db/db";
 import { dedupeTournamentMatches } from "@backend/matches/dedupe";
 import { getTeamMappingLookupKeys } from "@backend/teams/canonicalize";
 import { generateInternalTeamId, isPlaceholderTeam } from "@backend/teams/teams";
+import { decideTournamentSnapshotWrite, TournamentSnapshotRejectedError } from "@backend/sources/importSafety";
+import { refreshTournamentMatchesPreservingState } from "@backend/sources/matchPreservation";
+import { mergeTournamentParticipantManualFields, refreshTournamentParticipantsPreservingState } from "@backend/sources/participantPreservation";
+import { assertTournamentImportFresh, runSerializableTournamentImport } from "@backend/sources/tournamentImportConcurrency";
 import {
   isActiveVolleyballWorldMatch,
   normalizeVolleyballWorldGender,
@@ -37,7 +41,7 @@ type PersistableVolleyballWorldMatch = {
   teamAId: string;
   teamBId: string;
   hasPlaceholderTeams: boolean;
-  matchDate: Date;
+  matchDate: Date | null;
   matchDateTime: string | null;
   format: string | null;
   stage: string | null;
@@ -50,6 +54,13 @@ type PersistableVolleyballWorldMatch = {
 
 type VolleyballWorldNormalization = {
   volleyballWorld: Record<string, unknown>;
+};
+
+type PreparedVolleyballWorldSnapshot = {
+  matches: PersistableVolleyballWorldMatch[];
+  teams: Array<{ name: string; team: VolleyballWorldBeachTeam }>;
+  mappingSlug: string;
+  completeness: "partial";
 };
 
 export async function importVolleyballWorldTournament(input: ImportVolleyballWorldTournamentInput) {
@@ -83,7 +94,17 @@ export async function importVolleyballWorldTournament(input: ImportVolleyballWor
       fromDate: input.fromDate,
       toDate: input.toDate,
       days: input.days || 60,
+      forceFresh: Boolean(input.force),
     });
+    const sourceValidated = search.upstream.cacheStatus !== "stale"
+      && search.upstream.fallbackErrorCode === null
+      && (!input.force || search.upstream.cacheStatus === "miss");
+    if (!sourceValidated) {
+      throw new TournamentSnapshotRejectedError(
+        "VolleyballWorld did not return a validated fresh snapshot; last-good data was preserved.",
+        search.upstream.cacheStatus === "stale" ? "stale_cache" : search.upstream.fallbackErrorCode || "parse_failed",
+      );
+    }
     const volleyballWorldTournament = selectTournament(search.tournaments, {
       title: input.title,
       pageUrl: input.pageUrl,
@@ -96,93 +117,97 @@ export async function importVolleyballWorldTournament(input: ImportVolleyballWor
 
     const displayName = buildDisplayName(volleyballWorldTournament);
     const sourceTitle = buildSourceTitle(volleyballWorldTournament);
-    const normalizedStatus = resolveVolleyballWorldImportStatus(volleyballWorldTournament.matches.length);
     const metadata = buildVolleyballWorldMetadata(volleyballWorldTournament, {
       fromDate: search.fromDate,
       toDate: search.toDate,
       requestedTitle: input.title,
       requestedPageUrl: input.pageUrl,
     });
-
-    const tournament = await prisma.tournament.upsert({
-      where: {
-        disciplineSlug_sourceTitle: {
-          disciplineSlug: input.slug,
-          sourceTitle,
-        },
-      },
-      create: {
-        name: displayName,
-        sourceTitle,
-        sourceUrl: volleyballWorldTournament.pageUrl,
-        disciplineSlug: input.slug,
-        startDate: parseDate(volleyballWorldTournament.startDate),
-        endDate: parseDate(volleyballWorldTournament.endDate),
-        location: volleyballWorldTournament.location || null,
-        formatText: `Beach Volleyball ${volleyballWorldTournament.subCompetitionType}`,
-        status: volleyballWorldTournament.status,
-        extractionStatus: normalizedStatus,
-        normalization: metadata as Prisma.InputJsonValue,
-        lastImportId: importRecord.id,
-      },
-      update: {
-        name: displayName,
-        sourceUrl: volleyballWorldTournament.pageUrl,
-        startDate: parseDate(volleyballWorldTournament.startDate),
-        endDate: parseDate(volleyballWorldTournament.endDate),
-        location: volleyballWorldTournament.location || null,
-        formatText: `Beach Volleyball ${volleyballWorldTournament.subCompetitionType}`,
-        status: volleyballWorldTournament.status,
-        extractionStatus: normalizedStatus,
-        normalization: metadata as Prisma.InputJsonValue,
-        lastImportId: importRecord.id,
-        updatedAt: new Date(),
-      },
-    });
-
-    const saveResult = await saveVolleyballWorldTournamentMatches({
-      tournamentId: tournament.id,
+    const snapshot = prepareVolleyballWorldTournamentSnapshot({
       slug: input.slug,
       matches: volleyballWorldTournament.matches,
-      force: Boolean(input.force),
+      sourceValidated,
     });
-    const finalStatus = resolveVolleyballWorldImportStatus(saveResult.savedCount);
+    const finalStatus: ImportStatus = "SUCCESS";
+    const finalNormalization = {
+      ...metadata,
+      volleyballWorld: {
+        ...metadata.volleyballWorld,
+        savedMatches: snapshot.matches.length,
+        snapshotCompleteness: snapshot.completeness,
+      },
+    } as Prisma.InputJsonValue;
 
-    await prisma.$transaction([
-      prisma.tournament.update({
-        where: { id: tournament.id },
-        data: {
+    const committed = await runSerializableTournamentImport(async (tx) => {
+      await assertTournamentImportFresh({
+        tx,
+        importRecordId: importRecord.id,
+        disciplineSlug: input.slug,
+        sourceIdentity: sourceTitle,
+        sourceTitle,
+        sourceUrl: volleyballWorldTournament.pageUrl,
+        lookupBy: "sourceTitle",
+      });
+      const tournament = await tx.tournament.upsert({
+        where: {
+          disciplineSlug_sourceTitle: {
+            disciplineSlug: input.slug,
+            sourceTitle,
+          },
+        },
+        create: {
+          name: displayName,
+          sourceTitle,
+          sourceUrl: volleyballWorldTournament.pageUrl,
+          disciplineSlug: input.slug,
+          startDate: parseDate(volleyballWorldTournament.startDate),
+          endDate: parseDate(volleyballWorldTournament.endDate),
+          location: volleyballWorldTournament.location || null,
+          formatText: `Beach Volleyball ${volleyballWorldTournament.subCompetitionType}`,
+          status: volleyballWorldTournament.status,
           extractionStatus: finalStatus,
-          normalization: {
-            ...metadata,
-            volleyballWorld: {
-              ...metadata.volleyballWorld,
-              savedMatches: saveResult.savedCount,
-            },
-          } as Prisma.InputJsonValue,
+          normalization: finalNormalization,
+          lastImportId: importRecord.id,
         },
-      }),
-      prisma.tournamentImport.update({
+        update: {
+          name: displayName,
+          sourceUrl: volleyballWorldTournament.pageUrl,
+          startDate: parseDate(volleyballWorldTournament.startDate),
+          endDate: parseDate(volleyballWorldTournament.endDate),
+          location: volleyballWorldTournament.location || null,
+          formatText: `Beach Volleyball ${volleyballWorldTournament.subCompetitionType}`,
+          status: volleyballWorldTournament.status,
+          extractionStatus: finalStatus,
+          normalization: finalNormalization,
+          lastImportId: importRecord.id,
+          updatedAt: new Date(),
+        },
+      });
+
+      await saveVolleyballWorldTournamentSnapshot({
+        tx,
+        tournamentId: tournament.id,
+        snapshot,
+      });
+      await tx.tournamentImport.update({
         where: { id: importRecord.id },
-        data: {
-          status: finalStatus,
-          finishedAt: new Date(),
-        },
-      }),
-    ]);
+        data: { status: finalStatus, finishedAt: new Date() },
+      });
+      return { tournamentId: tournament.id, savedCount: snapshot.matches.length };
+    }, { maxWaitMs: 10_000, timeoutMs: 60_000 });
 
     const fullTournament = await prisma.tournament.findUnique({
-      where: { id: tournament.id },
+      where: { id: committed.tournamentId },
       include: { participants: true, matches: true, lastImport: true },
     });
 
     return {
       tournament: fullTournament ? { ...fullTournament, matches: dedupeTournamentMatches(fullTournament.matches) } : null,
-      normalized: { status: finalStatus, error: saveResult.savedCount === 0 ? "Актуальных матчей для импорта нет" : undefined },
+      normalized: { status: finalStatus, error: committed.savedCount === 0 ? "Актуальных матчей для импорта нет" : undefined },
     };
   } catch (error) {
-    await prisma.tournamentImport.update({
-      where: { id: importRecord.id },
+    await prisma.tournamentImport.updateMany({
+      where: { id: importRecord.id, status: "PENDING" },
       data: {
         status: "FAILED",
         finishedAt: new Date(),
@@ -193,17 +218,15 @@ export async function importVolleyballWorldTournament(input: ImportVolleyballWor
   }
 }
 
-async function saveVolleyballWorldTournamentMatches(params: {
-  tournamentId: string;
+export function prepareVolleyballWorldTournamentSnapshot(params: {
   slug: string;
   matches: VolleyballWorldBeachMatch[];
-  force?: boolean;
-}): Promise<{ savedCount: number }> {
-  const candidates = params.matches
-    .filter((match) => isActiveVolleyballWorldMatch(match))
-    .map((match): PersistableVolleyballWorldMatch | null => {
+  sourceValidated: boolean;
+}): PreparedVolleyballWorldSnapshot {
+  const activeMatches = params.matches.filter((match) => isActiveVolleyballWorldMatch(match));
+  const candidates = activeMatches
+    .map((match): PersistableVolleyballWorldMatch => {
       const matchDate = parseDate(match.startTimeUtc);
-      if (!matchDate) return null;
 
       const teamAName = match.teamA.name || "TBD";
       const teamBName = match.teamB.name || "TBD";
@@ -226,69 +249,47 @@ async function saveVolleyballWorldTournamentMatches(params: {
         rawText: buildRawMatchText(match),
         status: match.status === "live" ? "live" : "upcoming",
       };
-    })
-    .filter((match): match is PersistableVolleyballWorldMatch => Boolean(match));
+    });
 
-  const volleyballWorldMatches = dedupeTournamentMatches(candidates);
-  const matchUpserts = volleyballWorldMatches.map((match) => prisma.tournamentMatch.upsert({
-    where: { matchId: match.matchId },
-    create: {
-      matchId: match.matchId,
-      tournamentId: params.tournamentId,
-      stage: match.stage,
-      round: match.round,
-      teamAName: match.teamAName,
-      teamBName: match.teamBName,
-      teamAId: match.teamAId,
-      teamBId: match.teamBId,
-      scoreA: null,
-      scoreB: null,
-      hasPlaceholderTeams: match.hasPlaceholderTeams,
-      matchDate: match.matchDate,
-      matchDateTime: match.matchDateTime,
-      format: match.format,
-      status: match.status,
-      court: match.court,
-      sourceUrl: match.sourceUrl,
-      rawText: match.rawText,
-    },
-    update: {
-      tournamentId: params.tournamentId,
-      stage: match.stage,
-      round: match.round,
-      teamAName: match.teamAName,
-      teamBName: match.teamBName,
-      teamAId: match.teamAId,
-      teamBId: match.teamBId,
-      scoreA: null,
-      scoreB: null,
-      hasPlaceholderTeams: match.hasPlaceholderTeams,
-      matchDate: match.matchDate,
-      matchDateTime: match.matchDateTime,
-      format: match.format,
-      status: match.status,
-      court: match.court,
-      sourceUrl: match.sourceUrl,
-      rawText: match.rawText,
-    },
-  }));
-
+  const matches = dedupeTournamentMatches(candidates);
+  if (!shouldReplaceVolleyballWorldMatchesOnImport({
+    incomingMatches: matches.length,
+    sourceValidated: params.sourceValidated,
+  })) {
+    throw new TournamentSnapshotRejectedError(
+      "VolleyballWorld snapshot is empty or unvalidated; last-good data was preserved.",
+      params.sourceValidated ? "parse_failed" : "stale_cache",
+    );
+  }
   const teamByName = new Map<string, VolleyballWorldBeachTeam>();
-  for (const match of params.matches) {
+  for (const match of activeMatches) {
     for (const team of [match.teamA, match.teamB]) {
       if (!team.name || isPlaceholderTeam(team.name)) continue;
       if (!teamByName.has(team.name)) teamByName.set(team.name, team);
     }
   }
 
+  return {
+    matches,
+    teams: Array.from(teamByName.entries()).map(([name, team]) => ({ name, team })),
+    mappingSlug: resolveVolleyballWorldMappingSlug(params.slug, activeMatches),
+    completeness: "partial",
+  };
+}
+
+async function saveVolleyballWorldTournamentSnapshot(params: {
+  tx: Prisma.TransactionClient;
+  tournamentId: string;
+  snapshot: PreparedVolleyballWorldSnapshot;
+}): Promise<void> {
+  const { tx } = params;
+
   const [existingParticipants, teamMappings] = await Promise.all([
-    params.force
-      ? Promise.resolve([] as Array<{ name: string; platformId: string | null; logoUrl: string | null; rawText: string | null }>)
-      : prisma.tournamentParticipant.findMany({
-        where: { tournamentId: params.tournamentId },
-        select: { name: true, platformId: true, logoUrl: true, rawText: true },
-      }),
-    prisma.teamMapping.findMany({ where: { disciplineSlug: resolveVolleyballWorldMappingSlug(params.slug, params.matches) } }),
+    tx.tournamentParticipant.findMany({
+      where: { tournamentId: params.tournamentId },
+      select: { name: true, platformId: true, seed: true, region: true, status: true, logoUrl: true, rawText: true },
+    }),
+    tx.teamMapping.findMany({ where: { disciplineSlug: params.snapshot.mappingSlug } }),
   ]);
 
   const existingParticipantMap = new Map(existingParticipants.map((participant) => [participant.name.toLowerCase(), participant]));
@@ -300,28 +301,64 @@ async function saveVolleyballWorldTournamentMatches(params: {
     }
   }
 
-  const participantsToInsert = Array.from(teamByName.entries())
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([name, team]) => {
+  const participantsToInsert = [...params.snapshot.teams]
+    .sort((left, right) => left.name.localeCompare(right.name))
+    .map(({ name, team }) => {
       const existing = existingParticipantMap.get(name.toLowerCase());
       const mapping = mappingLookup.get(name.toLowerCase());
       return {
         tournamentId: params.tournamentId,
         name,
-        platformId: existing?.platformId || mapping?.platformId || null,
-        logoUrl: existing?.logoUrl || mapping?.logoUrl || team.flagUrl || null,
-        rawText: existing?.rawText || buildTeamRawText(team),
+        ...mergeTournamentParticipantManualFields({
+          incoming: { logoUrl: team.flagUrl || null, rawText: buildTeamRawText(team) },
+          existing,
+          mapping,
+        }),
       };
     });
 
-  await prisma.$transaction([
-    prisma.tournamentMatch.deleteMany({ where: { tournamentId: params.tournamentId } }),
-    prisma.tournamentParticipant.deleteMany({ where: { tournamentId: params.tournamentId } }),
-    ...matchUpserts,
-    ...(participantsToInsert.length > 0 ? [prisma.tournamentParticipant.createMany({ data: participantsToInsert })] : []),
-  ]);
+  await refreshTournamentMatchesPreservingState({
+    tx,
+    tournamentId: params.tournamentId,
+    snapshotCompleteness: params.snapshot.completeness,
+    matches: params.snapshot.matches.map((match) => ({
+      matchId: match.matchId,
+      create: { ...match, tournamentId: params.tournamentId, scoreA: null, scoreB: null },
+      update: { ...match, scoreA: null, scoreB: null },
+    })),
+  });
+  const incomingParticipantNames = new Set(
+    participantsToInsert.map((participant) => participant.name.toLowerCase()),
+  );
+  const participantsToKeep = existingParticipants
+    .filter((participant) => !incomingParticipantNames.has(participant.name.toLowerCase()))
+    .map((participant) => ({
+      tournamentId: params.tournamentId,
+      name: participant.name,
+      platformId: participant.platformId,
+      seed: participant.seed,
+      region: participant.region,
+      status: participant.status,
+      logoUrl: participant.logoUrl,
+      rawText: participant.rawText,
+    }));
+  const mergedParticipants = [...participantsToInsert, ...participantsToKeep];
+  await refreshTournamentParticipantsPreservingState({
+    tx,
+    tournamentId: params.tournamentId,
+    participants: mergedParticipants,
+  });
+}
 
-  return { savedCount: volleyballWorldMatches.length };
+export function shouldReplaceVolleyballWorldMatchesOnImport(input: {
+  incomingMatches: number;
+  sourceValidated: boolean;
+  force?: boolean;
+}) {
+  return decideTournamentSnapshotWrite({
+    incomingMatches: input.incomingMatches,
+    sourceValidated: input.sourceValidated,
+  }).allowed;
 }
 
 function resolveVolleyballWorldMappingSlug(slug: string, matches: VolleyballWorldBeachMatch[]) {
@@ -414,10 +451,6 @@ function buildTeamRawText(team: VolleyballWorldBeachTeam) {
     team.country ? `country=${team.country}` : null,
     team.no ? `vwNo=${team.no}` : null,
   ].filter(Boolean).join("; ") || null;
-}
-
-function resolveVolleyballWorldImportStatus(savedMatchesCount: number): ImportStatus {
-  return savedMatchesCount > 0 ? "SUCCESS" : "PARTIAL";
 }
 
 function inferTournamentNo(title: string) {

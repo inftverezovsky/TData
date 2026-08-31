@@ -16,6 +16,7 @@ type ClientOptions = {
   timeoutMs?: number;
   maxResponseBytes?: number;
   maxPages?: number;
+  signal?: AbortSignal;
 };
 
 export type KhlStage = {
@@ -79,6 +80,7 @@ export class KhlApiClient {
   private readonly timeoutMs: number;
   private readonly maxResponseBytes: number;
   private readonly maxPages: number;
+  private readonly signal?: AbortSignal;
 
   constructor(options: ClientOptions = {}) {
     this.baseUrl = validateBaseUrl(
@@ -88,6 +90,7 @@ export class KhlApiClient {
     this.timeoutMs = options.timeoutMs || DEFAULT_TIMEOUT_MS;
     this.maxResponseBytes = options.maxResponseBytes || DEFAULT_MAX_RESPONSE_BYTES;
     this.maxPages = options.maxPages || DEFAULT_MAX_PAGES;
+    this.signal = options.signal;
   }
 
   async listStages(): Promise<KhlStage[]> {
@@ -175,6 +178,9 @@ export class KhlApiClient {
     fetchedAt: Date;
   }> {
     const controller = new AbortController();
+    const onAbort = () => controller.abort(this.signal?.reason);
+    this.signal?.addEventListener("abort", onAbort, { once: true });
+    if (this.signal?.aborted) onAbort();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
       const response = await this.fetchImpl(url, {
@@ -217,6 +223,7 @@ export class KhlApiClient {
       );
     } finally {
       clearTimeout(timeout);
+      this.signal?.removeEventListener("abort", onAbort);
     }
   }
 }

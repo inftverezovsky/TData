@@ -1,0 +1,16 @@
+[Unit]
+Description=TData read-only parser reliability monitor
+Wants=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/tdata/parser-monitor.env
+ExecStart=/usr/bin/flock --nonblock /run/lock/tdata-parser-monitor.lock /usr/bin/docker exec -e TDATA_PARSER_MONITOR_TELEGRAM_BOT_TOKEN -e TDATA_PARSER_MONITOR_TELEGRAM_CHAT_ID tdata-web /usr/bin/timeout --signal=TERM --kill-after=30s 58m /app/node_modules/.bin/tsx /app/scripts/parser-monitor.ts --notify=telegram --report-dir=/app/cache/parser-monitor
+TimeoutStartSec=60min
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+
+[Install]
+WantedBy=multi-user.target

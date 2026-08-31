@@ -1,6 +1,7 @@
 import * as cheerio from "cheerio";
 import { DateTime } from "luxon";
 import { formatMoscowDate, formatMoscowDateTime } from "@backend/matches/scheduleOffset";
+import { readBoundedBodyText } from "@backend/http/boundedResponse";
 import { normalizeBeachVolleyballGender, type BeachVolleyballGender } from "@backend/sources/tbvolley/config";
 
 export type FedervolleyGender = BeachVolleyballGender;
@@ -78,6 +79,9 @@ export type FedervolleyTournamentSearch = {
     assoluto: number;
     serie: number;
     matches: number;
+    rawTotal?: number;
+    filteredOut?: number;
+    emptyReason?: "date_window" | null;
   };
 };
 
@@ -169,6 +173,7 @@ export async function searchFedervolleyTournaments(input: {
   gender?: string | null;
   category?: string | null;
   query?: string | null;
+  signal?: AbortSignal;
 } = {}): Promise<FedervolleyTournamentSearch> {
   const year = normalizeYear(input.year);
   const gender = normalizeFedervolleyGender(input.gender);
@@ -178,14 +183,17 @@ export async function searchFedervolleyTournaments(input: {
     ? (["assoluto", "serie"] as const)
     : ([category] as Array<Exclude<FedervolleyCategory, "all">>);
 
-  const listings = await Promise.all(categories.map(async (item) => {
+  const listingResults = await Promise.allSettled(categories.map(async (item) => {
     const sourceUrl = buildListingUrl(item);
-    const html = await fetchFedervolleyText(sourceUrl, "text/html,application/xhtml+xml");
+    const html = await fetchFedervolleyText(sourceUrl, "text/html,application/xhtml+xml", input.signal);
     return parseFedervolleyListing(html, { category: item, gender, year, query });
   }));
-  const tournaments = filterFedervolleyUpcomingTournaments(
-    listings.flat().sort(compareFedervolleyTournaments),
-  );
+  input.signal?.throwIfAborted();
+  const listingFailure = listingResults.find((result): result is PromiseRejectedResult => result.status === "rejected");
+  if (listingFailure) throw listingFailure.reason;
+  const listings = listingResults.map((result) => (result as PromiseFulfilledResult<FedervolleyTournament[]>).value);
+  const discovered = listings.flat().sort(compareFedervolleyTournaments);
+  const tournaments = filterFedervolleyUpcomingTournaments(discovered);
 
   return {
     ok: true,
@@ -201,6 +209,9 @@ export async function searchFedervolleyTournaments(input: {
       assoluto: tournaments.filter((tournament) => tournament.category === "assoluto").length,
       serie: tournaments.filter((tournament) => tournament.category === "serie").length,
       matches: tournaments.reduce((sum, tournament) => sum + (tournament.matchCount || 0), 0),
+      rawTotal: discovered.length,
+      filteredOut: Math.max(0, discovered.length - tournaments.length),
+      emptyReason: discovered.length > 0 && tournaments.length === 0 ? "date_window" : null,
     },
   };
 }
@@ -212,6 +223,7 @@ export async function fetchFedervolleyTournament(input: {
   title?: string | null;
   pageUrl?: string | null;
   gender?: string | null;
+  signal?: AbortSignal;
 }): Promise<FedervolleyTournament> {
   const nodeId = clean(input.federvolleyNodeId)
     || extractFedervolleyNodeId(input.pageUrl)
@@ -219,7 +231,7 @@ export async function fetchFedervolleyTournament(input: {
   if (!nodeId) throw new Error("Не удалось определить Federvolley node id");
 
   const pageUrl = buildTournamentPageUrl(nodeId);
-  const html = await fetchFedervolleyText(pageUrl, "text/html,application/xhtml+xml");
+  const html = await fetchFedervolleyText(pageUrl, "text/html,application/xhtml+xml", input.signal);
   const detail = parseFedervolleyTournamentPage(html, {
     nodeId,
     requestedTitle: input.title || "",
@@ -238,6 +250,7 @@ export async function fetchFedervolleyTournament(input: {
         pageUrl: detail.pageUrl,
         startDate: detail.startDate,
         endDate: detail.endDate,
+        signal: input.signal,
       })
     : [];
   const htmlMatches = matchshareMatches.length > 0
@@ -565,13 +578,15 @@ async function fetchFedervolleyMatches(input: {
   pageUrl: string;
   startDate: string | null;
   endDate: string | null;
+  signal?: AbortSignal;
 }) {
   try {
-    const text = await fetchFedervolleyText(buildMatchshareBracketUrl(input.matchshareLid), "application/json,text/plain,*/*");
+    const text = await fetchFedervolleyText(buildMatchshareBracketUrl(input.matchshareLid), "application/json,text/plain,*/*", input.signal);
     const trimmed = text.trim();
     if (!trimmed || /^Tabellone non pubblicato/i.test(trimmed)) return [];
     return parseFedervolleyMatchshareBracket(JSON.parse(trimmed), input);
   } catch (error) {
+    input.signal?.throwIfAborted();
     if (error instanceof Error && isRecoverableMatchshareError(error.message)) {
       return [];
     }
@@ -583,8 +598,11 @@ function isRecoverableMatchshareError(message: string) {
   return /Tabellone non pubblicato|Federvolley Matchshare HTTP [45]\d{2}/i.test(message);
 }
 
-async function fetchFedervolleyText(url: string, accept: string) {
+async function fetchFedervolleyText(url: string, accept: string, signal?: AbortSignal) {
   const controller = new AbortController();
+  const onAbort = () => controller.abort(signal?.reason);
+  signal?.addEventListener("abort", onAbort, { once: true });
+  if (signal?.aborted) onAbort();
   const timeout = setTimeout(() => controller.abort(), 20_000);
 
   try {
@@ -596,7 +614,11 @@ async function fetchFedervolleyText(url: string, accept: string) {
         "User-Agent": FEDERVOLLEY_USER_AGENT,
       },
     });
-    const text = await response.text();
+    const text = await readBoundedBodyText(response, {
+      maxBytes: 8 * 1024 * 1024,
+      signal: controller.signal,
+      label: "Federvolley response",
+    });
     if (!response.ok) {
       const source = url.includes("matchshare") || url.includes("srv.matchshare") ? "Federvolley Matchshare" : "Federvolley";
       throw new Error(`${source} HTTP ${response.status}: ${text.slice(0, 220)}`);
@@ -604,6 +626,7 @@ async function fetchFedervolleyText(url: string, accept: string) {
     return text;
   } finally {
     clearTimeout(timeout);
+    signal?.removeEventListener("abort", onAbort);
   }
 }
 

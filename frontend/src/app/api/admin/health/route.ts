@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@backend/auth/adminAuth";
 import { prisma } from "@backend/db/db";
+import { readLatestParserMonitorReport } from "@backend/monitoring/parserMonitorPersistence";
 
 export const dynamic = "force-dynamic";
 
@@ -44,6 +45,7 @@ export async function GET(request: Request) {
     ]);
 
     const activeRatio = totalProxies > 0 ? (activeProxiesCount / totalProxies) * 100 : 0;
+    const parserMonitor = readLatestParserMonitorReport();
 
     return NextResponse.json({
       status: "healthy",
@@ -59,7 +61,8 @@ export async function GET(request: Request) {
           activeRatio: parseFloat(activeRatio.toFixed(1))
         }
       },
-      recentLogs
+      recentLogs,
+      parserMonitor
     });
   } catch (error) {
     console.error("[Health Dashboard API] Failure:", error);

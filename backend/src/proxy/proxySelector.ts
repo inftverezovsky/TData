@@ -90,9 +90,7 @@ export async function markProxyFailure(proxyId: string | null, params: {
 export function maskProxyUrl(proxyUrl: string) {
   try {
     const parsed = new URL(proxyUrl);
-    if (parsed.password) parsed.password = "***";
-    if (parsed.username) parsed.username = `${parsed.username.slice(0, 4)}***`;
-    return parsed.toString();
+    return `${parsed.protocol}//${parsed.host}`;
   } catch {
     return "[invalid proxy]";
   }

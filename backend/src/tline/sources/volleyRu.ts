@@ -30,8 +30,8 @@ export function createVolleyRuAdapter(options: { readonly fetchHtml?: HtmlFetche
 
   const adapter: OfficialSourceAdapter = Object.freeze({
     provider: VOLLEY_RU_PROVIDER,
-    async testConnection(config: TLineChampionshipConfig) {
-      const snapshot = await fetchAndParse(config);
+    async testConnection(config: TLineChampionshipConfig, testOptions?: { readonly signal?: AbortSignal }) {
+      const snapshot = await fetchAndParse(config, testOptions?.signal);
       return Object.freeze({
         ok: true as const,
         provider: VOLLEY_RU_PROVIDER,

@@ -156,11 +156,13 @@ function requestOrigins(request: Request) {
   const requestOrigin = normalizeOrigin(request.url);
   if (requestOrigin) origins.add(requestOrigin);
 
-  const forwardedHost = request.headers.get("x-forwarded-host")?.split(",", 1)[0].trim();
-  const forwardedProtocol = request.headers.get("x-forwarded-proto")?.split(",", 1)[0].trim();
-  if (forwardedHost && (forwardedProtocol === "http" || forwardedProtocol === "https")) {
-    const forwardedOrigin = normalizeOrigin(`${forwardedProtocol}://${forwardedHost}`);
-    if (forwardedOrigin) origins.add(forwardedOrigin);
+  if (process.env.TRUST_PROXY_HEADERS === "1") {
+    const forwardedHost = request.headers.get("x-forwarded-host")?.split(",", 1)[0].trim();
+    const forwardedProtocol = request.headers.get("x-forwarded-proto")?.split(",", 1)[0].trim();
+    if (forwardedHost && (forwardedProtocol === "http" || forwardedProtocol === "https")) {
+      const forwardedOrigin = normalizeOrigin(`${forwardedProtocol}://${forwardedHost}`);
+      if (forwardedOrigin) origins.add(forwardedOrigin);
+    }
   }
   return origins;
 }

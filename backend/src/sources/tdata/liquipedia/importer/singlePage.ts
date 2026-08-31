@@ -24,6 +24,9 @@ import {
   markSourceFetchFailure,
   isSourceCacheStaleUsable,
   SOURCE_CACHE_TTL_MS,
+  buildSourceFetchCacheKey,
+  normalizeSourceFetchCacheKey,
+  SourceFetchCacheKey,
   SourceFetchCacheRecord,
 } from "@backend/utils/sourceFetchCache";
 import {
@@ -34,7 +37,6 @@ import {
 } from "@backend/teams/canonicalize";
 import { createHash } from "crypto";
 import {
-  clearPageFetchCaches,
   titleKey,
   extractRevisionId,
   extractRevisionTimestamp,
@@ -43,6 +45,89 @@ import {
   IMPORT_MATCH_PAST_GRACE_DAYS,
   IMPORT_MATCH_FUTURE_WINDOW_DAYS,
 } from "./helpers";
+
+export type LiquipediaSourceFetchPublication = {
+  input: SourceFetchCacheKey;
+  data: Parameters<typeof markSourceFetchSuccess>[1];
+};
+
+export async function publishLiquipediaSourceFetchSuccess(publication: LiquipediaSourceFetchPublication) {
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const key = normalizeSourceFetchCacheKey(publication.input);
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${buildSourceFetchCacheKey(publication.input)}))`;
+        const current = await (tx as any).sourceFetchCache.findUnique({
+          where: { source_disciplineSlug_resourceType_resourceKey_mode: key },
+        });
+        const [candidateSnapshot, currentSnapshot] = await Promise.all([
+          publication.data.rawSnapshotId
+            ? tx.rawSnapshot.findUnique({
+              where: { id: publication.data.rawSnapshotId },
+              select: { id: true, fetchedAt: true },
+            })
+            : null,
+          current?.rawSnapshotId
+            ? tx.rawSnapshot.findUnique({
+              where: { id: current.rawSnapshotId },
+              select: { id: true, fetchedAt: true },
+            })
+            : null,
+        ]);
+
+        if (shouldSkipLiquipediaSourceFetchPublication({
+          candidateRawSnapshotId: publication.data.rawSnapshotId ?? null,
+          candidateRevisionId: publication.data.revisionId ?? null,
+          candidateRevisionTimestamp: publication.data.revisionTimestamp ?? null,
+          candidateFetchedAt: candidateSnapshot?.fetchedAt ?? null,
+          currentRawSnapshotId: current?.rawSnapshotId ?? null,
+          currentRevisionId: current?.revisionId ?? null,
+          currentRevisionTimestamp: current?.revisionTimestamp ?? null,
+          currentFetchedAt: currentSnapshot?.fetchedAt ?? null,
+        })) {
+          return current;
+        }
+        return markSourceFetchSuccess(publication.input, publication.data, tx);
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    } catch (error) {
+      const retryable = error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034";
+      if (!retryable || attempt === 3) throw error;
+    }
+  }
+}
+
+export function shouldSkipLiquipediaSourceFetchPublication(input: {
+  candidateRawSnapshotId: string | null;
+  candidateRevisionId: number | null;
+  candidateRevisionTimestamp: Date | null;
+  candidateFetchedAt: Date | null;
+  currentRawSnapshotId: string | null;
+  currentRevisionId: number | null;
+  currentRevisionTimestamp: Date | null;
+  currentFetchedAt: Date | null;
+}) {
+  if (!input.currentRawSnapshotId || input.currentRawSnapshotId === input.candidateRawSnapshotId) return false;
+  const candidateRevisionId = validRevisionId(input.candidateRevisionId);
+  const currentRevisionId = validRevisionId(input.currentRevisionId);
+  if (currentRevisionId !== null) {
+    if (candidateRevisionId === null) return true;
+    if (currentRevisionId !== candidateRevisionId) return currentRevisionId > candidateRevisionId;
+  }
+  const candidateRevision = input.candidateRevisionTimestamp?.getTime() ?? null;
+  const currentRevision = input.currentRevisionTimestamp?.getTime() ?? null;
+  if (candidateRevision !== null && currentRevision !== null && currentRevision !== candidateRevision) {
+    return currentRevision > candidateRevision;
+  }
+  const candidateFetchedAt = input.candidateFetchedAt?.getTime() ?? Number.NEGATIVE_INFINITY;
+  const currentFetchedAt = input.currentFetchedAt?.getTime() ?? Number.NEGATIVE_INFINITY;
+  return currentFetchedAt > candidateFetchedAt;
+}
+
+function validRevisionId(value: number | null) {
+  return Number.isSafeInteger(value) && Number(value) > 0 ? Number(value) : null;
+}
+import { canonicalizeLiquipediaSourceUrl } from "./snapshotSafety";
+import { mergeTournamentParticipantManualFields } from "@backend/sources/participantPreservation";
 
 export async function processSinglePage(params: {
   disciplineId: string;
@@ -56,8 +141,25 @@ export async function processSinglePage(params: {
   tournamentId?: string;
   force?: boolean;
   clearMatches?: boolean;
+  deferBusinessWrites: true;
 }) {
-  const { disciplineSlug, apiUrl, pageId, title, pageUrl, normalizer, importRecordId, tournamentId, force, clearMatches = true } = params;
+  const {
+    disciplineSlug,
+    apiUrl,
+    pageId,
+    title,
+    pageUrl,
+    normalizer,
+    importRecordId,
+    tournamentId,
+    force,
+    clearMatches = true,
+    deferBusinessWrites,
+  } = params;
+
+  if (deferBusinessWrites !== true) {
+    throw new Error("Liquipedia singlePage direct business writes are disabled; use the recursive atomic importer");
+  }
 
   try {
     let wikitext = "";
@@ -71,6 +173,7 @@ export async function processSinglePage(params: {
     let cacheLayer: string | null = null;
     let stale = false;
     let warning: string | null = null;
+    let sourceFetchPublicationNeeded = false;
     let externalRequests = 0;
     const requestOptions = getLiquipediaImportRequestOptions();
     const shouldFetchParsedHtml = shouldFetchParsedHtmlForDiscipline(disciplineSlug);
@@ -95,10 +198,6 @@ export async function processSinglePage(params: {
       resourceKey: titleKey(title),
       mode: "cache-first",
     };
-
-    if (force) {
-      await clearPageFetchCaches(disciplineSlug, title);
-    }
 
     let sourceCache: SourceFetchCacheRecord | null = !force
       ? await findSourceFetchCache(cacheInput)
@@ -130,6 +229,7 @@ export async function processSinglePage(params: {
       if (rawSnapshot?.rawWikitext) {
         cacheHit = true;
         cacheLayer = "raw-snapshot";
+        sourceFetchPublicationNeeded = true;
       } else {
         rawSnapshot = null;
       }
@@ -146,19 +246,7 @@ export async function processSinglePage(params: {
             rawSnapshot = revisionSnapshot;
             cacheHit = true;
             cacheLayer = "revision-cache";
-            await markSourceFetchSuccess(cacheInput, {
-              revisionId: revision.revisionId,
-              revisionTimestamp: revision.revisionTimestamp,
-              rawSnapshotId: revisionSnapshot.id,
-              externalRequests,
-              cacheLayer,
-              metadata: {
-                title: revision.title,
-                pageId: revision.pageId ?? null,
-                fullUrl: revision.fullUrl,
-                revisionChecked: true,
-              },
-            });
+            sourceFetchPublicationNeeded = true;
           }
         }
       } catch (revisionError) {
@@ -200,10 +288,6 @@ export async function processSinglePage(params: {
           console.log(`[Importer] Skipping fetchPageParsed for ${pageTitle} (LIQUIPEDIA_SKIP_PARSED_HTML=1)`);
         }
 
-        if (force && titleKey(pageTitle) !== titleKey(title)) {
-          await clearPageFetchCaches(disciplineSlug, pageTitle);
-        }
-
         const contentHash = createHash("sha1").update(wikitext).digest("hex");
         rawSnapshot = await prisma.rawSnapshot.create({
           data: {
@@ -226,20 +310,8 @@ export async function processSinglePage(params: {
             } as Prisma.InputJsonValue,
           }
         });
-
-        await markSourceFetchSuccess(cacheInput, {
-          revisionId: rawSnapshot.revisionId,
-          revisionTimestamp: rawSnapshot.revisionTimestamp,
-          contentHash,
-          rawSnapshotId: rawSnapshot.id,
-          externalRequests,
-          cacheLayer: "network",
-          metadata: {
-            title: pageTitle,
-            pageId: currentPageId ?? null,
-            pageUrl: currentPageUrl,
-          },
-        });
+        cacheLayer = "network";
+        sourceFetchPublicationNeeded = true;
       } catch (fetchError) {
         await markSourceFetchFailure(cacheInput, {
           errorClass: "source_fetch_failed",
@@ -325,37 +397,71 @@ export async function processSinglePage(params: {
       stale,
     });
 
-    const tournament = await prisma.tournament.upsert({
-      where: {
-        disciplineSlug_sourceTitle: {
-          disciplineSlug,
-          sourceTitle: tournamentId ? (await prisma.tournament.findUnique({ where: { id: tournamentId } }))?.sourceTitle ?? normalized.sourceTitle : normalized.sourceTitle
-        }
-      },
-      update: {
-        extractionStatus: normalized.status,
-        normalization: initialNormalization,
-        lastImportId: importRecordId
-      },
-      create: {
-        sourcePageId: normalized.sourcePageId,
-        sourceTitle: normalized.sourceTitle,
-        sourceUrl: normalized.sourceUrl,
-        name: normalized.name,
-        disciplineSlug,
-        startDate: normalized.startDate,
-        endDate: normalized.endDate,
-        location: normalized.location,
-        region: normalized.region,
-        organizer: normalized.organizer,
-        prizePool: normalized.prizePool,
-        formatText: normalized.formatText,
-        status: normalized.tournamentStatus,
-        extractionStatus: normalized.status,
-        normalization: initialNormalization,
-        lastImportId: importRecordId
-      }
+    const requestedTournament = tournamentId && tournamentId !== "__pending__"
+      ? await prisma.tournament.findUnique({ where: { id: tournamentId } })
+      : null;
+    const sourceTitle = normalized.sourceTitle;
+    const existingTournament = requestedTournament || await findExistingLiquipediaTournament({
+      disciplineSlug,
+      sourcePageId: normalized.sourcePageId,
+      sourceUrl: normalized.sourceUrl,
+      requestedPageUrl: currentPageUrl,
+      sourceTitle,
     });
+    const tournament = deferBusinessWrites
+      ? {
+          ...existingTournament,
+          id: existingTournament?.id || "__pending__",
+          sourcePageId: normalized.sourcePageId,
+          sourceTitle,
+          sourceUrl: normalized.sourceUrl,
+          name: normalized.name,
+          disciplineSlug,
+          startDate: normalized.startDate,
+          endDate: normalized.endDate,
+          location: normalized.location,
+          region: normalized.region,
+          organizer: normalized.organizer,
+          prizePool: normalized.prizePool,
+          formatText: normalized.formatText,
+          status: normalized.tournamentStatus,
+          extractionStatus: normalized.status,
+          normalization: initialNormalization,
+          lastImportId: importRecordId,
+        }
+      : existingTournament
+        ? await prisma.tournament.update({
+          where: { id: existingTournament.id },
+          data: {
+            sourcePageId: normalized.sourcePageId,
+            sourceTitle,
+            sourceUrl: normalized.sourceUrl,
+            name: normalized.name,
+            extractionStatus: normalized.status,
+            normalization: initialNormalization,
+            lastImportId: importRecordId,
+          },
+        })
+        : await prisma.tournament.create({
+          data: {
+            sourcePageId: normalized.sourcePageId,
+            sourceTitle,
+            sourceUrl: normalized.sourceUrl,
+            name: normalized.name,
+            disciplineSlug,
+            startDate: normalized.startDate,
+            endDate: normalized.endDate,
+            location: normalized.location,
+            region: normalized.region,
+            organizer: normalized.organizer,
+            prizePool: normalized.prizePool,
+            formatText: normalized.formatText,
+            status: normalized.tournamentStatus,
+            extractionStatus: normalized.status,
+            normalization: initialNormalization,
+            lastImportId: importRecordId,
+          },
+        });
 
     const disciplineMappings = await prisma.teamMapping.findMany({
       where: { disciplineSlug }
@@ -382,32 +488,41 @@ export async function processSinglePage(params: {
 
       const existingParticipants = await prisma.tournamentParticipant.findMany({
         where: { tournamentId: tournament.id },
-        select: { name: true, platformId: true }
+        select: {
+          name: true,
+          platformId: true,
+          seed: true,
+          region: true,
+          status: true,
+          logoUrl: true,
+          rawText: true,
+        }
       });
-      const partPlatformMap = new Map(
-        force
-          ? []
-          : existingParticipants.filter((ep: any) => ep.platformId).map((ep: any) => [ep.name.toLowerCase(), ep.platformId])
+      const existingParticipantMap = new Map(
+        existingParticipants.map((participant: any) => [participant.name.toLowerCase(), participant]),
       );
 
       const participantsToInsert = normalized.participants.map((p: any) => {
         const mapping = mappingMap.get(p.name.toLowerCase()) || aliasMap.get(p.name.toLowerCase());
-        const platformId = partPlatformMap.get(p.name.toLowerCase()) || mapping?.platformId || null;
+        const existing = existingParticipantMap.get(p.name.toLowerCase());
+        const manualFields = mergeTournamentParticipantManualFields({
+          incoming: p,
+          existing,
+          mapping,
+        });
         
         return {
           id: `part_${tournament.id}_${p.name.toLowerCase().replace(/\s/g, "_")}`,
           tournamentId: tournament.id,
           name: p.name,
-          platformId,
-          seed: p.seed,
-          region: p.region,
-          status: p.status,
-          logoUrl: p.logoUrl,
-          rawText: p.rawText
+          ...manualFields,
         };
       });
 
-      if (clearMatches !== false) {
+      if (deferBusinessWrites) {
+        // The recursive importer persists the complete participant snapshot
+        // together with the final match set in one transaction.
+      } else if (clearMatches !== false) {
         await prisma.$transaction([
           prisma.tournamentParticipant.deleteMany({ where: { tournamentId: tournament.id } }),
           ...(participantsToInsert.length > 0
@@ -420,7 +535,7 @@ export async function processSinglePage(params: {
         }
       }
 
-      for (const p of normalized.participants) {
+      for (const p of deferBusinessWrites ? [] : normalized.participants) {
         if (!mappingMap.has(p.name.toLowerCase())) {
           prisma.teamMapping.upsert({
             where: { disciplineSlug_liquipediaName: { disciplineSlug, liquipediaName: p.name } },
@@ -430,14 +545,13 @@ export async function processSinglePage(params: {
         }
       }
     } else if (clearMatches !== false) {
-      await prisma.tournamentParticipant.deleteMany({ where: { tournamentId: tournament.id } });
+      // Preserve the last known participant snapshot when the source returns an
+      // unexplained empty result. A force refresh only bypasses caches.
     }
 
     let matchesToInsert: any[] = [];
     if (normalized.matches.length > 0) {
-      const existingMatches = force
-        ? []
-        : await prisma.tournamentMatch.findMany({
+      const existingMatches = await prisma.tournamentMatch.findMany({
             where: { tournamentId: tournament.id },
             select: { matchId: true, platformId: true, lpNumericalId: true, teamAName: true, teamBName: true, matchDate: true, syncedAt: true }
           });
@@ -532,7 +646,7 @@ export async function processSinglePage(params: {
         if (m.teamAName && !isPlaceholderTeam(m.teamAName)) matchTeamNames.add(m.teamAName);
         if (m.teamBName && !isPlaceholderTeam(m.teamBName)) matchTeamNames.add(m.teamBName);
       }
-      if (matchTeamNames.size > 0) {
+      if (!deferBusinessWrites && matchTeamNames.size > 0) {
         const existingMappings = await prisma.teamMapping.findMany({
           where: { disciplineSlug, liquipediaName: { in: [...matchTeamNames] } },
           select: { liquipediaName: true },
@@ -596,26 +710,38 @@ export async function processSinglePage(params: {
         },
       }).catch(() => {});
 
-      await markSourceFetchSuccess(cacheInput, {
-        revisionId: rawSnapshot.revisionId,
-        revisionTimestamp: rawSnapshot.revisionTimestamp,
-        contentHash: rawSnapshot.contentHash,
-        rawSnapshotId: rawSnapshot.id,
-        qualityScore: pageQualityScore,
-        externalRequests: 0,
-        cacheLayer: cacheLayer || (cacheHit ? "raw-snapshot" : "network"),
-        metadata: {
-          title: pageTitle,
-          pageId: currentPageId ?? null,
-          pageUrl: currentPageUrl,
-          matchesCount: matchesToInsert.length,
-          placeholdersCount: matchesToInsert.filter((match) => hasPlaceholderTeams(match)).length,
-          stale,
-        },
-      });
     }
 
-    if (normalized.dota2Diagnostics || normalized.leagueOfLegendsDiagnostics || normalized.valorantDiagnostics) {
+    const sourceFetchPublication: LiquipediaSourceFetchPublication | null = (
+      sourceFetchPublicationNeeded
+      && rawSnapshot?.id
+      && !stale
+      && !warning
+      && normalized.status === "SUCCESS"
+    )
+      ? {
+        input: cacheInput,
+        data: {
+          revisionId: rawSnapshot.revisionId,
+          revisionTimestamp: rawSnapshot.revisionTimestamp,
+          contentHash: rawSnapshot.contentHash,
+          rawSnapshotId: rawSnapshot.id,
+          qualityScore: pageQualityScore,
+          externalRequests,
+          cacheLayer: cacheLayer || (cacheHit ? "raw-snapshot" : "network"),
+          metadata: {
+            title: pageTitle,
+            pageId: currentPageId ?? null,
+            pageUrl: currentPageUrl,
+            matchesCount: matchesToInsert.length,
+            placeholdersCount: matchesToInsert.filter((match) => hasPlaceholderTeams(match)).length,
+            stale,
+          },
+        },
+      }
+      : null;
+
+    if (!deferBusinessWrites && (normalized.dota2Diagnostics || normalized.leagueOfLegendsDiagnostics || normalized.valorantDiagnostics)) {
       await prisma.tournament.update({
         where: { id: tournament.id },
         data: {
@@ -641,11 +767,72 @@ export async function processSinglePage(params: {
       requestStats: normalized.requestStats,
       sourceBreakdown: normalized.sourceBreakdown,
       qualityScore: pageQualityScore,
+      sourceFetchPublication,
+      sourceFreshness: {
+        revisionId: rawSnapshot?.revisionId ?? null,
+        revisionTimestamp: rawSnapshot?.revisionTimestamp ?? null,
+        fetchedAt: rawSnapshot?.fetchedAt ?? null,
+      },
     };
   } catch (error) {
     console.error(`[Importer] Error processing page ${title}:`, error);
     throw error;
   }
+}
+
+type LiquipediaTournamentLookupClient = Pick<Prisma.TransactionClient, "tournament">;
+
+export async function findExistingLiquipediaTournament(params: {
+  disciplineSlug: string;
+  sourcePageId?: number | null;
+  sourceUrl?: string | null;
+  requestedPageUrl?: string | null;
+  sourceTitle: string;
+}, client: LiquipediaTournamentLookupClient = prisma) {
+  if (Number.isInteger(params.sourcePageId) && Number(params.sourcePageId) > 0) {
+    const byPageId = await client.tournament.findFirst({
+      where: {
+        disciplineSlug: params.disciplineSlug,
+        sourcePageId: Number(params.sourcePageId),
+        OR: [
+          { sourceUrl: { startsWith: `https://liquipedia.net/${params.disciplineSlug}/` } },
+          { sourceUrl: { startsWith: `https://www.liquipedia.net/${params.disciplineSlug}/` } },
+        ],
+      },
+      orderBy: { updatedAt: "desc" },
+    });
+    if (byPageId) return byPageId;
+  }
+
+  const sourceUrls = Array.from(new Set([
+    params.sourceUrl,
+    params.requestedPageUrl,
+    canonicalizeLiquipediaSourceUrl(params.sourceUrl),
+    canonicalizeLiquipediaSourceUrl(params.requestedPageUrl),
+  ].map((value) => String(value || "").trim()).filter(Boolean)));
+  if (sourceUrls.length > 0) {
+    const byUrl = await client.tournament.findFirst({
+      where: {
+        disciplineSlug: params.disciplineSlug,
+        sourceUrl: { in: sourceUrls },
+      },
+      orderBy: { updatedAt: "desc" },
+    });
+    if (byUrl) return byUrl;
+  }
+
+  return client.tournament.findFirst({
+    where: {
+      disciplineSlug: params.disciplineSlug,
+      sourceTitle: params.sourceTitle,
+      OR: [
+        { sourceUrl: { startsWith: `https://liquipedia.net/${params.disciplineSlug}/` } },
+        { sourceUrl: { startsWith: `https://www.liquipedia.net/${params.disciplineSlug}/` } },
+        { sourceUrl: "" },
+      ],
+    },
+    orderBy: { updatedAt: "desc" },
+  });
 }
 
 function getSnapshotPageUrl(snapshot: { metadata?: unknown }) {

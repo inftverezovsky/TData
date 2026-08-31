@@ -25,6 +25,28 @@ type TelemetryData = {
     cacheHit: boolean;
     createdAt: string;
   }>;
+  parserMonitor: {
+    runId: string;
+    finishedAt: string;
+    exitCode: 0 | 1 | 2;
+    summary: {
+      total: number;
+      healthy: number;
+      healthyEmpty: number;
+      warning: number;
+      failed: number;
+    };
+    results: Array<{
+      id: string;
+      source: string;
+      scope: string | null;
+      status: "healthy" | "healthy_empty" | "warning" | "failed";
+      errorClass: string | null;
+      summary: string;
+      normalizedItems: number;
+      attempts: number;
+    }>;
+  } | null;
 };
 
 export default function SystemHealthDashboard() {
@@ -154,6 +176,73 @@ export default function SystemHealthDashboard() {
 
           </div>
 
+          <div>
+            <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-bold text-slate-950">Еженедельная проверка источников</h3>
+                <p className="mt-1 text-xs font-medium text-slate-500">
+                  {data.parserMonitor
+                    ? `Последний запуск: ${new Date(data.parserMonitor.finishedAt).toLocaleString("ru-RU")}`
+                    : "Монитор ещё не запускался или отчёт недоступен."}
+                </p>
+              </div>
+              {data.parserMonitor ? (
+                <span className={`rounded-full px-3 py-1 text-xs font-bold ${
+                  data.parserMonitor.summary.failed > 0
+                    ? "bg-rose-50 text-rose-700"
+                    : data.parserMonitor.summary.warning > 0
+                      ? "bg-amber-50 text-amber-700"
+                      : "bg-emerald-50 text-emerald-700"
+                }`}>
+                  {data.parserMonitor.summary.failed > 0
+                    ? `Сбоев: ${data.parserMonitor.summary.failed}`
+                    : data.parserMonitor.summary.warning > 0
+                      ? `Предупреждений: ${data.parserMonitor.summary.warning}`
+                      : `Проверено: ${data.parserMonitor.summary.total}`}
+                </span>
+              ) : null}
+            </div>
+            {data.parserMonitor ? (
+              <div className="overflow-hidden rounded-2xl border border-slate-100">
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-left text-sm text-slate-500">
+                    <thead className="border-b border-slate-100 bg-slate-50 text-xs font-bold uppercase tracking-wider text-slate-700">
+                      <tr>
+                        <th className="px-5 py-3">Источник</th>
+                        <th className="px-5 py-3">Статус</th>
+                        <th className="px-5 py-3">Элементы</th>
+                        <th className="px-5 py-3">Диагностика</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {data.parserMonitor.results.map((result) => (
+                        <tr key={result.id} className="hover:bg-slate-50/50">
+                          <td className="px-5 py-3 font-semibold text-slate-800">
+                            {result.source.toUpperCase()}{result.scope ? ` / ${result.scope}` : ""}
+                          </td>
+                          <td className="px-5 py-3">
+                            <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-bold ${monitorStatusClass(result.status)}`}>
+                              {monitorStatusLabel(result.status)}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3 font-mono text-xs">{result.normalizedItems}</td>
+                          <td className="max-w-[440px] px-5 py-3 text-xs">
+                            <span className="font-semibold text-slate-700">{result.errorClass || "OK"}</span>
+                            <span className="ml-2 text-slate-400">{result.summary}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-slate-200 px-5 py-8 text-center text-sm font-semibold text-slate-400">
+                Отчёт появится после первого запуска monitor:parsers.
+              </div>
+            )}
+          </div>
+
           {/* Telemetry Log Viewer */}
           <div>
             <h3 className="text-lg font-bold text-slate-950 mb-4">Журнал запросов (Parser Activity Log)</h3>
@@ -215,4 +304,18 @@ export default function SystemHealthDashboard() {
       ) : null}
     </section>
   );
+}
+
+function monitorStatusClass(status: "healthy" | "healthy_empty" | "warning" | "failed") {
+  if (status === "failed") return "bg-rose-50 text-rose-700";
+  if (status === "warning") return "bg-amber-50 text-amber-700";
+  if (status === "healthy_empty") return "bg-sky-50 text-sky-700";
+  return "bg-emerald-50 text-emerald-700";
+}
+
+function monitorStatusLabel(status: "healthy" | "healthy_empty" | "warning" | "failed") {
+  if (status === "failed") return "СБОЙ";
+  if (status === "warning") return "ВНИМАНИЕ";
+  if (status === "healthy_empty") return "ПУСТО — НОРМА";
+  return "РАБОТАЕТ";
 }

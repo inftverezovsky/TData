@@ -1,6 +1,16 @@
 import { Prisma, type ImportStatus } from "@prisma/client";
 import { prisma } from "@backend/db/db";
 import { dedupeTournamentMatches } from "@backend/matches/dedupe";
+import { decideTournamentSnapshotWrite, TournamentSnapshotRejectedError } from "@backend/sources/importSafety";
+import { refreshTournamentMatchesPreservingState } from "@backend/sources/matchPreservation";
+import {
+  mergeTournamentParticipantManualFields,
+  refreshTournamentParticipantsPreservingState,
+} from "@backend/sources/participantPreservation";
+import {
+  assertTournamentImportFresh,
+  runSerializableTournamentImport,
+} from "@backend/sources/tournamentImportConcurrency";
 import { getTeamMappingLookupKeys } from "@backend/teams/canonicalize";
 import { generateInternalTeamId, isPlaceholderTeam } from "@backend/teams/teams";
 import { TABLE_TENNIS_DISCIPLINE_SLUG } from "@backend/sources/tablet/config";
@@ -46,7 +56,7 @@ type PersistableWttMatch = {
   teamAId: string;
   teamBId: string;
   hasPlaceholderTeams: boolean;
-  matchDate: Date;
+  matchDate: Date | null;
   matchDateTime: string | null;
   format: string | null;
   stage: string | null;
@@ -59,6 +69,11 @@ type PersistableWttMatch = {
 
 type WttNormalization = {
   wtt: Record<string, unknown>;
+};
+
+type PreparedWttSnapshot = {
+  matches: PersistableWttMatch[];
+  teams: Array<{ name: string; organization: string; rawText: string | null }>;
 };
 
 export async function importWttTournament(input: ImportWttTournamentInput) {
@@ -123,7 +138,6 @@ export async function importWttTournament(input: ImportWttTournamentInput) {
       || findCategorySummary(wttTournament.categories, categoryScope);
     const displayName = buildDisplayName(wttTournament, categoryScope);
     const sourceTitle = buildSourceTitle(wttTournament, categoryScope);
-    const normalizedStatus = resolveWttImportStatus(categoryMatches.length);
     const metadata = buildWttMetadata(wttTournament, {
       requestedTitle: input.title,
       requestedPageUrl: input.pageUrl,
@@ -134,87 +148,94 @@ export async function importWttTournament(input: ImportWttTournamentInput) {
       categories: summarizeWttMatchCategories(activeMatches),
       activeCategories: summarizeWttMatchCategories(categoryMatches),
     });
-
-    const tournament = await prisma.tournament.upsert({
-      where: {
-        disciplineSlug_sourceTitle: {
-          disciplineSlug: input.slug,
-          sourceTitle,
-        },
+    const snapshot = prepareWttTournamentSnapshot({
+      matches: categoryMatches,
+    });
+    const finalStatus: ImportStatus = "SUCCESS";
+    const finalNormalization = {
+      ...metadata,
+      wtt: {
+        ...metadata.wtt,
+        savedMatches: snapshot.matches.length,
+        categoryLabel: categorySummary?.label || getWttCategoryLabel(categoryScope),
       },
-      create: {
-        name: displayName,
+    } as Prisma.InputJsonValue;
+
+    const committed = await runSerializableTournamentImport(async (tx) => {
+      await assertTournamentImportFresh({
+        tx,
+        importRecordId: importRecord.id,
+        disciplineSlug: input.slug,
+        sourceIdentity: sourceTitle,
         sourceTitle,
         sourceUrl: wttTournament.pageUrl,
-        disciplineSlug: input.slug,
-        startDate: parseDate(wttTournament.startDate),
-        endDate: parseDate(wttTournament.endDate),
-        location: wttTournament.location || null,
-        formatText: null,
-        status: wttTournament.status,
-        extractionStatus: normalizedStatus,
-        normalization: metadata as Prisma.InputJsonValue,
-        lastImportId: importRecord.id,
-      },
-      update: {
-        name: displayName,
-        sourceUrl: wttTournament.pageUrl,
-        startDate: parseDate(wttTournament.startDate),
-        endDate: parseDate(wttTournament.endDate),
-        location: wttTournament.location || null,
-        formatText: null,
-        status: wttTournament.status,
-        extractionStatus: normalizedStatus,
-        normalization: metadata as Prisma.InputJsonValue,
-        lastImportId: importRecord.id,
-        updatedAt: new Date(),
-      },
-    });
-
-    const saveResult = await saveWttTournamentMatches({
-      tournamentId: tournament.id,
-      mappingSlug: getTableTennisMappingSlug(categoryScope),
-      matches: categoryMatches,
-      force: Boolean(input.force),
-    });
-    const finalStatus = resolveWttImportStatus(saveResult.savedCount);
-
-    await prisma.$transaction([
-      prisma.tournament.update({
-        where: { id: tournament.id },
-        data: {
-          extractionStatus: finalStatus,
-          normalization: {
-            ...metadata,
-            wtt: {
-              ...metadata.wtt,
-              savedMatches: saveResult.savedCount,
-              categoryLabel: categorySummary?.label || getWttCategoryLabel(categoryScope),
-            },
-          } as Prisma.InputJsonValue,
+        lookupBy: "sourceTitle",
+      });
+      const tournament = await tx.tournament.upsert({
+        where: {
+          disciplineSlug_sourceTitle: {
+            disciplineSlug: input.slug,
+            sourceTitle,
+          },
         },
-      }),
-      prisma.tournamentImport.update({
+        create: {
+          name: displayName,
+          sourceTitle,
+          sourceUrl: wttTournament.pageUrl,
+          disciplineSlug: input.slug,
+          startDate: parseDate(wttTournament.startDate),
+          endDate: parseDate(wttTournament.endDate),
+          location: wttTournament.location || null,
+          formatText: null,
+          status: wttTournament.status,
+          extractionStatus: finalStatus,
+          normalization: finalNormalization,
+          lastImportId: importRecord.id,
+        },
+        update: {
+          name: displayName,
+          sourceUrl: wttTournament.pageUrl,
+          startDate: parseDate(wttTournament.startDate),
+          endDate: parseDate(wttTournament.endDate),
+          location: wttTournament.location || null,
+          formatText: null,
+          status: wttTournament.status,
+          extractionStatus: finalStatus,
+          normalization: finalNormalization,
+          lastImportId: importRecord.id,
+          updatedAt: new Date(),
+        },
+      });
+
+      await saveWttTournamentSnapshot({
+        tx,
+        tournamentId: tournament.id,
+        mappingSlug: getTableTennisMappingSlug(categoryScope),
+        snapshot,
+      });
+      await tx.tournamentImport.update({
         where: { id: importRecord.id },
         data: {
           status: finalStatus,
           finishedAt: new Date(),
         },
-      }),
-    ]);
+      });
+
+      return { tournamentId: tournament.id, savedCount: snapshot.matches.length };
+    }, { maxWaitMs: 10_000, timeoutMs: 60_000 });
 
     const fullTournament = await prisma.tournament.findUnique({
-      where: { id: tournament.id },
+      where: { id: committed.tournamentId },
       include: { participants: true, matches: true, lastImport: true },
     });
 
     return {
       tournament: fullTournament ? { ...fullTournament, matches: dedupeTournamentMatches(fullTournament.matches) } : null,
-      normalized: { status: finalStatus, error: saveResult.savedCount === 0 ? "Актуальных матчей для импорта нет" : undefined },
+      normalized: { status: finalStatus, error: committed.savedCount === 0 ? "Актуальных матчей для импорта нет" : undefined },
     };
   } catch (error) {
-    await prisma.tournamentImport.update({
-      where: { id: importRecord.id },
+    await prisma.tournamentImport.updateMany({
+      where: { id: importRecord.id, status: "PENDING" },
       data: {
         status: "FAILED",
         finishedAt: new Date(),
@@ -252,16 +273,12 @@ async function resolveWttTournament(input: {
   );
 }
 
-async function saveWttTournamentMatches(params: {
-  tournamentId: string;
-  mappingSlug: string;
+export function prepareWttTournamentSnapshot(params: {
   matches: WttMatch[];
-  force?: boolean;
-}): Promise<{ savedCount: number }> {
+}): PreparedWttSnapshot {
   const candidates = params.matches
-    .map((match): PersistableWttMatch | null => {
+    .map((match): PersistableWttMatch => {
       const matchDate = parseDate(match.startTimeUtc);
-      if (!matchDate) return null;
 
       const teamAName = match.teamA.name || "TBD";
       const teamBName = match.teamB.name || "TBD";
@@ -284,52 +301,17 @@ async function saveWttTournamentMatches(params: {
         rawText: buildRawMatchText(match),
         status: match.status === "live" ? "live" : "upcoming",
       };
-    })
-    .filter((match): match is PersistableWttMatch => Boolean(match));
-
-  const wttMatches = dedupeTournamentMatches(candidates);
-  const matchUpserts = wttMatches.map((match) => prisma.tournamentMatch.upsert({
-    where: { matchId: match.matchId },
-    create: {
-      matchId: match.matchId,
-      tournamentId: params.tournamentId,
-      stage: match.stage,
-      round: match.round,
-      teamAName: match.teamAName,
-      teamBName: match.teamBName,
-      teamAId: match.teamAId,
-      teamBId: match.teamBId,
-      scoreA: null,
-      scoreB: null,
-      hasPlaceholderTeams: match.hasPlaceholderTeams,
-      matchDate: match.matchDate,
-      matchDateTime: match.matchDateTime,
-      format: match.format,
-      status: match.status,
-      court: match.court,
-      sourceUrl: match.sourceUrl,
-      rawText: match.rawText,
-    },
-    update: {
-      tournamentId: params.tournamentId,
-      stage: match.stage,
-      round: match.round,
-      teamAName: match.teamAName,
-      teamBName: match.teamBName,
-      teamAId: match.teamAId,
-      teamBId: match.teamBId,
-      scoreA: null,
-      scoreB: null,
-      hasPlaceholderTeams: match.hasPlaceholderTeams,
-      matchDate: match.matchDate,
-      matchDateTime: match.matchDateTime,
-      format: match.format,
-      status: match.status,
-      court: match.court,
-      sourceUrl: match.sourceUrl,
-      rawText: match.rawText,
-    },
-  }));
+    });
+  const matches = dedupeTournamentMatches(candidates);
+  const decision = decideTournamentSnapshotWrite({
+    incomingMatches: matches.length,
+    sourceValidated: true,
+  });
+  if (!decision.allowed) {
+    throw new TournamentSnapshotRejectedError(
+      `WTT snapshot rejected (${decision.reason}); last-good data was preserved.`,
+    );
+  }
 
   const teamByName = new Map<string, { name: string; organization: string; rawText: string | null }>();
   for (const match of params.matches) {
@@ -345,14 +327,22 @@ async function saveWttTournamentMatches(params: {
     }
   }
 
+  return { matches, teams: Array.from(teamByName.values()) };
+}
+
+async function saveWttTournamentSnapshot(params: {
+  tx: Prisma.TransactionClient;
+  tournamentId: string;
+  mappingSlug: string;
+  snapshot: PreparedWttSnapshot;
+}): Promise<void> {
+  const { tx } = params;
   const [existingParticipants, teamMappings] = await Promise.all([
-    params.force
-      ? Promise.resolve([] as Array<{ name: string; platformId: string | null; logoUrl: string | null; rawText: string | null }>)
-      : prisma.tournamentParticipant.findMany({
-        where: { tournamentId: params.tournamentId },
-        select: { name: true, platformId: true, logoUrl: true, rawText: true },
-      }),
-    prisma.teamMapping.findMany({ where: { disciplineSlug: params.mappingSlug } }),
+    tx.tournamentParticipant.findMany({
+      where: { tournamentId: params.tournamentId },
+      select: { name: true, platformId: true, seed: true, region: true, status: true, logoUrl: true, rawText: true },
+    }),
+    tx.teamMapping.findMany({ where: { disciplineSlug: params.mappingSlug } }),
   ]);
 
   const existingParticipantMap = new Map(existingParticipants.map((participant) => [participant.name.toLowerCase(), participant]));
@@ -364,7 +354,7 @@ async function saveWttTournamentMatches(params: {
     }
   }
 
-  const participantsToInsert = Array.from(teamByName.values())
+  const participantsToInsert = [...params.snapshot.teams]
     .sort((left, right) => left.name.localeCompare(right.name))
     .map((team) => {
       const existing = existingParticipantMap.get(team.name.toLowerCase());
@@ -372,20 +362,28 @@ async function saveWttTournamentMatches(params: {
       return {
         tournamentId: params.tournamentId,
         name: team.name,
-        platformId: existing?.platformId || mapping?.platformId || null,
-        logoUrl: existing?.logoUrl || mapping?.logoUrl || null,
-        rawText: existing?.rawText || team.rawText || (team.organization ? `org=${team.organization}` : null),
+        ...mergeTournamentParticipantManualFields({
+          incoming: { rawText: team.rawText || (team.organization ? `org=${team.organization}` : null) },
+          existing,
+          mapping,
+        }),
       };
     });
 
-  await prisma.$transaction([
-    prisma.tournamentMatch.deleteMany({ where: { tournamentId: params.tournamentId } }),
-    prisma.tournamentParticipant.deleteMany({ where: { tournamentId: params.tournamentId } }),
-    ...matchUpserts,
-    ...(participantsToInsert.length > 0 ? [prisma.tournamentParticipant.createMany({ data: participantsToInsert })] : []),
-  ]);
-
-  return { savedCount: wttMatches.length };
+  await refreshTournamentMatchesPreservingState({
+    tx,
+    tournamentId: params.tournamentId,
+    matches: params.snapshot.matches.map((match) => ({
+      matchId: match.matchId,
+      create: { ...match, tournamentId: params.tournamentId, scoreA: null, scoreB: null },
+      update: { ...match, scoreA: null, scoreB: null },
+    })),
+  });
+  await refreshTournamentParticipantsPreservingState({
+    tx,
+    tournamentId: params.tournamentId,
+    participants: participantsToInsert,
+  });
 }
 
 function selectTournament(
@@ -468,10 +466,6 @@ function buildRawMatchText(match: WttMatch) {
     `${match.teamA.name} vs ${match.teamB.name}`,
     match.rawText,
   ].filter(Boolean).join(" | ") || null;
-}
-
-function resolveWttImportStatus(savedMatchesCount: number): ImportStatus {
-  return savedMatchesCount > 0 ? "SUCCESS" : "PARTIAL";
 }
 
 function inferWttEventId(...values: Array<unknown>) {

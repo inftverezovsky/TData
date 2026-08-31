@@ -1,11 +1,40 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  buildVolleyballWorldTournamentSearchAllSummary,
   groupVolleyballWorldBeachTournaments,
   normalizeVolleyballWorldGender,
   normalizeVolleyballWorldSchedule,
   resolveVolleyballWorldDateRange,
 } from "../backend/src/sources/tbvolley/VolleyballWorld";
+
+test("shared VolleyballWorld summary retains raw-before-filter counts for both genders", () => {
+  const summary = buildVolleyballWorldTournamentSearchAllSummary([
+    {
+      gender: "men",
+      matches: [
+        { tournamentNo: "men-1", competitionSlug: "men-one", gender: "men" },
+        { tournamentNo: "men-1", competitionSlug: "men-one", gender: "men" },
+      ],
+    },
+    {
+      gender: "women",
+      matches: [{ tournamentNo: "women-1", competitionSlug: "women-one", gender: "women" }],
+    },
+  ] as any, [{ gender: "women", matchCount: 1 }] as any);
+
+  assert.deepEqual(summary, {
+    total: 1,
+    matches: 1,
+    rawTotal: 2,
+    filteredOut: 1,
+    emptyReason: null,
+    byGender: {
+      men: { rawTotal: 1, total: 0, matches: 0 },
+      women: { rawTotal: 1, total: 1, matches: 1 },
+    },
+  });
+});
 
 test("Volleyball World normalizer keeps only beach matches for selected gender", () => {
   const schedule = normalizeVolleyballWorldSchedule(
@@ -156,6 +185,19 @@ test("Volleyball World gender and date helpers normalize user input", () => {
     toDate: "2026-06-02",
     days: 7,
   });
+  assert.deepEqual(resolveVolleyballWorldDateRange({ fromDate: "2026-05-27", toDate: "2026-12-31" }), {
+    fromDate: "2026-05-27",
+    toDate: "2026-07-25",
+    days: 60,
+  });
+  assert.throws(
+    () => resolveVolleyballWorldDateRange({ fromDate: "2026-02-30", days: 7 }),
+    /valid YYYY-MM-DD/u,
+  );
+  assert.throws(
+    () => resolveVolleyballWorldDateRange({ fromDate: "2026-05-27", toDate: "2026-05-26" }),
+    /cannot be earlier/u,
+  );
 });
 
 test("Volleyball World tournament grouping keeps only active beach matches", () => {

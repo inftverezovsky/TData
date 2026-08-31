@@ -1,6 +1,7 @@
 import * as cheerio from "cheerio";
 import { DateTime } from "luxon";
 import { formatMoscowDate, formatMoscowDateTime } from "@backend/matches/scheduleOffset";
+import { readBoundedBodyText } from "@backend/http/boundedResponse";
 import { normalizeBeachVolleyballGender, type BeachVolleyballGender } from "@backend/sources/tbvolley/config";
 
 export type TwelveNdrSource = "twelvendrcsvp" | "twelvendroevv";
@@ -74,6 +75,9 @@ export type TwelveNdrTournamentSearch = {
   summary: {
     total: number;
     matches: number;
+    rawTotal?: number;
+    filteredOut?: number;
+    emptyReason?: "date_window" | null;
   };
 };
 
@@ -151,6 +155,7 @@ export async function searchTwelveNdrCsvpTournaments(input: {
   season?: string | number | null;
   gender?: string | null;
   query?: string | null;
+  signal?: AbortSignal;
 } = {}) {
   return searchTwelveNdrTournaments({ ...input, source: "twelvendrcsvp", calendarMode: "csvp" });
 }
@@ -159,6 +164,7 @@ export async function searchTwelveNdrOevvTournaments(input: {
   season?: string | number | null;
   gender?: string | null;
   query?: string | null;
+  signal?: AbortSignal;
 } = {}) {
   return searchTwelveNdrTournaments({ ...input, source: "twelvendroevv", calendarMode: "oevv" });
 }
@@ -169,21 +175,21 @@ export async function searchTwelveNdrTournaments(input: {
   season?: string | number | null;
   gender?: string | null;
   query?: string | null;
+  signal?: AbortSignal;
 }): Promise<TwelveNdrTournamentSearch> {
   const season = normalizeSeason(input.season);
   const gender = normalizeTwelveNdrGender(input.gender);
   const query = normalizeSearch(input.query || "");
   const sourceUrl = buildCalendarUrl(input.calendarMode, season);
-  const text = await fetchTwelveNdrText(sourceUrl, "application/json,text/html,*/*");
-  const tournaments = filterTwelveNdrUpcomingTournaments(
-    parseTwelveNdrCalendarJson(text, {
-      source: input.source,
-      calendarMode: input.calendarMode,
-      season,
-      gender,
-      query,
-    }),
-  );
+  const text = await fetchTwelveNdrText(sourceUrl, "application/json,text/html,*/*", input.signal);
+  const discovered = parseTwelveNdrCalendarJson(text, {
+    source: input.source,
+    calendarMode: input.calendarMode,
+    season,
+    gender,
+    query,
+  });
+  const tournaments = filterTwelveNdrUpcomingTournaments(discovered);
 
   return {
     ok: true,
@@ -197,6 +203,9 @@ export async function searchTwelveNdrTournaments(input: {
     summary: {
       total: tournaments.length,
       matches: tournaments.reduce((sum, tournament) => sum + (tournament.matchCount || 0), 0),
+      rawTotal: discovered.length,
+      filteredOut: Math.max(0, discovered.length - tournaments.length),
+      emptyReason: discovered.length > 0 && tournaments.length === 0 ? "date_window" : null,
     },
   };
 }
@@ -209,6 +218,7 @@ export async function fetchTwelveNdrTournament(input: {
   title?: string | null;
   pageUrl?: string | null;
   gender?: string | null;
+  signal?: AbortSignal;
 }): Promise<TwelveNdrTournament> {
   const tcode = clean(input.tcode)
     || extractTwelveNdrTcode(input.pageUrl)
@@ -219,7 +229,7 @@ export async function fetchTwelveNdrTournament(input: {
     || extractTwelveNdrTimezone(input.pageUrl)
     || extractTwelveNdrTimezone(input.title);
   const pageUrl = buildTournamentPageUrl(tcode, timezone);
-  const html = await fetchTwelveNdrText(buildTournamentScriptUrl(tcode), "text/html,application/xhtml+xml");
+  const html = await fetchTwelveNdrText(buildTournamentScriptUrl(tcode), "text/html,application/xhtml+xml", input.signal);
   const gender = normalizeTwelveNdrGender(input.gender || inferGenderFromTcode(tcode) || input.title || input.pageUrl);
 
   return parseTwelveNdrTournamentPage(html, {
@@ -540,8 +550,11 @@ function parseScore(value: string) {
   };
 }
 
-async function fetchTwelveNdrText(url: string, accept: string) {
+async function fetchTwelveNdrText(url: string, accept: string, signal?: AbortSignal) {
   const controller = new AbortController();
+  const onAbort = () => controller.abort(signal?.reason);
+  signal?.addEventListener("abort", onAbort, { once: true });
+  if (signal?.aborted) onAbort();
   const timeout = setTimeout(() => controller.abort(), 20_000);
 
   try {
@@ -553,13 +566,18 @@ async function fetchTwelveNdrText(url: string, accept: string) {
         "User-Agent": TWELVE_NDR_USER_AGENT,
       },
     });
-    const text = await response.text();
+    const text = await readBoundedBodyText(response, {
+      maxBytes: 8 * 1024 * 1024,
+      signal: controller.signal,
+      label: "12ndr response",
+    });
     if (!response.ok) {
       throw new Error(`12ndr HTTP ${response.status}: ${text.slice(0, 220)}`);
     }
     return text;
   } finally {
     clearTimeout(timeout);
+    signal?.removeEventListener("abort", onAbort);
   }
 }
 

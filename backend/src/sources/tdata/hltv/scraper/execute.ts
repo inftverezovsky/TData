@@ -28,8 +28,9 @@ export async function executeScraper(
   requestId = "hltv",
   attempt = 1,
   direct = false,
-  options: { noCache?: boolean } = {}
+  options: { noCache?: boolean; signal?: AbortSignal } = {}
 ): Promise<any> {
+  options.signal?.throwIfAborted();
   const MAX_ATTEMPTS = getMaxAttempts(mode);
   let proxyStr = "";
   let selectedProxyId: string | null = null;
@@ -54,17 +55,18 @@ export async function executeScraper(
   }
 
   const args = ["scripts/hltv_playwright.mjs", "--mode", mode];
-  if (proxyStr) args.push("--proxy", proxyStr);
   if (options.noCache) args.push("--no-cache");
   args.push("--request-id", requestId);
 
   if (mode === "search" && queryOrId) {
     args.push("--q", queryOrId);
   } else if (mode === "event" && queryOrId) {
-    args.push("--id", queryOrId);
+    const eventId = queryOrId.match(/\/events\/(\d+)(?:\/|$)/)?.[1] || queryOrId;
+    args.push("--id", eventId);
+    if (/^https?:\/\/(?:www\.)?hltv\.org\/events\//i.test(queryOrId)) args.push("--url", queryOrId);
   }
 
-  console.log(`[HLTV Scraper Lib] Executing request=${requestId} proxyId=${selectedProxyId ?? "none"} mode=${mode} attempt=${attempt}/${MAX_ATTEMPTS}${direct ? " direct" : ""}: node scripts/hltv_playwright.mjs ${proxyStr ? `--proxy ${maskProxyUrl(proxyStr)} ` : ""}--mode ${mode}`);
+  console.log(`[HLTV Scraper Lib] Executing request=${requestId} proxyId=${selectedProxyId ?? "none"} proxy=${proxyStr ? maskProxyUrl(proxyStr) : "none"} mode=${mode} attempt=${attempt}/${MAX_ATTEMPTS}${direct ? " direct" : ""}`);
 
   return new Promise((resolve, reject) => {
     let stdout = "";
@@ -72,9 +74,13 @@ export async function executeScraper(
     let timedOut = false;
     let settled = false;
     let timeoutSettling = false;
+    let aborted = false;
+    let abortCleanup = Promise.resolve();
 
     const child = spawn(process.execPath, args, {
       cwd: process.cwd(),
+      detached: process.platform !== "win32",
+      env: buildHltvChildEnvironment(proxyStr),
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -83,6 +89,7 @@ export async function executeScraper(
       if (settled) return false;
       settled = true;
       clearTimeout(timer);
+      options.signal?.removeEventListener("abort", onParentAbort);
       resolve(value);
       return true;
     };
@@ -91,15 +98,30 @@ export async function executeScraper(
       if (settled) return false;
       settled = true;
       clearTimeout(timer);
+      options.signal?.removeEventListener("abort", onParentAbort);
       reject(error);
       return true;
     };
 
+    const abortError = () => options.signal?.reason instanceof Error
+      ? options.signal.reason
+      : new Error("HLTV monitor request was aborted");
+    const onParentAbort = () => {
+      if (settled || aborted) return;
+      aborted = true;
+      timeoutSettling = true;
+      abortCleanup = forceKillChild(child.pid ?? undefined);
+    };
+    options.signal?.addEventListener("abort", onParentAbort, { once: true });
+    if (options.signal?.aborted) onParentAbort();
+
     const timer = setTimeout(() => {
       timedOut = true;
       timeoutSettling = true;
-      forceKillChild(child.pid ?? undefined);
-      void handleChildTimeout();
+      void (async () => {
+        await forceKillChild(child.pid ?? undefined);
+        await handleChildTimeout();
+      })();
     }, getTimeoutMs(mode));
 
     const handleChildTimeout = async () => {
@@ -160,6 +182,10 @@ export async function executeScraper(
     });
 
     child.on("error", async (error) => {
+      if (aborted) {
+        if (!child.pid) settleReject(abortError());
+        return;
+      }
       if (settled || timeoutSettling) return;
       clearTimeout(timer);
       console.error(`[HLTV Scraper Lib] Spawn error on attempt ${attempt}: ${error.message}`);
@@ -181,7 +207,7 @@ export async function executeScraper(
       if (attempt < MAX_ATTEMPTS) {
         console.log(`[HLTV Scraper Lib] Retrying in 2 seconds...`);
         await new Promise(r => setTimeout(r, 2000));
-        executeScraper(mode, queryOrId, requestId, attempt + 1, direct, options).then(resolve, reject);
+        executeScraper(mode, queryOrId, requestId, attempt + 1, direct, options).then(settleResolve, settleReject);
         return;
       }
 
@@ -189,6 +215,12 @@ export async function executeScraper(
     });
 
     child.on("close", async (code) => {
+      if (aborted) {
+        await abortCleanup;
+        timeoutSettling = false;
+        settleReject(abortError());
+        return;
+      }
       if (settled || timeoutSettling) return;
       clearTimeout(timer);
       if (code !== 0 || timedOut) {
@@ -216,13 +248,13 @@ export async function executeScraper(
         if (shouldRetry(mode, errorClass, attempt, MAX_ATTEMPTS)) {
           console.log(`[HLTV Scraper Lib] Retrying in 2 seconds...`);
           await new Promise(r => setTimeout(r, 2000));
-          executeScraper(mode, queryOrId, requestId, attempt + 1, direct, options).then(resolve, reject);
+          executeScraper(mode, queryOrId, requestId, attempt + 1, direct, options).then(settleResolve, settleReject);
           return;
         }
 
         if (shouldTryDirectFallback(errorClass, direct)) {
           console.log(`[HLTV Scraper Lib] ${errorClass} through proxy, retrying once without proxy...`);
-          executeScraper(mode, queryOrId, requestId, 1, true, options).then(resolve, reject);
+          executeScraper(mode, queryOrId, requestId, 1, true, options).then(settleResolve, settleReject);
           return;
         }
 
@@ -258,6 +290,40 @@ export async function executeScraper(
           const staleErrorClass = data.stale && data.warning
             ? classifyHltvError(data.warning, false)
             : null;
+          if (emptyErrorClass && emptyErrorClass !== "empty_valid") {
+            const errorMessage = emptyErrorClass === "selector_changed"
+              ? `HLTV ${mode} selector validation failed: source returned an unexplained empty result.`
+              : `HLTV ${mode} parse failed: source returned an unexplained empty result.`;
+            await markProxyFailure(selectedProxyId, {
+              errorClass: emptyErrorClass,
+              errorMessage,
+              durationMs,
+            });
+            await logParserRequest({
+              source: "hltv",
+              mode,
+              proxyId: selectedProxyId,
+              attempt,
+              durationMs,
+              bytesIn: stdout.length + stderr.length,
+              cacheHit: !!data.cacheHit,
+              cacheLayer: data.cacheLayer || (data.cacheHit ? "file" : null),
+              errorClass: emptyErrorClass,
+              matchesCount,
+              eventsCount,
+            });
+
+            if (shouldRetry(mode, emptyErrorClass, attempt, MAX_ATTEMPTS)) {
+              await new Promise(r => setTimeout(r, 2000));
+              executeScraper(mode, queryOrId, requestId, attempt + 1, direct, options).then(settleResolve, settleReject);
+              return;
+            }
+
+            const semanticError = new Error(errorMessage) as Error & { errorClass?: string };
+            semanticError.errorClass = emptyErrorClass;
+            settleReject(semanticError);
+            return;
+          }
           if (staleErrorClass) {
             await markProxyFailure(selectedProxyId, {
               errorClass: staleErrorClass,
@@ -283,7 +349,9 @@ export async function executeScraper(
           });
           settleResolve(data);
         } else {
-          const errorClass = classifyHltvError(data.error || "unknown", false);
+          const errorClass = data.errorClass
+            ? normalizeParserErrorClass(data.errorClass)
+            : classifyHltvError(data.error || "unknown", false);
           const durationMs = Date.now() - startedAt;
           await markProxyFailure(selectedProxyId, {
             errorClass,
@@ -304,12 +372,12 @@ export async function executeScraper(
           if (shouldRetry(mode, errorClass, attempt, MAX_ATTEMPTS)) {
              console.log(`[HLTV Scraper Lib] Soft error on attempt ${attempt}: ${data.error}. Retrying...`);
              await new Promise(r => setTimeout(r, 2000));
-             executeScraper(mode, queryOrId, requestId, attempt + 1, direct, options).then(resolve, reject);
+             executeScraper(mode, queryOrId, requestId, attempt + 1, direct, options).then(settleResolve, settleReject);
              return;
           }
           if (shouldTryDirectFallback(errorClass, direct)) {
             console.log(`[HLTV Scraper Lib] ${errorClass} through proxy, retrying once without proxy...`);
-            executeScraper(mode, queryOrId, requestId, 1, true, options).then(resolve, reject);
+            executeScraper(mode, queryOrId, requestId, 1, true, options).then(settleResolve, settleReject);
             return;
           }
           const relatedCache = mode === "search" ? readRelatedHltvSearchCache(queryOrId) : null;
@@ -350,7 +418,7 @@ export async function executeScraper(
         if (attempt < Math.min(MAX_ATTEMPTS, 2)) {
           console.log(`[HLTV Scraper Lib] Parse error on attempt ${attempt}. Retrying...`);
           await new Promise(r => setTimeout(r, 2000));
-          executeScraper(mode, queryOrId, requestId, attempt + 1, direct, options).then(resolve, reject);
+          executeScraper(mode, queryOrId, requestId, attempt + 1, direct, options).then(settleResolve, settleReject);
           return;
         }
         
@@ -358,6 +426,40 @@ export async function executeScraper(
       }
     });
   });
+}
+
+const HLTV_CHILD_ENV_ALLOWLIST = [
+  "PATH",
+  "SystemRoot",
+  "WINDIR",
+  "COMSPEC",
+  "PATHEXT",
+  "HOME",
+  "USERPROFILE",
+  "LOCALAPPDATA",
+  "TEMP",
+  "TMP",
+  "TMPDIR",
+  "LANG",
+  "LC_ALL",
+  "TZ",
+  "PLAYWRIGHT_BROWSERS_PATH",
+  "HLTV_SEARCH_RESULT_WAIT_MS",
+  "HLTV_EVENTS_FUTURE_WINDOW_DAYS",
+  "HLTV_SEARCH_FUTURE_WINDOW_DAYS",
+  "HLTV_SEARCH_ENRICH",
+  "HLTV_SEARCH_TOP_RESULTS",
+  "HLTV_SEARCH_MAX_EVENTS",
+] as const;
+
+export function buildHltvChildEnvironment(proxyUrl: string): NodeJS.ProcessEnv {
+  const env = HLTV_CHILD_ENV_ALLOWLIST.reduce<NodeJS.ProcessEnv>(
+    (current, key) => typeof process.env[key] === "string"
+      ? { ...current, [key]: process.env[key] }
+      : current,
+    { NODE_ENV: process.env.NODE_ENV || "production" },
+  );
+  return proxyUrl ? { ...env, HLTV_PLAYWRIGHT_PROXY: proxyUrl } : env;
 }
 
 async function getHltvProxyCandidate(attempt: number): Promise<HltvProxyCandidate | null> {
@@ -409,18 +511,61 @@ function shouldTryDirectFallback(errorClass: string, direct: boolean) {
     || normalized === "process_failed";
 }
 
-function forceKillChild(pid?: number) {
-  if (!pid) return;
+type ForceKillChildDependencies = {
+  platform?: NodeJS.Platform;
+  kill?: (pid: number, signal: NodeJS.Signals) => void;
+  killWindowsTree?: (pid: number) => Promise<void>;
+};
+
+function isSafeChildPid(pid: number | undefined): pid is number {
+  return typeof pid === "number"
+    && Number.isSafeInteger(pid)
+    && pid > 1
+    && pid !== process.pid;
+}
+
+async function killWindowsChildTree(pid: number): Promise<void> {
+  await new Promise<void>((resolve) => {
+    try {
+      const killer = spawn("taskkill", ["/PID", String(pid), "/T", "/F"], {
+        windowsHide: true,
+        stdio: "ignore",
+      });
+      killer.on("error", () => resolve());
+      killer.on("close", () => resolve());
+    } catch {
+      resolve();
+    }
+  });
+}
+
+export async function forceKillChild(
+  pid?: number,
+  dependencies: ForceKillChildDependencies = {},
+): Promise<void> {
+  if (!isSafeChildPid(pid)) return;
+
+  const platform = dependencies.platform ?? process.platform;
+  const kill = dependencies.kill ?? ((targetPid: number, signal: NodeJS.Signals) => {
+    process.kill(targetPid, signal);
+  });
+
+  if (platform === "win32") {
+    try {
+      kill(pid, "SIGKILL");
+    } catch {}
+    await (dependencies.killWindowsTree ?? killWindowsChildTree)(pid);
+    return;
+  }
 
   try {
-    process.kill(pid, "SIGKILL");
-  } catch {}
-
-  if (process.platform === "win32") {
-    const killer = spawn("taskkill", ["/PID", String(pid), "/T", "/F"], {
-      windowsHide: true,
-      stdio: "ignore",
-    });
-    killer.on("error", () => {});
+    // The Unix scraper is spawned detached, making its PID the process-group ID
+    // inherited by Playwright and Chromium descendants.
+    kill(-pid, "SIGKILL");
+  } catch {
+    // If the group already disappeared, still terminate a surviving direct child.
+    try {
+      kill(pid, "SIGKILL");
+    } catch {}
   }
 }

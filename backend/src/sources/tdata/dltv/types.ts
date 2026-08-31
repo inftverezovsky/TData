@@ -1,9 +1,10 @@
 export type DltvMatchPageFailure = {
   url: string;
   error: string;
+  errorClass?: string;
 };
 
-export type DltvEventStatus = "live" | "ongoing" | "upcoming";
+export type DltvEventStatus = "live" | "ongoing" | "upcoming" | "finished";
 
 export type DltvEvent = {
   id: string;
@@ -59,4 +60,10 @@ export type DltvRunResult = {
   warning?: string | null;
   error?: string | null;
   errorClass?: string | null;
+};
+
+export type DltvRunOptions = {
+  noCache?: boolean;
+  signal?: AbortSignal;
+  monitorMode?: boolean;
 };

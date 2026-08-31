@@ -59,7 +59,8 @@ export function parseVlrMatchesHtml(html: string, baseUrl = VLR_ORIGIN): VlrMatc
 
     const href = el.attr("href") || "";
     const id = extractVlrMatchId(href);
-    if (!id) return;
+    const matchUrl = absoluteVlrUrl(href, baseUrl);
+    if (!id || !matchUrl) return;
 
     const teams = extractScopedTeamNames($, el, [
       ".match-item-vs-team-name .text-of",
@@ -82,7 +83,7 @@ export function parseVlrMatchesHtml(html: string, baseUrl = VLR_ORIGIN): VlrMatc
 
     matches.push({
       id,
-      url: absoluteVlrUrl(href, baseUrl),
+      url: matchUrl,
       tournament,
       stage,
       team1,
@@ -130,7 +131,8 @@ export function parseVlrMatchDetailHtml(html: string, fallbackUrl = ""): Partial
   const isLive = /live/i.test(statusText);
 
   if (id) detail.id = id;
-  if (href) detail.url = absoluteVlrUrl(href);
+  const detailUrl = href ? absoluteVlrUrl(href) : "";
+  if (detailUrl) detail.url = detailUrl;
   if (eventTitle) detail.tournament = eventTitle;
   if (series) detail.stage = series;
   if (teamNames[0] || titleTeams[0]) detail.team1 = teamNames[0] || titleTeams[0];
@@ -156,12 +158,13 @@ export function parseVlrEventsHtml(html: string, baseUrl = VLR_ORIGIN): VlrEvent
     const href = el.attr("href") || "";
     const id = extractVlrEventId(href);
     const title = cleanText(el.find(".event-item-title").first().text());
-    if (!id || !title) return;
+    const eventUrl = absoluteVlrUrl(href, baseUrl);
+    if (!id || !title || !eventUrl) return;
 
     const statusRaw = cleanText(el.find(".event-item-desc-item-status").first().text()).toLowerCase();
     const dates = cleanText(el.find(".event-item-desc-item.mod-dates").first().clone().children().remove().end().text()) || null;
     const status = statusRaw === "ongoing" || statusRaw === "upcoming" ? statusRaw : "unknown";
-    events.push({ id, title, url: absoluteVlrUrl(href, baseUrl), dates, status });
+    events.push({ id, title, url: eventUrl, dates, status });
   });
 
   return dedupeVlrEvents(events);
@@ -178,7 +181,8 @@ export function parseVlrEventMatchesHtml(html: string, eventUrl: string): { titl
     const el = $(element);
     const href = el.attr("href") || "";
     const id = extractVlrMatchId(href);
-    if (!id) return;
+    const matchUrl = absoluteVlrUrl(href);
+    if (!id || !matchUrl) return;
 
     const teams = extractScopedTeamNames($, el, [
       ".event-sidebar-matches-team .name",
@@ -199,7 +203,7 @@ export function parseVlrEventMatchesHtml(html: string, eventUrl: string): { titl
 
     matches.push({
       id,
-      url: absoluteVlrUrl(href),
+      url: matchUrl,
       tournament: title,
       stage,
       team1,
@@ -217,7 +221,8 @@ export function parseVlrEventMatchesHtml(html: string, eventUrl: string): { titl
     const el = $(element);
     const href = el.attr("href") || "";
     const id = extractVlrMatchId(href);
-    if (!id) return;
+    const matchUrl = absoluteVlrUrl(href);
+    if (!id || !matchUrl) return;
 
     const titleTeams = parseVlrTitleTeams(el.attr("title") || "");
     const teams = el.find(".bracket-item-team-name span")
@@ -242,7 +247,7 @@ export function parseVlrEventMatchesHtml(html: string, eventUrl: string): { titl
 
     matches.push({
       id,
-      url: absoluteVlrUrl(href),
+      url: matchUrl,
       tournament: title,
       stage,
       team1,
@@ -357,9 +362,18 @@ function extractVlrTimestamp($: cheerio.CheerioAPI, $scope: cheerio.Cheerio<any>
 
 function absoluteVlrUrl(href: string, baseUrl = VLR_ORIGIN) {
   try {
-    return new URL(href, baseUrl).toString();
+    const url = new URL(href, baseUrl);
+    if (url.hostname.toLowerCase() === "vlr.gg") url.hostname = "www.vlr.gg";
+    if (
+      url.origin !== VLR_ORIGIN
+      || url.protocol !== "https:"
+      || url.port
+      || url.username
+      || url.password
+    ) return "";
+    return url.toString();
   } catch {
-    return href;
+    return "";
   }
 }
 

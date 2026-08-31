@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
 import { DateTime } from "luxon";
+import { readBoundedBodyText } from "@backend/http/boundedResponse";
 import { formatMoscowDate, formatMoscowDateTime } from "@backend/matches/scheduleOffset";
 import { normalizeBeachVolleyballGender, type BeachVolleyballGender } from "@backend/sources/tbvolley/config";
 
@@ -75,6 +76,9 @@ export type GermanBeachTourTournamentSearch = {
   summary: {
     total: number;
     teams: number;
+    rawTotal?: number;
+    filteredOut?: number;
+    emptyReason?: "date_window" | null;
   };
 };
 
@@ -140,17 +144,16 @@ export async function searchGermanBeachTourTournaments(input: {
   year?: string | number | null;
   gender?: string | null;
   query?: string | null;
+  signal?: AbortSignal;
 } = {}): Promise<GermanBeachTourTournamentSearch> {
   const year = normalizeYear(input.year);
   const gender = normalizeGermanBeachTourGender(input.gender);
   const query = normalizeSearch(input.query || "");
   const sourceUrl = buildCalendarUrl(year);
-  const html = await fetchGermanBeachTourHtml(sourceUrl);
+  const html = await fetchGermanBeachTourHtml(sourceUrl, input.signal);
   const window = resolveGermanBeachTourUpcomingWindow();
-  const tournaments = filterGermanBeachTourUpcomingTournaments(
-    parseGermanBeachTourCalendar(html, { gender, query }),
-    window,
-  );
+  const discovered = parseGermanBeachTourCalendar(html, { gender, query });
+  const tournaments = filterGermanBeachTourUpcomingTournaments(discovered, window);
 
   return {
     ok: true,
@@ -166,6 +169,9 @@ export async function searchGermanBeachTourTournaments(input: {
     summary: {
       total: tournaments.length,
       teams: tournaments.reduce((sum, tournament) => sum + (tournament.teams || 0), 0),
+      rawTotal: discovered.length,
+      filteredOut: Math.max(0, discovered.length - tournaments.length),
+      emptyReason: discovered.length > 0 && tournaments.length === 0 ? "date_window" : null,
     },
   };
 }
@@ -175,6 +181,7 @@ export async function fetchGermanBeachTourTournament(input: {
   title?: string | null;
   pageUrl?: string | null;
   gender?: string | null;
+  signal?: AbortSignal;
 }): Promise<GermanBeachTourTournament> {
   const tournamentId = clean(input.tournamentId)
     || extractGermanBeachTourTournamentId(input.pageUrl)
@@ -185,16 +192,18 @@ export async function fetchGermanBeachTourTournament(input: {
   }
 
   const pageUrl = buildTournamentPageUrl(tournamentId);
-  const detailHtml = await fetchGermanBeachTourHtml(pageUrl);
+  const detailHtml = await fetchGermanBeachTourHtml(pageUrl, input.signal);
+  assertGermanBeachTourDetailLayout(detailHtml);
   const gender = normalizeGermanBeachTourGender(input.gender || inferGenderFromText(input.title) || inferGenderFromText(detailHtml));
-  const [qualificationHtml, mainHtml] = await Promise.all([
-    fetchOptionalGermanBeachTourHtml(buildTournamentScheduleUrl(tournamentId, "qualification")),
-    fetchOptionalGermanBeachTourHtml(buildTournamentScheduleUrl(tournamentId, "main")),
-  ]);
-  const matches = [
-    ...parseGermanBeachTourMatches(qualificationHtml, { tournamentId, gender, field: "qualification" }),
-    ...parseGermanBeachTourMatches(mainHtml, { tournamentId, gender, field: "main" }),
-  ].sort(compareGermanBeachTourMatches);
+  const scheduleFields = discoverGermanBeachTourScheduleFields(detailHtml, tournamentId);
+  const schedulePages = await Promise.all(scheduleFields.map(async (field) => ({
+    field,
+    html: await fetchGermanBeachTourHtml(buildTournamentScheduleUrl(tournamentId, field), input.signal),
+  })));
+  input.signal?.throwIfAborted();
+  const matches = schedulePages.flatMap(({ field, html }) => (
+    parseGermanBeachTourSchedule(html, { tournamentId, gender, field })
+  )).sort(compareGermanBeachTourMatches);
 
   return parseGermanBeachTourTournamentPage(detailHtml, {
     tournamentId,
@@ -381,6 +390,58 @@ export function buildTournamentScheduleUrl(tournamentId: string, field: GermanBe
   return url.toString();
 }
 
+function discoverGermanBeachTourScheduleFields(detailHtml: string, tournamentId: string): GermanBeachTourField[] {
+  const $ = cheerio.load(detailHtml);
+  const fields = new Set<GermanBeachTourField>();
+  const detailUrl = buildTournamentPageUrl(tournamentId);
+
+  $('a[href*="tur-sp.php"]').each((_, element) => {
+    const href = clean($(element).attr("href"));
+    if (!href) return;
+
+    try {
+      const url = new URL(href, detailUrl);
+      if (url.origin !== GERMAN_BEACH_TOUR_ORIGIN || url.pathname !== "/public/tur-sp.php") return;
+      if (clean(url.searchParams.get("id")) !== tournamentId) return;
+
+      const field = clean(url.searchParams.get("feld"));
+      if (!field || field === "1") fields.add("main");
+      if (field === "2") fields.add("qualification");
+    } catch {
+      // Invalid navigation links are not source confirmation for a schedule field.
+    }
+  });
+
+  return Array.from(fields);
+}
+
+function assertGermanBeachTourDetailLayout(html: string) {
+  const $ = cheerio.load(html);
+  const header = clean($(".pageheader").first().text());
+  const detail = readDetailMap($);
+  const recognizedFields = ["Datum von", "Datum bis", "Geschlecht", "Typ", "Ort"]
+    .filter((key) => detail.has(key));
+
+  if (!header || recognizedFields.length < 2) {
+    throw new Error("German Beach Tour detail layout is not recognized");
+  }
+}
+
+function parseGermanBeachTourSchedule(
+  html: string,
+  options: { tournamentId: string; gender: GermanBeachTourGender; field: GermanBeachTourField },
+) {
+  const $ = cheerio.load(html);
+  const hasScheduleTable = $(".content center table tr.bez2").toArray().some((row) => {
+    const headers = $(row).children("td").map((_, cell) => clean($(cell).text())).get();
+    return headers.includes("Spiel") && headers.includes("Team 1") && headers.includes("Team 2");
+  });
+  if (!hasScheduleTable) {
+    throw new Error(`German Beach Tour ${options.field} schedule layout is not recognized`);
+  }
+  return parseGermanBeachTourMatches(html, options);
+}
+
 export function buildGermanBeachTourSourceTitle(title: string, gender: GermanBeachTourGender, tournamentId: string) {
   return `${stripGermanGenderSuffix(title)} — ${gender === "women" ? "Women" : "Men"} [GBT:${tournamentId}]`;
 }
@@ -522,8 +583,11 @@ function readDetailMap($: cheerio.CheerioAPI) {
   return detail;
 }
 
-async function fetchGermanBeachTourHtml(url: string) {
+async function fetchGermanBeachTourHtml(url: string, signal?: AbortSignal) {
   const controller = new AbortController();
+  const onAbort = () => controller.abort(signal?.reason);
+  signal?.addEventListener("abort", onAbort, { once: true });
+  if (signal?.aborted) onAbort();
   const timeout = setTimeout(() => controller.abort(), 20_000);
 
   try {
@@ -536,21 +600,18 @@ async function fetchGermanBeachTourHtml(url: string) {
         "User-Agent": GERMAN_BEACH_TOUR_USER_AGENT,
       },
     });
-    const text = await response.text();
+    const text = await readBoundedBodyText(response, {
+      maxBytes: 5 * 1024 * 1024,
+      signal: controller.signal,
+      label: "German Beach Tour response",
+    });
     if (!response.ok) {
       throw new Error(`German Beach Tour HTTP ${response.status}: ${text.slice(0, 220)}`);
     }
     return text;
   } finally {
     clearTimeout(timeout);
-  }
-}
-
-async function fetchOptionalGermanBeachTourHtml(url: string) {
-  try {
-    return await fetchGermanBeachTourHtml(url);
-  } catch {
-    return "";
+    signal?.removeEventListener("abort", onAbort);
   }
 }
 

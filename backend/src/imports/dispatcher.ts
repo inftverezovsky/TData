@@ -9,6 +9,7 @@ import { importGermanBeachTourTournament } from "@backend/sources/tbvolley/Germa
 import { importTwelveNdrTournament } from "@backend/sources/tbvolley/TwelveNdr/importTournament";
 import { importVolleyballWorldTournament } from "@backend/sources/tbvolley/VolleyballWorld/importTournament";
 import { importWttTournament } from "@backend/sources/tablet/WTT/importTournament";
+import { TournamentSnapshotRejectedError } from "@backend/sources/importSafety";
 import { importDltvTournament } from "@backend/sources/tdata/dltv/importTournament";
 import { importFandomTournament } from "@backend/sources/tdata/fandom/importTournament";
 import { importHltvTournament } from "@backend/sources/tdata/hltv/importTournament";
@@ -19,6 +20,7 @@ import {
   toLiquipediaUserFacingError,
 } from "@backend/sources/tdata/liquipedia/userFacingErrors";
 import { importVlrTournament } from "@backend/sources/tdata/vlr/importTournament";
+import { isTournamentImportSource, validateTournamentImportSourceUrl } from "./sourceUrlPolicy";
 
 export type TournamentImportSource =
   | "liquipedia"
@@ -71,10 +73,26 @@ export async function dispatchTournamentImport(
   body: ImportTournamentRequestBody,
 ): Promise<ImportTournamentDispatchResult> {
   const slug = disciplineSlug.trim().toLowerCase();
-  const source = body.source || "liquipedia";
+  const sourceValue: unknown = body.source || "liquipedia";
+  if (!isTournamentImportSource(sourceValue)) {
+    return { body: { error: "Неподдерживаемый источник турнира" }, status: 400 };
+  }
+  const source = sourceValue;
   const pageId = typeof body.pageId === "number" ? body.pageId : undefined;
   const title = typeof body.title === "string" ? body.title.trim() : "";
-  const pageUrl = resolvePageUrl(source, body.pageUrl, title, slug);
+  let pageUrl: string;
+  try {
+    pageUrl = validateTournamentImportSourceUrl(
+      source,
+      resolvePageUrl(source, body.pageUrl, title, slug),
+      slug,
+    );
+  } catch (error) {
+    return {
+      body: { error: error instanceof Error ? error.message : "Некорректный URL источника" },
+      status: 400,
+    };
+  }
 
   if (!pageId && title.length < 2) {
     return { body: { error: "Нужен pageId или title выбранной страницы" }, status: 400 };
@@ -373,11 +391,12 @@ async function importLiquipediaTournament(input: {
     };
   } catch (error) {
     const userFacingError = toLiquipediaUserFacingError(error);
+    const isSnapshotRejection = error instanceof TournamentSnapshotRejectedError;
     console.error(error);
-    await prisma.tournamentImport.update({
-      where: { id: tournamentImport.id },
+    await prisma.tournamentImport.updateMany({
+      where: { id: tournamentImport.id, status: "PENDING" },
       data: {
-        status: "FAILED",
+        status: isSnapshotRejection ? "PARTIAL" : "FAILED",
         finishedAt: new Date(),
         errorMessage: userFacingError.userMessage,
       },
@@ -394,16 +413,23 @@ async function importLiquipediaTournament(input: {
   }
 }
 
-function sourceError(
+export function sourceError(
   error: unknown,
   fallback: string,
   status: number,
   includeUserMessage = false,
 ): ImportTournamentDispatchResult {
   const message = error instanceof Error ? error.message : fallback;
+  const typed = error as { errorClass?: unknown; statusCode?: unknown } | null;
+  const errorClass = typeof typed?.errorClass === "string" ? typed.errorClass : null;
+  const errorStatus = typeof typed?.statusCode === "number" && typed.statusCode >= 400 && typed.statusCode <= 599
+    ? typed.statusCode
+    : status;
   return {
-    body: includeUserMessage ? { error: message, userMessage: message } : { error: message },
-    status,
+    body: includeUserMessage
+      ? { error: message, userMessage: message, errorClass }
+      : { error: message, errorClass },
+    status: errorStatus,
   };
 }
 

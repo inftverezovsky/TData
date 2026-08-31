@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
 import { formatMoscowDate, formatMoscowDateTime } from "@backend/matches/scheduleOffset";
+import { readBoundedBodyText } from "@backend/http/boundedResponse";
 import { normalizeBeachVolleyballGender, type BeachVolleyballGender } from "@backend/sources/tbvolley/config";
 
 export type BeachVolleyRuGender = BeachVolleyballGender;
@@ -72,6 +73,9 @@ export type BeachVolleyRuTournamentSearch = {
     total: number;
     cup: number;
     championship: number;
+    rawTotal?: number;
+    filteredOut?: number;
+    emptyReason?: "date_window" | null;
   };
 };
 
@@ -144,18 +148,17 @@ export async function searchBeachVolleyRuTournaments(input: {
   gender?: string | null;
   kind?: string | null;
   query?: string | null;
+  signal?: AbortSignal;
 } = {}): Promise<BeachVolleyRuTournamentSearch> {
   const year = normalizeYear(input.year);
   const gender = normalizeBeachVolleyRuGender(input.gender);
   const kind = normalizeBeachVolleyRuKind(input.kind);
   const query = normalizeSearch(input.query || "");
   const sourceUrl = buildCalendarUrl(year);
-  const html = await fetchBeachVolleyRuHtml(sourceUrl);
+  const html = await fetchBeachVolleyRuHtml(sourceUrl, input.signal);
   const window = resolveBeachVolleyRuUpcomingWindow();
-  const tournaments = filterBeachVolleyRuUpcomingTournaments(
-    parseBeachVolleyRuCalendar(html, { gender, kind, query }),
-    window,
-  );
+  const discovered = parseBeachVolleyRuCalendar(html, { gender, kind, query });
+  const tournaments = filterBeachVolleyRuUpcomingTournaments(discovered, window);
 
   return {
     ok: true,
@@ -173,6 +176,9 @@ export async function searchBeachVolleyRuTournaments(input: {
       total: tournaments.length,
       cup: tournaments.filter((tournament) => tournament.kind === "cup").length,
       championship: tournaments.filter((tournament) => tournament.kind === "championship").length,
+      rawTotal: discovered.length,
+      filteredOut: Math.max(0, discovered.length - tournaments.length),
+      emptyReason: discovered.length > 0 && tournaments.length === 0 ? "date_window" : null,
     },
   };
 }
@@ -182,6 +188,7 @@ export async function fetchBeachVolleyRuTournament(input: {
   title?: string | null;
   pageUrl?: string | null;
   gender?: string | null;
+  signal?: AbortSignal;
 }): Promise<BeachVolleyRuTournament> {
   const gender = normalizeBeachVolleyRuGender(input.gender || inferGenderFromText(input.title) || inferGenderFromText(input.pageUrl));
   const eventId = clean(input.eventId)
@@ -193,7 +200,7 @@ export async function fetchBeachVolleyRuTournament(input: {
   }
 
   const pageUrl = buildEventGamesUrl(eventId, gender);
-  const html = await fetchBeachVolleyRuHtml(pageUrl);
+  const html = await fetchBeachVolleyRuHtml(pageUrl, input.signal);
   const tournament = parseBeachVolleyRuTournamentPage(html, {
     eventId,
     gender,
@@ -466,8 +473,11 @@ function buildCalendarUrl(year: number) {
   return url.toString();
 }
 
-async function fetchBeachVolleyRuHtml(url: string) {
+async function fetchBeachVolleyRuHtml(url: string, signal?: AbortSignal) {
   const controller = new AbortController();
+  const onAbort = () => controller.abort(signal?.reason);
+  signal?.addEventListener("abort", onAbort, { once: true });
+  if (signal?.aborted) onAbort();
   const timeout = setTimeout(() => controller.abort(), 20_000);
 
   try {
@@ -479,13 +489,18 @@ async function fetchBeachVolleyRuHtml(url: string) {
         "User-Agent": BEACH_VOLLEY_RU_USER_AGENT,
       },
     });
-    const text = await response.text();
+    const text = await readBoundedBodyText(response, {
+      maxBytes: 8 * 1024 * 1024,
+      signal: controller.signal,
+      label: "beach.volley.ru response",
+    });
     if (!response.ok) {
       throw new Error(`beach.volley.ru HTTP ${response.status}: ${text.slice(0, 220)}`);
     }
     return text;
   } finally {
     clearTimeout(timeout);
+    signal?.removeEventListener("abort", onAbort);
   }
 }
 

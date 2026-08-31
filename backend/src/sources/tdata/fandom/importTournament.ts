@@ -22,9 +22,9 @@ import { resolveExactMatchDate } from "@backend/matches/time";
 import { finalizeEsportsParsingDiagnostics } from "@backend/matches/parsingDiagnostics";
 import { IMPORT_MATCH_FUTURE_WINDOW_DAYS, IMPORT_MATCH_PAST_GRACE_DAYS, titleKey } from "@backend/sources/tdata/liquipedia/importer/helpers";
 import { canonicalizeMatchesWithTournamentTeams } from "@backend/sources/tdata/liquipedia/importer/helpers";
+import { decideTournamentSnapshotWrite, TournamentSnapshotRejectedError } from "@backend/sources/importSafety";
 import { cleanWikiValue, extractFirstTemplateByPrefix, parseTemplate } from "@backend/normalizers/wikiText";
 import {
-  clearSourceFetchCache,
   findSourceFetchCache,
   isSourceCacheFresh,
   isSourceCacheStaleUsable,
@@ -36,6 +36,9 @@ import {
 } from "@backend/utils/sourceFetchCache";
 import { getTeamMappingLookupKeys } from "@backend/teams/canonicalize";
 import { generateInternalTeamId, isPlaceholderTeam } from "@backend/teams/teams";
+import { refreshTournamentMatchesPreservingState } from "@backend/sources/matchPreservation";
+import { mergeTournamentParticipantManualFields, refreshTournamentParticipantsPreservingState } from "@backend/sources/participantPreservation";
+import { assertTournamentImportFresh, runSerializableTournamentImport } from "@backend/sources/tournamentImportConcurrency";
 
 type ImportFandomTournamentInput = {
   slug: string;
@@ -44,6 +47,28 @@ type ImportFandomTournamentInput = {
   title: string;
   pageUrl?: string;
   force?: boolean;
+};
+
+type PendingFandomPageCacheSuccess = {
+  cacheInput: {
+    source: string;
+    disciplineSlug: string;
+    resourceType: string;
+    resourceKey: string;
+    mode: string;
+  };
+  data: {
+    revisionId: number | null;
+    revisionTimestamp: Date | null;
+    contentHash: string;
+    rawSnapshotId: string;
+    externalRequests: number;
+    bytesIn: number;
+    cacheLayer: string;
+    metadata: Prisma.InputJsonValue;
+    cacheTtlMs: number;
+    staleTtlMs: number;
+  };
 };
 
 export async function importFandomTournament(input: ImportFandomTournamentInput) {
@@ -102,100 +127,130 @@ export async function importFandomTournament(input: ImportFandomTournamentInput)
     normalized.warning = page.warning;
     normalized.requestStats = { externalRequests: page.externalRequests };
 
-    const tournament = await prisma.tournament.upsert({
-      where: {
-        disciplineSlug_sourceTitle: {
-          disciplineSlug: input.slug,
-          sourceTitle: normalized.sourceTitle,
-        },
-      },
-      update: {
-        sourcePageId: normalized.sourcePageId,
-        sourceUrl: normalized.sourceUrl,
-        name: normalized.name,
-        startDate: normalized.startDate,
-        endDate: normalized.endDate,
-        location: normalized.location,
-        region: normalized.region,
-        organizer: normalized.organizer,
-        prizePool: normalized.prizePool,
-        formatText: normalized.formatText,
-        status: normalized.tournamentStatus,
-        extractionStatus: normalized.status,
-        normalization: buildNormalizationJson(normalized),
-        lastImportId: tournamentImport.id,
-      },
-      create: {
-        sourcePageId: normalized.sourcePageId,
+    const sourceValidated = normalized.status === "SUCCESS" && !page.stale && !page.warning && !cargoFailed;
+    if (!sourceValidated) {
+      throw new TournamentSnapshotRejectedError(
+        page.warning || cargoError || "Fandom returned a partial, stale, or unvalidated snapshot; last-good data was preserved.",
+        page.stale ? "stale_cache" : "parse_failed",
+      );
+    }
+
+    const committed = await runSerializableTournamentImport(async (tx) => {
+      await assertTournamentImportFresh({
+        tx,
+        importRecordId: tournamentImport.id,
+        disciplineSlug: input.slug,
+        sourceIdentity: normalized.sourceTitle,
         sourceTitle: normalized.sourceTitle,
         sourceUrl: normalized.sourceUrl,
-        name: normalized.name,
-        disciplineSlug: input.slug,
-        startDate: normalized.startDate,
-        endDate: normalized.endDate,
-        location: normalized.location,
-        region: normalized.region,
-        organizer: normalized.organizer,
-        prizePool: normalized.prizePool,
-        formatText: normalized.formatText,
-        status: normalized.tournamentStatus,
-        extractionStatus: normalized.status,
-        normalization: buildNormalizationJson(normalized),
-        lastImportId: tournamentImport.id,
-      },
-    });
-
-    const matches = await saveFandomTournamentData({
-      tournamentId: tournament.id,
-      slug: input.slug,
-      title: normalized.sourceTitle,
-      participants: normalized.participants,
-      matches: normalized.matches,
-      force: !!input.force,
-    });
-    normalized.status = resolveFandomSavedStatus(normalized.status, normalized.matches.length, matches.length);
-
-    const qualityScore = computeMatchSetQuality(matches);
-    normalized.leagueOfLegendsDiagnostics = finalizeEsportsParsingDiagnostics(normalized.leagueOfLegendsDiagnostics, {
-      savedMatches: matches.length,
-      fandom: {
-        cargoFailed,
-        cacheHit: page.cacheHit,
-        stale: page.stale,
-      },
-    }) || undefined;
-    await updateFandomSnapshotQuality(page.rawSnapshotId, qualityScore, matches.length).catch(() => {});
-    await prisma.tournament.update({
-      where: { id: tournament.id },
-      data: {
-        extractionStatus: normalized.status,
-        normalization: {
-          ...(buildNormalizationJson(normalized) as Record<string, unknown>),
-          qualityScore,
-          sourceBreakdown: {
-            fandom: {
-              pageTitle: page.title,
-              pageId: page.pageId ?? null,
-              matches: matches.length,
-              cargoMatches: cargoMatches.length,
-              cargoOverviewPage: cargoLookup.overviewPage,
-              cargoOverviewPagesTried: cargoLookup.attempted,
-              cacheHit: page.cacheHit,
-              cacheLayer: page.cacheLayer,
-              stale: page.stale,
-            },
+        lookupBy: "sourceTitle",
+      });
+      const tournament = await tx.tournament.upsert({
+        where: {
+          disciplineSlug_sourceTitle: {
+            disciplineSlug: input.slug,
+            sourceTitle: normalized.sourceTitle,
           },
-        } as Prisma.InputJsonValue,
-      },
+        },
+        update: {
+          sourcePageId: normalized.sourcePageId,
+          sourceUrl: normalized.sourceUrl,
+          name: normalized.name,
+          startDate: normalized.startDate,
+          endDate: normalized.endDate,
+          location: normalized.location,
+          region: normalized.region,
+          organizer: normalized.organizer,
+          prizePool: normalized.prizePool,
+          formatText: normalized.formatText,
+          status: normalized.tournamentStatus,
+          extractionStatus: normalized.status,
+          normalization: buildNormalizationJson(normalized),
+          lastImportId: tournamentImport.id,
+        },
+        create: {
+          sourcePageId: normalized.sourcePageId,
+          sourceTitle: normalized.sourceTitle,
+          sourceUrl: normalized.sourceUrl,
+          name: normalized.name,
+          disciplineSlug: input.slug,
+          startDate: normalized.startDate,
+          endDate: normalized.endDate,
+          location: normalized.location,
+          region: normalized.region,
+          organizer: normalized.organizer,
+          prizePool: normalized.prizePool,
+          formatText: normalized.formatText,
+          status: normalized.tournamentStatus,
+          extractionStatus: normalized.status,
+          normalization: buildNormalizationJson(normalized),
+          lastImportId: tournamentImport.id,
+        },
+      });
+
+      const matches = await saveFandomTournamentData({
+        tournamentId: tournament.id,
+        slug: input.slug,
+        title: normalized.sourceTitle,
+        participants: normalized.participants,
+        matches: normalized.matches,
+        force: !!input.force,
+        sourceValidated,
+        client: tx,
+      });
+      normalized.status = resolveFandomSavedStatus(normalized.status, normalized.matches.length, matches.length);
+      if (normalized.status !== "SUCCESS") {
+        throw new TournamentSnapshotRejectedError(
+          "Fandom produced no complete persistable match snapshot; last-good data was preserved.",
+          "parse_failed",
+        );
+      }
+
+      const qualityScore = computeMatchSetQuality(matches);
+      normalized.leagueOfLegendsDiagnostics = finalizeEsportsParsingDiagnostics(normalized.leagueOfLegendsDiagnostics, {
+        savedMatches: matches.length,
+        fandom: {
+          cargoFailed,
+          cacheHit: page.cacheHit,
+          stale: page.stale,
+        },
+      }) || undefined;
+      await tx.tournament.update({
+        where: { id: tournament.id },
+        data: {
+          extractionStatus: normalized.status,
+          normalization: {
+            ...(buildNormalizationJson(normalized) as Record<string, unknown>),
+            qualityScore,
+            sourceBreakdown: {
+              fandom: {
+                pageTitle: page.title,
+                pageId: page.pageId ?? null,
+                matches: matches.length,
+                cargoMatches: cargoMatches.length,
+                cargoOverviewPage: cargoLookup.overviewPage,
+                cargoOverviewPagesTried: cargoLookup.attempted,
+                cacheHit: page.cacheHit,
+                cacheLayer: page.cacheLayer,
+                stale: page.stale,
+              },
+            },
+          } as Prisma.InputJsonValue,
+        },
+      });
+      await tx.tournamentImport.update({
+        where: { id: tournamentImport.id },
+        data: { status: normalized.status, finishedAt: new Date() },
+      });
+      return { tournamentId: tournament.id, matches, qualityScore };
     });
 
-    await prisma.tournamentImport.update({
-      where: { id: tournamentImport.id },
-      data: { status: normalized.status, finishedAt: new Date() },
-    });
+    const { matches, qualityScore } = committed;
+    await publishFandomPageCache(page.pendingCacheSuccess, qualityScore).catch(() => {});
+    await updateFandomSnapshotQuality(page.rawSnapshotId, qualityScore, matches.length).catch(() => {});
 
     const fullTournament = await prisma.tournament.findUnique({
-      where: { id: tournament.id },
+      where: { id: committed.tournamentId },
       include: { participants: true, matches: true, lastImport: true },
     });
 
@@ -223,16 +278,17 @@ export async function importFandomTournament(input: ImportFandomTournamentInput)
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Не удалось загрузить Fandom турнир";
-    await prisma.tournamentImport.update({
-      where: { id: tournamentImport.id },
+    await prisma.tournamentImport.updateMany({
+      where: { id: tournamentImport.id, status: "PENDING" },
       data: { status: "FAILED", finishedAt: new Date(), errorMessage: message },
     });
     throw error;
   }
 }
 
-function resolveFandomSavedStatus(currentStatus: ImportStatus, normalizedMatchesCount: number, savedMatchesCount: number): ImportStatus {
+export function resolveFandomSavedStatus(currentStatus: ImportStatus, normalizedMatchesCount: number, savedMatchesCount: number): ImportStatus {
   if (currentStatus !== "SUCCESS") return currentStatus;
+  if (normalizedMatchesCount === 0) return "PARTIAL";
   if (normalizedMatchesCount > 0 && savedMatchesCount === 0) return "PARTIAL";
   return currentStatus;
 }
@@ -304,25 +360,21 @@ async function fetchFandomPageWithCache(params: {
   let cacheLayer: string | null = null;
   let stale = false;
   let warning: string | null = null;
-  let sourceCache: SourceFetchCacheRecord | null = null;
+  let sourceCache: SourceFetchCacheRecord | null = await findSourceFetchCache(cacheInput);
 
-  if (params.force) {
-    await clearFandomPageCaches(params.disciplineSlug, params.title, params.pageUrl);
-  } else {
-    sourceCache = await findSourceFetchCache(cacheInput);
-    if (sourceCache?.rawSnapshotId && isSourceCacheFresh(sourceCache)) {
-      const cached = await rawSnapshotToParsedPage(sourceCache.rawSnapshotId);
-      if (cached) {
-        return {
-          ...cached,
-          rawSnapshotId: sourceCache.rawSnapshotId,
-          cacheHit: true,
-          cacheLayer: sourceCache.cacheLayer || "source-fetch-cache",
-          stale: false,
-          warning: null,
-          externalRequests,
-        };
-      }
+  if (!params.force && sourceCache?.rawSnapshotId && isSourceCacheFresh(sourceCache)) {
+    const cached = await rawSnapshotToParsedPage(sourceCache.rawSnapshotId);
+    if (cached) {
+      return {
+        ...cached,
+        rawSnapshotId: sourceCache.rawSnapshotId,
+        cacheHit: true,
+        cacheLayer: sourceCache.cacheLayer || "source-fetch-cache",
+        stale: false,
+        warning: null,
+        externalRequests,
+        pendingCacheSuccess: null,
+      };
     }
   }
 
@@ -359,19 +411,6 @@ async function fetchFandomPageWithCache(params: {
       },
     });
 
-    await markSourceFetchSuccess(cacheInput, {
-      revisionId: rawSnapshot.revisionId,
-      revisionTimestamp: null,
-      contentHash,
-      rawSnapshotId: rawSnapshot.id,
-      externalRequests,
-      bytesIn: page.wikitext.length + page.html.length,
-      cacheLayer: "network",
-      metadata: { title: page.title, pageId: page.pageId ?? null, pageUrl: page.pageUrl },
-      cacheTtlMs: SOURCE_CACHE_TTL_MS.liquipediaImport,
-      staleTtlMs: SOURCE_CACHE_TTL_MS.liquipediaStale,
-    });
-
     return {
       ...page,
       rawSnapshotId: rawSnapshot.id,
@@ -380,6 +419,21 @@ async function fetchFandomPageWithCache(params: {
       stale,
       warning,
       externalRequests,
+      pendingCacheSuccess: {
+        cacheInput,
+        data: {
+          revisionId: rawSnapshot.revisionId,
+          revisionTimestamp: null,
+          contentHash,
+          rawSnapshotId: rawSnapshot.id,
+          externalRequests,
+          bytesIn: page.wikitext.length + page.html.length,
+          cacheLayer: "network",
+          metadata: { title: page.title, pageId: page.pageId ?? null, pageUrl: page.pageUrl },
+          cacheTtlMs: SOURCE_CACHE_TTL_MS.liquipediaImport,
+          staleTtlMs: SOURCE_CACHE_TTL_MS.liquipediaStale,
+        },
+      } satisfies PendingFandomPageCacheSuccess,
     };
   } catch (error) {
     await markSourceFetchFailure(cacheInput, {
@@ -403,12 +457,21 @@ async function fetchFandomPageWithCache(params: {
           stale,
           warning,
           externalRequests,
+          pendingCacheSuccess: null,
         };
       }
     }
 
     throw error;
   }
+}
+
+async function publishFandomPageCache(pending: PendingFandomPageCacheSuccess | null, qualityScore: number) {
+  if (!pending) return;
+  await markSourceFetchSuccess(pending.cacheInput, {
+    ...pending.data,
+    qualityScore,
+  });
 }
 
 async function rawSnapshotToParsedPage(rawSnapshotId: string): Promise<FandomParsedPage | null> {
@@ -425,41 +488,32 @@ async function rawSnapshotToParsedPage(rawSnapshotId: string): Promise<FandomPar
   };
 }
 
-async function clearFandomPageCaches(disciplineSlug: string, title: string, pageUrl?: string | null) {
-  const variants = new Set([title, title.replace(/_/g, " "), title.replace(/ /g, "_")]);
-  if (pageUrl) {
-    const fromUrl = titleFromFandomUrl(pageUrl);
-    variants.add(fromUrl);
-    variants.add(fromUrl.replace(/_/g, " "));
-    variants.add(fromUrl.replace(/ /g, "_"));
-  }
-
-  await Promise.all([
-    prisma.rawSnapshot.deleteMany({
-      where: {
-        source: { startsWith: "fandom" },
-        disciplineSlug,
-        pageTitle: { in: [...variants] },
-      },
-    }),
-    Promise.all([...variants].map((variant) => clearSourceFetchCache({
-      source: "fandom",
-      disciplineSlug,
-      resourceType: "page",
-      resourceKey: titleKey(variant),
-    }))),
-  ]);
-}
-
-async function saveFandomTournamentData(params: {
+export async function saveFandomTournamentData(params: {
   tournamentId: string;
   slug: string;
   title: string;
   participants: any[];
   matches: any[];
   force: boolean;
-}) {
-  const teamMappings = await prisma.teamMapping.findMany({ where: { disciplineSlug: params.slug } });
+  sourceValidated: boolean;
+  client: Prisma.TransactionClient;
+}): Promise<any[]> {
+  const client = params.client;
+  const [teamMappings, existingParticipants] = await Promise.all([
+    client.teamMapping.findMany({ where: { disciplineSlug: params.slug } }),
+    client.tournamentParticipant.findMany({
+      where: { tournamentId: params.tournamentId },
+      select: {
+        name: true,
+        platformId: true,
+        seed: true,
+        region: true,
+        status: true,
+        logoUrl: true,
+        rawText: true,
+      },
+    }),
+  ]);
   const mappingLookup = new Map<string, (typeof teamMappings)[number]>();
   for (const mapping of teamMappings) {
     mappingLookup.set(mapping.liquipediaName.toLowerCase(), mapping);
@@ -468,27 +522,24 @@ async function saveFandomTournamentData(params: {
     }
   }
 
+  const existingParticipantLookup = new Map(
+    existingParticipants.map((participant) => [participant.name.trim().toLowerCase(), participant]),
+  );
+
   const participantsToInsert = params.participants.map((participant) => {
-    const mapping = mappingLookup.get(String(participant.name || "").toLowerCase());
+    const participantKey = String(participant.name || "").trim().toLowerCase();
+    const mapping = mappingLookup.get(participantKey);
+    const manualFields = mergeTournamentParticipantManualFields({
+      incoming: participant,
+      existing: existingParticipantLookup.get(participantKey),
+      mapping,
+    });
     return {
       tournamentId: params.tournamentId,
       name: participant.name,
-      platformId: mapping?.platformId || null,
-      seed: participant.seed || null,
-      region: participant.region || null,
-      status: participant.status || null,
-      logoUrl: participant.logoUrl || mapping?.logoUrl || null,
-      rawText: participant.rawText || null,
+      ...manualFields,
     };
   });
-
-  await prisma.$transaction([
-    prisma.tournamentParticipant.deleteMany({ where: { tournamentId: params.tournamentId } }),
-    ...(participantsToInsert.length > 0
-      ? [prisma.tournamentParticipant.createMany({ data: participantsToInsert, skipDuplicates: true })]
-      : []),
-    ...(params.force ? [prisma.tournamentMatch.deleteMany({ where: { tournamentId: params.tournamentId } })] : []),
-  ]);
 
   const matchTeamNames = new Set<string>();
   const today = new Date();
@@ -509,25 +560,36 @@ async function saveFandomTournamentData(params: {
       return matchDate >= pastLimit && matchDate <= futureLimit;
     });
 
-  await canonicalizeMatchesWithTournamentTeams(matches, params.tournamentId, params.slug);
+  if (!decideTournamentSnapshotWrite({
+    incomingMatches: matches.length,
+    sourceValidated: params.sourceValidated,
+    force: params.force,
+  }).allowed) {
+    return [];
+  }
 
-  const existingMatches = params.force
-    ? []
-    : await prisma.tournamentMatch.findMany({
-        where: { tournamentId: params.tournamentId },
-        select: { matchId: true, platformId: true, lpNumericalId: true, syncedAt: true },
-      });
-  const existingById = new Map(existingMatches.map((match) => [match.matchId, match]));
+  // Finish every fallible normalization/read before beginning the destructive
+  // replacement. The participant snapshot and the match snapshot are committed
+  // together so a failed upsert rolls the deletions back.
+  await canonicalizeMatchesWithTournamentTeams(
+    matches,
+    params.tournamentId,
+    params.slug,
+    params.participants,
+    params.client,
+  );
 
   for (const match of matches) {
     if (match.teamAName && !isPlaceholderTeam(match.teamAName)) matchTeamNames.add(match.teamAName);
     if (match.teamBName && !isPlaceholderTeam(match.teamBName)) matchTeamNames.add(match.teamBName);
   }
 
-  const upserts = dedupeTournamentMatches(matches).map((match: any) => {
-    const existing = existingById.get(match.matchId);
-    return prisma.tournamentMatch.upsert({
-      where: { matchId: match.matchId },
+  const persistedMatches = dedupeTournamentMatches(matches);
+  await refreshTournamentMatchesPreservingState({
+    tx: client,
+    tournamentId: params.tournamentId,
+    matches: persistedMatches.map((match: any) => ({
+      matchId: match.matchId,
       create: {
         matchId: match.matchId,
         tournamentId: params.tournamentId,
@@ -545,7 +607,9 @@ async function saveFandomTournamentData(params: {
         status: match.status,
         court: match.court,
         sourceUrl: match.sourceUrl,
+        platformId: match.platformId ?? null,
         lpNumericalId: match.lpNumericalId,
+        syncedAt: match.syncedAt ?? null,
         rawText: match.rawText,
         hasPlaceholderTeams: hasPlaceholderTeams(match),
         sourceConfidence: getMatchSourceConfidence(match),
@@ -556,35 +620,40 @@ async function saveFandomTournamentData(params: {
         round: match.round,
         matchDate: match.matchDate,
         matchDateTime: match.matchDateTime,
-        teamAId: match.teamAId,
+        teamAId: match.teamAId || (match.teamAName ? generateInternalTeamId(match.teamAName) : null),
         teamAName: match.teamAName,
-        teamBId: match.teamBId,
+        teamBId: match.teamBId || (match.teamBName ? generateInternalTeamId(match.teamBName) : null),
         teamBName: match.teamBName,
         format: match.format,
         status: match.status,
         court: match.court,
         sourceUrl: match.sourceUrl,
         rawText: match.rawText,
-        platformId: existing?.platformId || undefined,
-        syncedAt: existing?.syncedAt || undefined,
+        platformId: match.platformId ?? null,
+        lpNumericalId: match.lpNumericalId ?? null,
+        syncedAt: match.syncedAt ?? null,
         hasPlaceholderTeams: hasPlaceholderTeams(match),
         sourceConfidence: getMatchSourceConfidence(match),
         sourceBreakdown: buildMatchCandidateMetadata(match, "fandom") as Prisma.InputJsonValue,
       },
-    });
+    })),
   });
 
-  if (upserts.length > 0) await prisma.$transaction(upserts);
+  await refreshTournamentParticipantsPreservingState({
+    tx: client,
+    tournamentId: params.tournamentId,
+    participants: participantsToInsert,
+  });
 
   const existingMappingNames = new Set(teamMappings.map((mapping) => mapping.liquipediaName.toLowerCase()));
   const newMappings = [...matchTeamNames]
     .filter((name) => !existingMappingNames.has(name.toLowerCase()))
     .map((name) => ({ disciplineSlug: params.slug, liquipediaName: name }));
   if (newMappings.length > 0) {
-    await prisma.teamMapping.createMany({ data: newMappings, skipDuplicates: true }).catch(() => {});
+    await client.teamMapping.createMany({ data: newMappings, skipDuplicates: true }).catch(() => {});
   }
 
-  return dedupeTournamentMatches(matches);
+  return persistedMatches;
 }
 
 async function updateFandomSnapshotQuality(rawSnapshotId: string | null | undefined, qualityScore: number, matchesCount: number) {

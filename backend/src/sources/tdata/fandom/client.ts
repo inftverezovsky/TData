@@ -1,4 +1,7 @@
 import { getFandomLolApiUrl, getFandomUserAgent } from "@backend/config/env";
+import { readBoundedBodyText } from "@backend/http/boundedResponse";
+
+const FANDOM_MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 
 export type FandomSearchResult = {
   pageId: number;
@@ -97,7 +100,10 @@ export async function fetchFandomParsedPage(input: {
   };
 }
 
-export async function fetchFandomTournamentCargoEvents(apiUrl = getFandomLolApiUrl()) {
+export async function fetchFandomTournamentCargoEvents(
+  apiUrl = getFandomLolApiUrl(),
+  options: { signal?: AbortSignal } = {},
+) {
   const now = new Date();
   const today = now.toISOString().slice(0, 10);
   const futureLimit = new Date(now.getTime() + FANDOM_EVENTS_FUTURE_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -109,7 +115,7 @@ export async function fetchFandomTournamentCargoEvents(apiUrl = getFandomLolApiU
     order_by: "DateStart ASC",
     limit: "50",
     format: "json",
-  });
+  }, options);
 
   return Array.isArray(json?.cargoquery) ? json.cargoquery : [];
 }
@@ -118,6 +124,7 @@ export async function fetchFandomMatchScheduleCargo(input: {
   apiUrl?: string;
   overviewPage: string;
   limit?: number;
+  signal?: AbortSignal;
 }) {
   const overviewPage = input.overviewPage.trim();
   if (!overviewPage) return [];
@@ -153,8 +160,10 @@ export async function fetchFandomMatchScheduleCargo(input: {
       where: `OverviewPage="${escapeCargoValue(overviewPage)}"`,
       orderBy: "N_Page ASC,N_TabInPage ASC,N_MatchInTab ASC",
       limit,
+      signal: input.signal,
     });
   } catch {
+    input.signal?.throwIfAborted();
     // Fallback to the MediaWiki Cargo API for environments where CargoExport is blocked.
   }
 
@@ -166,12 +175,16 @@ export async function fetchFandomMatchScheduleCargo(input: {
     order_by: "N_Page ASC,N_TabInPage ASC,N_MatchInTab ASC",
     limit: String(limit),
     format: "json",
-  });
+  }, { signal: input.signal });
 
   return Array.isArray(json?.cargoquery) ? json.cargoquery : [];
 }
 
-export async function fandomApiRequest(apiUrl: string, params: Record<string, string>) {
+export async function fandomApiRequest(
+  apiUrl: string,
+  params: Record<string, string>,
+  options: { signal?: AbortSignal } = {},
+) {
   const url = new URL(apiUrl);
   for (const [key, value] of Object.entries(params)) {
     url.searchParams.set(key, value);
@@ -183,9 +196,14 @@ export async function fandomApiRequest(apiUrl: string, params: Record<string, st
       "User-Agent": getFandomUserAgent(),
     },
     cache: "no-store",
+    signal: options.signal,
   });
 
-  const text = await response.text();
+  const text = await readBoundedBodyText(response, {
+    maxBytes: FANDOM_MAX_RESPONSE_BYTES,
+    signal: options.signal,
+    label: "Fandom API response",
+  });
   if (!response.ok) {
     throw new FandomRequestError(
       `Fandom API request failed with ${response.status}`,
@@ -218,6 +236,7 @@ async function fandomCargoExportRequest(apiUrl: string, input: {
   where: string;
   orderBy?: string;
   limit: number;
+  signal?: AbortSignal;
 }) {
   const url = new URL("/wiki/Special:CargoExport", getFandomOrigin(apiUrl));
   url.searchParams.set("tables", input.tables);
@@ -233,9 +252,14 @@ async function fandomCargoExportRequest(apiUrl: string, input: {
       "User-Agent": getFandomUserAgent(),
     },
     cache: "no-store",
+    signal: input.signal,
   });
 
-  const text = await response.text();
+  const text = await readBoundedBodyText(response, {
+    maxBytes: FANDOM_MAX_RESPONSE_BYTES,
+    signal: input.signal,
+    label: "Fandom CargoExport response",
+  });
   if (!response.ok) {
     throw new FandomRequestError(
       `Fandom CargoExport request failed with ${response.status}`,

@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { fetchVolleyballWorldBeachSchedule } from "@backend/sources/tbvolley/VolleyballWorld";
+import {
+  fetchVolleyballWorldBeachSchedule,
+  getVolleyballWorldErrorCode,
+  getVolleyballWorldErrorStatus,
+} from "@backend/sources/tbvolley/VolleyballWorld";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +21,9 @@ export async function GET(request: Request) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Volleyball World request failed.";
     console.error("[TBvolley VolleyballWorld API] Error:", error);
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: message, errorCode: getVolleyballWorldErrorCode(error) },
+      { status: getVolleyballWorldErrorStatus(error) },
+    );
   }
 }

@@ -7,7 +7,13 @@ import { resolveExactMatchDate } from "@backend/matches/time";
 import { applyTbdPairCycling } from "@backend/matches/tbdCycling";
 import { classifyParserError } from "@backend/proxy/parserErrors";
 import { runDltv } from "@backend/sources/tdata/dltv/queue";
+import { validateDltvEventUrl } from "@backend/sources/tdata/dltv/client";
+import { extractDltvEventId } from "@backend/sources/tdata/dltv/parse";
 import type { DltvMatch, DltvRunResult } from "@backend/sources/tdata/dltv/types";
+import { decideTournamentSnapshotWrite, TournamentSnapshotRejectedError } from "@backend/sources/importSafety";
+import { refreshTournamentMatchesPreservingState } from "@backend/sources/matchPreservation";
+import { mergeTournamentParticipantManualFields, refreshTournamentParticipantsPreservingState } from "@backend/sources/participantPreservation";
+import { assertTournamentImportFresh, runSerializableTournamentImport } from "@backend/sources/tournamentImportConcurrency";
 import { getTeamMappingLookupKeys } from "@backend/teams/canonicalize";
 import { generateInternalTeamId, isPlaceholderTeam } from "@backend/teams/teams";
 
@@ -23,25 +29,39 @@ export async function importDltvTournament(input: ImportDltvTournamentInput) {
     throw new Error("Провайдер DLTV доступен только для Dota 2");
   }
 
-  const tournament = await prisma.tournament.upsert({
-    where: { disciplineSlug_sourceTitle: { disciplineSlug: input.slug, sourceTitle: input.title } },
-    create: {
-      name: input.title,
-      sourceTitle: input.title,
-      sourceUrl: input.pageUrl,
-      disciplineSlug: input.slug,
-      status: "ongoing",
-      extractionStatus: "SUCCESS",
-    },
-    update: {
-      sourceUrl: input.pageUrl,
-      updatedAt: new Date(),
+  const identity = buildDltvTournamentIdentity(input.pageUrl);
+  const discipline = await prisma.discipline.findUnique({ where: { slug: input.slug }, select: { id: true } });
+  if (!discipline) throw new Error("Дисциплина Dota 2 не найдена");
+  const importRecord = await prisma.tournamentImport.create({
+    data: {
+      disciplineId: discipline.id,
+      pageTitle: input.title,
+      pageUrl: identity.sourceUrl,
+      status: "PENDING",
     },
   });
 
+  try {
+    return await runDltvTournamentImport({ ...input, pageUrl: identity.sourceUrl }, importRecord.id);
+  } catch (error) {
+    await prisma.tournamentImport.updateMany({
+      where: { id: importRecord.id, status: "PENDING" },
+      data: {
+        status: "FAILED",
+        finishedAt: new Date(),
+        errorMessage: error instanceof Error ? error.message : "Не удалось загрузить DLTV турнир",
+      },
+    }).catch(() => {});
+    throw error;
+  }
+}
+
+async function runDltvTournamentImport(input: ImportDltvTournamentInput, importRecordId: string) {
+  const identity = buildDltvTournamentIdentity(input.pageUrl);
+
   let dltvData: DltvRunResult = { ok: false };
   try {
-    dltvData = await runDltv("event", input.pageUrl, { noCache: !!input.force });
+    dltvData = await runDltv("event", identity.sourceUrl, { noCache: !!input.force });
   } catch (err) {
     dltvData = {
       ok: false,
@@ -50,97 +70,216 @@ export async function importDltvTournament(input: ImportDltvTournamentInput) {
     };
   }
 
-  let savedMatchesCount = 0;
   const matchUrlsFound = dltvData.event?.matchUrls.length ?? dltvData.matches?.length ?? 0;
   const matchPagesFailed = dltvData.matchPageFailures?.length ?? (dltvData.ok ? 0 : 1);
+  const saveableMatchesCount = countSaveableDltvMatches(dltvData.matches || []);
   const canReplaceExistingMatches = shouldReplaceDltvMatchesOnImport({
     ok: !!dltvData.ok,
+    stale: !!dltvData.stale,
+    warning: dltvData.warning,
     matchUrlsFound,
     matchPagesFailed,
-    sourceMatchesCount: dltvData.matches?.length ?? 0,
+    sourceMatchesCount: saveableMatchesCount,
   });
   const forceWasDowngraded = Boolean(input.force && !canReplaceExistingMatches);
 
-  if (dltvData.ok && dltvData.matches) {
+  const existingTournament = await findExistingDltvTournament({
+    disciplineSlug: input.slug,
+    ...identity,
+  });
+  if (!canReplaceExistingMatches) {
+    throw new TournamentSnapshotRejectedError(
+      dltvData.error || dltvData.warning || (forceWasDowngraded
+        ? "DLTV force-refresh returned a partial snapshot; last-good data was preserved."
+        : "DLTV returned a partial or unvalidated event snapshot; last-good data was preserved."),
+      resolveDltvImportFailureClass(dltvData),
+    );
+  }
+
+  const committed = await runSerializableTournamentImport(async (tx) => {
+    const freshness = await assertTournamentImportFresh({
+      tx,
+      importRecordId,
+      disciplineSlug: input.slug,
+      sourceIdentity: identity.sourceUrl,
+      tournamentId: existingTournament?.id,
+      sourceTitle: identity.sourceTitle,
+      sourceUrl: identity.sourceUrl,
+      lookupBy: "sourceUrl",
+    });
+    const currentTournament = freshness.tournamentId
+      ? await tx.tournament.findUnique({ where: { id: freshness.tournamentId } })
+      : null;
+    const tournament = await resolveDltvTournament({
+      disciplineSlug: input.slug,
+      title: input.title,
+      existing: currentTournament,
+      importRecordId,
+      client: tx,
+      ...identity,
+    });
     const saveResult = await saveDltvTournamentMatches({
       tournamentId: tournament.id,
       slug: input.slug,
       title: input.title,
-      matches: dltvData.matches,
+      matches: dltvData.matches || [],
       participants: dltvData.event?.participants || [],
-      force: Boolean(input.force && canReplaceExistingMatches),
+      force: Boolean(input.force),
+      client: tx,
     });
-    savedMatchesCount = saveResult.savedCount;
-
-    if (dltvData.event) {
-      await prisma.tournament.update({
-        where: { id: tournament.id },
-        data: {
-          name: dltvData.event.title || input.title,
-          startDate: parseDltvRangeDate(dltvData.event.dates, "start"),
-          endDate: parseDltvRangeDate(dltvData.event.dates, "end"),
-          location: dltvData.event.location,
-          prizePool: dltvData.event.prizePool,
-          formatText: dltvData.event.formatText,
-          status: dltvData.event.status || "ongoing",
-        },
-      });
-    }
-  }
-
-  const normalizedStatus = resolveDltvImportStatus({
-    ok: !!dltvData.ok,
-    matchUrlsFound,
-    matchPagesFailed,
-    savedMatchesCount,
-  });
-  const diagnostics = buildDota2Diagnostics({
-    source: "dltv",
-    rawCandidates: matchUrlsFound,
-    candidates: (dltvData.matches ?? []).map((match) => ({
-      ...match,
-      teamAName: match.team1,
-      teamBName: match.team2,
-      sourceUrl: match.url,
-      format: getBestOfLabel(match.format || match.rawText),
-    })),
-    savedMatches: savedMatchesCount,
-    extraIssues: buildDltvExtraIssues(dltvData),
-    dltv: {
+    const savedMatchesCount = saveResult.savedCount;
+    const normalizedStatus = resolveDltvImportStatus({
+      ok: !!dltvData.ok,
       matchUrlsFound,
-      matchPagesFetched: dltvData.matches?.length ?? 0,
       matchPagesFailed,
-      cacheHit: dltvData.cacheHit,
-      stale: dltvData.stale,
-    },
-  });
+      savedMatchesCount,
+    });
+    if (normalizedStatus !== "SUCCESS") {
+      throw new TournamentSnapshotRejectedError(
+        dltvData.error || dltvData.warning || "DLTV returned a partial or unvalidated event snapshot; last-good data was preserved.",
+        resolveDltvImportFailureClass(dltvData),
+      );
+    }
+    const diagnostics = buildDota2Diagnostics({
+      source: "dltv",
+      rawCandidates: matchUrlsFound,
+      candidates: (dltvData.matches ?? []).map((match) => ({
+        ...match,
+        teamAName: match.team1,
+        teamBName: match.team2,
+        sourceUrl: match.url,
+        format: getBestOfLabel(match.format || match.rawText),
+      })),
+      savedMatches: savedMatchesCount,
+      extraIssues: buildDltvExtraIssues(dltvData),
+      dltv: {
+        matchUrlsFound,
+        matchPagesFetched: dltvData.matches?.length ?? 0,
+        matchPagesFailed,
+        cacheHit: dltvData.cacheHit,
+        stale: dltvData.stale,
+      },
+    });
 
-  await prisma.tournament.update({
-    where: { id: tournament.id },
-    data: {
-      extractionStatus: normalizedStatus,
-      normalization: {
-        warnings: [
-          dltvData.warning,
-          dltvData.error,
-          forceWasDowngraded ? "DLTV force-refresh не удалял старые матчи: источник вернул частичное или пустое расписание." : null,
-        ].filter((item): item is string => typeof item === "string" && item.length > 0),
-        cacheHit: !!dltvData.cacheHit,
-        stale: !!dltvData.stale,
-        dota2Diagnostics: diagnostics,
-      } as Prisma.InputJsonValue,
-    },
-  }).catch(() => {});
+    await tx.tournament.update({
+      where: { id: tournament.id },
+      data: {
+        name: dltvData.event?.title || input.title,
+        startDate: parseDltvRangeDate(dltvData.event?.dates, "start"),
+        endDate: parseDltvRangeDate(dltvData.event?.dates, "end"),
+        location: dltvData.event?.location,
+        prizePool: dltvData.event?.prizePool,
+        formatText: dltvData.event?.formatText,
+        status: dltvData.event?.status || "ongoing",
+        extractionStatus: normalizedStatus,
+        normalization: {
+          warnings: [dltvData.warning, dltvData.error]
+            .filter((item): item is string => typeof item === "string" && item.length > 0),
+          cacheHit: !!dltvData.cacheHit,
+          stale: !!dltvData.stale,
+          dota2Diagnostics: diagnostics,
+        } as Prisma.InputJsonValue,
+      },
+    });
+    await tx.tournamentImport.update({
+      where: { id: importRecordId },
+      data: { status: "SUCCESS", finishedAt: new Date() },
+    });
+    return { tournamentId: tournament.id, normalizedStatus };
+  });
 
   const fullTournament = await prisma.tournament.findUnique({
-    where: { id: tournament.id },
+    where: { id: committed.tournamentId },
     include: { participants: true, matches: true, lastImport: true },
   });
 
   return {
     tournament: fullTournament ? { ...fullTournament, matches: dedupeTournamentMatches(fullTournament.matches) } : null,
-    normalized: { status: normalizedStatus, error: dltvData?.error },
+    normalized: { status: committed.normalizedStatus, error: dltvData?.error },
   };
+}
+
+export function buildDltvTournamentIdentity(pageUrl: string) {
+  const validated = validateDltvEventUrl(pageUrl);
+  const eventPath = extractDltvEventId(validated);
+  if (!eventPath) throw new Error("Invalid DLTV event URL");
+  const encodedPath = eventPath.split("/").map(encodeURIComponent).join("/");
+  return {
+    sourceTitle: `dltv:${eventPath}`,
+    sourceUrl: `https://ru.dltv.org/events/${encodedPath}`,
+  };
+}
+
+async function resolveDltvTournament(params: {
+  disciplineSlug: string;
+  title: string;
+  sourceTitle: string;
+  sourceUrl: string;
+  existing: Awaited<ReturnType<typeof findExistingDltvTournament>>;
+  importRecordId: string;
+  client: Prisma.TransactionClient;
+}) {
+  if (params.existing) {
+    return params.client.tournament.update({
+      where: { id: params.existing.id },
+      data: {
+        name: params.title,
+        sourceTitle: params.sourceTitle,
+        sourceUrl: params.sourceUrl,
+        lastImportId: params.importRecordId,
+        updatedAt: new Date(),
+      },
+    });
+  }
+
+  return params.client.tournament.create({
+    data: {
+      name: params.title,
+      sourceTitle: params.sourceTitle,
+      sourceUrl: params.sourceUrl,
+      disciplineSlug: params.disciplineSlug,
+      status: "ongoing",
+      extractionStatus: "PARTIAL",
+      lastImportId: params.importRecordId,
+    },
+  });
+}
+
+type DltvTournamentLookupClient = Pick<Prisma.TransactionClient, "tournament">;
+
+export async function findExistingDltvTournament(params: {
+  disciplineSlug: string;
+  sourceTitle: string;
+  sourceUrl: string;
+}, client: DltvTournamentLookupClient = prisma) {
+  const bySourceUrl = await client.tournament.findFirst({
+    where: {
+      disciplineSlug: params.disciplineSlug,
+      sourceUrl: params.sourceUrl,
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+  if (bySourceUrl) return bySourceUrl;
+
+  return client.tournament.findFirst({
+    where: {
+      disciplineSlug: params.disciplineSlug,
+      sourceTitle: params.sourceTitle,
+      OR: [
+        { sourceUrl: { startsWith: "https://ru.dltv.org/events/" } },
+        { sourceUrl: { startsWith: "https://www.dltv.org/events/" } },
+        { sourceUrl: "" },
+      ],
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+}
+
+export function resolveDltvImportFailureClass(data: Pick<DltvRunResult, "errorClass" | "stale" | "matchPageFailures">) {
+  if (data.stale) return "stale_cache";
+  if (data.errorClass) return data.errorClass;
+  const detailClass = data.matchPageFailures?.find((failure) => failure.errorClass)?.errorClass;
+  return detailClass || "parse_failed";
 }
 
 async function saveDltvTournamentMatches(params: {
@@ -150,7 +289,9 @@ async function saveDltvTournamentMatches(params: {
   matches: DltvMatch[];
   participants: Array<{ name: string; url?: string }>;
   force: boolean;
+  client: Prisma.TransactionClient;
 }): Promise<{ savedCount: number }> {
+  const client = params.client;
   const dltvMatches = dedupeTournamentMatches(params.matches.map((m) => {
     const hasPlaceholderTeams = isPlaceholderTeam(m.team1) || isPlaceholderTeam(m.team2);
     const teamAId = isPlaceholderTeam(m.team1) ? "tbd" : generateInternalTeamId(m.team1);
@@ -174,10 +315,10 @@ async function saveDltvTournamentMatches(params: {
 
   applyTbdPairCycling(dltvMatches, params.title);
 
-  const matchUpserts = dltvMatches.map((m) => {
+  const matchRows = dltvMatches.map((m) => {
     const matchDate = m.matchDate ? new Date(m.matchDate) : null;
-    return prisma.tournamentMatch.upsert({
-      where: { matchId: m.matchId },
+    return {
+      matchId: m.matchId,
       create: {
         matchId: m.matchId,
         tournamentId: params.tournamentId,
@@ -212,7 +353,7 @@ async function saveDltvTournamentMatches(params: {
         status: m.status || "upcoming",
         ...(m.format ? { format: m.format } : {}),
       },
-    });
+    };
   });
 
   const uniqueTeams = new Set<string>();
@@ -225,13 +366,19 @@ async function saveDltvTournamentMatches(params: {
   }
 
   const [existingParticipants, teamMappings] = await Promise.all([
-    params.force
-      ? Promise.resolve([])
-      : prisma.tournamentParticipant.findMany({
-          where: { tournamentId: params.tournamentId },
-          select: { name: true, platformId: true, logoUrl: true, rawText: true },
-        }),
-    prisma.teamMapping.findMany({ where: { disciplineSlug: params.slug } }),
+    client.tournamentParticipant.findMany({
+      where: { tournamentId: params.tournamentId },
+      select: {
+        name: true,
+        platformId: true,
+        seed: true,
+        region: true,
+        status: true,
+        logoUrl: true,
+        rawText: true,
+      },
+    }),
+    client.teamMapping.findMany({ where: { disciplineSlug: params.slug } }),
   ]);
 
   const existingParticipantMap = new Map(existingParticipants.map((p) => [p.name.toLowerCase(), p]));
@@ -248,32 +395,27 @@ async function saveDltvTournamentMatches(params: {
     .map((name) => {
       const existing = existingParticipantMap.get(name.toLowerCase());
       const mapping = mappingLookup.get(name.toLowerCase());
+      const manualFields = mergeTournamentParticipantManualFields({
+        existing,
+        mapping,
+      });
       return {
         tournamentId: params.tournamentId,
         name,
-        platformId: existing?.platformId || mapping?.platformId || null,
-        logoUrl: existing?.logoUrl || mapping?.logoUrl || null,
-        rawText: existing?.rawText || null,
+        ...manualFields,
       };
     });
 
-  const participantRefresh = [
-    prisma.tournamentParticipant.deleteMany({ where: { tournamentId: params.tournamentId } }),
-    ...(participantsToInsert.length > 0 ? [prisma.tournamentParticipant.createMany({ data: participantsToInsert })] : []),
-  ];
-
-  if (params.force) {
-    await prisma.$transaction([
-      prisma.tournamentMatch.deleteMany({ where: { tournamentId: params.tournamentId } }),
-      ...participantRefresh,
-      ...matchUpserts,
-    ]);
-  } else {
-    await prisma.$transaction([
-      ...matchUpserts,
-      ...participantRefresh,
-    ]);
-  }
+  await refreshTournamentMatchesPreservingState({
+    tx: client,
+    tournamentId: params.tournamentId,
+    matches: matchRows,
+  });
+  await refreshTournamentParticipantsPreservingState({
+    tx: client,
+    tournamentId: params.tournamentId,
+    participants: participantsToInsert,
+  });
 
   return { savedCount: dltvMatches.length };
 }
@@ -305,14 +447,29 @@ function buildDltvExtraIssues(data: DltvRunResult): Dota2DiagnosticIssue[] {
 
 export function shouldReplaceDltvMatchesOnImport(input: {
   ok: boolean;
+  stale?: boolean;
+  warning?: string | null;
   matchUrlsFound: number;
   matchPagesFailed: number;
   sourceMatchesCount: number;
 }) {
-  return input.ok &&
-    input.matchUrlsFound > 0 &&
-    input.matchPagesFailed === 0 &&
-    input.sourceMatchesCount >= input.matchUrlsFound;
+  return decideTournamentSnapshotWrite({
+    incomingMatches: input.sourceMatchesCount,
+    sourceValidated: input.ok &&
+      !input.stale &&
+      !input.warning &&
+      input.matchUrlsFound > 0 &&
+      input.matchPagesFailed === 0 &&
+      input.sourceMatchesCount >= input.matchUrlsFound,
+  }).allowed;
+}
+
+export function countSaveableDltvMatches(matches: DltvMatch[]) {
+  return dedupeTournamentMatches(matches.map((match) => ({
+    ...match,
+    matchDate: resolveExactMatchDate({ ...match, sourceUrl: match.url }),
+    sourceUrl: match.url,
+  })).filter((match) => match.matchDate)).length;
 }
 
 export function resolveDltvImportStatus(input: {

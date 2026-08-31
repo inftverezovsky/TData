@@ -4,19 +4,28 @@ import minimist from 'minimist';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import {
+  buildHltvEventMatchesUrl,
+  classifyHltvPageHtml,
+  parseHltvMatchesHtml,
+  validateHltvNavigationUrl,
+} from './hltv_semantics.mjs';
 
 chromium.use(StealthPlugin());
 
 const args = minimist(process.argv.slice(2));
-const PROXY_URL = args.proxy; 
+const PROXY_URL = args.proxy || process.env.HLTV_PLAYWRIGHT_PROXY;
+// Do not let Chromium or any browser child process inherit proxy credentials.
+delete process.env.HLTV_PLAYWRIGHT_PROXY;
 const MODE = args.mode || 'scrape'; // 'scrape', 'search', or 'event'
 const QUERY = args.q || '';
 const EVENT_ID = args.id || '';
+const EVENT_URL = args.url || '';
 const REQUEST_ID = String(args['request-id'] || args.requestId || crypto.randomBytes(4).toString('hex'));
 const NO_CACHE = Boolean(args.no_cache || args.noCache || args['no-cache'] || args.cache === false);
 
 const CACHE_DIR = './cache/hltv';
-const CACHE_VERSION = 'hltv-upcoming-only-v3';
+const CACHE_VERSION = 'hltv-upcoming-only-v4';
 const POSITIVE_CACHE_TTL_BY_MODE = {
   scrape: 10 * 60 * 1000,
   events: 10 * 60 * 1000,
@@ -24,30 +33,22 @@ const POSITIVE_CACHE_TTL_BY_MODE = {
   search: 60 * 60 * 1000,
   health: 5 * 60 * 1000,
 };
-const NEGATIVE_CACHE_TTL_BY_MODE = {
-  scrape: Number(process.env.HLTV_SCRAPE_NEGATIVE_CACHE_TTL_MS || 10 * 60 * 1000),
-  events: Number(process.env.HLTV_EVENTS_NEGATIVE_CACHE_TTL_MS || 60 * 1000),
-  event: Number(process.env.HLTV_EVENT_NEGATIVE_CACHE_TTL_MS || 10 * 60 * 1000),
-  search: Number(process.env.HLTV_SEARCH_NEGATIVE_CACHE_TTL_MS || 0),
-  health: Number(process.env.HLTV_HEALTH_NEGATIVE_CACHE_TTL_MS || 5 * 60 * 1000),
-};
 const STALE_CACHE_TTL = 24 * 60 * 60 * 1000;
 const SEARCH_RESULT_WAIT_MS = Number(process.env.HLTV_SEARCH_RESULT_WAIT_MS || 12000);
 const HLTV_EVENTS_FUTURE_WINDOW_DAYS = Number(process.env.HLTV_EVENTS_FUTURE_WINDOW_DAYS || 60);
 const HLTV_SEARCH_FUTURE_WINDOW_DAYS = Number(process.env.HLTV_SEARCH_FUTURE_WINDOW_DAYS || 60);
+const blockedHltvNavigationErrors = new WeakMap();
 
 function getCache(options = {}) {
   if (NO_CACHE) return null;
-  const key = crypto.createHash('md5').update(`${CACHE_VERSION}-${MODE}-${QUERY}-${EVENT_ID}`).digest('hex');
+  const key = crypto.createHash('md5').update(`${CACHE_VERSION}-${MODE}-${QUERY}-${EVENT_ID}-${EVENT_URL}`).digest('hex');
   const cachePath = path.join(CACHE_DIR, `${key}.json`);
   if (fs.existsSync(cachePath)) {
     try {
       const data = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+      if (data.version !== CACHE_VERSION || data.cacheKind !== 'positive') return null;
       const age = Date.now() - data.timestamp;
-      const ttl = data.cacheKind === 'negative'
-        ? getNegativeCacheTtl(MODE)
-        : POSITIVE_CACHE_TTL_BY_MODE[MODE] || 10 * 60 * 1000;
-      if (data.cacheKind === 'negative' && ttl <= 0) return null;
+      const ttl = POSITIVE_CACHE_TTL_BY_MODE[MODE] || 10 * 60 * 1000;
       if (age < ttl || (options.allowStale && age < STALE_CACHE_TTL)) {
         return {
           ...data.result,
@@ -66,22 +67,18 @@ function setCache(result) {
     if (!result || !result.ok) return;
     const isEmpty = (Array.isArray(result.events) && result.events.length === 0) ||
       (Array.isArray(result.matches) && result.matches.length === 0);
-    if (isEmpty && getNegativeCacheTtl(MODE) <= 0) return;
+    if (isEmpty) return;
 
     if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
-    const key = crypto.createHash('md5').update(`${CACHE_VERSION}-${MODE}-${QUERY}-${EVENT_ID}`).digest('hex');
+    const key = crypto.createHash('md5').update(`${CACHE_VERSION}-${MODE}-${QUERY}-${EVENT_ID}-${EVENT_URL}`).digest('hex');
     const cachePath = path.join(CACHE_DIR, `${key}.json`);
     fs.writeFileSync(cachePath, JSON.stringify({
+      version: CACHE_VERSION,
       timestamp: Date.now(),
-      cacheKind: isEmpty ? 'negative' : 'positive',
+      cacheKind: 'positive',
       result
     }));
   } catch (e) {}
-}
-
-function getNegativeCacheTtl(mode) {
-  const value = NEGATIVE_CACHE_TTL_BY_MODE[mode];
-  return Number.isFinite(value) ? value : 10 * 60 * 1000;
 }
 
 async function scrapeHltv() {
@@ -131,13 +128,15 @@ async function scrapeHltv() {
       args: launchArgs,
       ...(proxy ? { proxy } : {})
     });
+    const browserVersion = browser.version();
+    const browserMajor = browserVersion.split('.')[0] || '125';
     
     // Randomize viewport like real users
     const viewportWidth = 1366 + Math.floor(Math.random() * 400);
     const viewportHeight = 768 + Math.floor(Math.random() * 200);
     
     const context = await browser.newContext({
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+      userAgent: `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${browserVersion} Safari/537.36`,
       viewport: { width: viewportWidth, height: viewportHeight },
       deviceScaleFactor: 1,
       locale: 'en-US',
@@ -145,7 +144,7 @@ async function scrapeHltv() {
       extraHTTPHeaders: {
         'Accept-Language': 'en-US,en;q=0.9',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'sec-ch-ua': '"Google Chrome";v="125", "Chromium";v="125", "Not.A/Brand";v="24"',
+        'sec-ch-ua': `"Google Chrome";v="${browserMajor}", "Chromium";v="${browserMajor}", "Not.A/Brand";v="24"`,
         'sec-ch-ua-mobile': '?0',
         'sec-ch-ua-platform': '"Windows"',
       }
@@ -163,8 +162,18 @@ async function scrapeHltv() {
     
     // AGGRESSIVE OPTIMIZATION: Block images and media, but ALLOW stylesheets and scripts for Cloudflare
     await page.route('**/*', (route) => {
-      const resourceType = route.request().resourceType();
-      const url = route.request().url();
+      const request = route.request();
+      const resourceType = request.resourceType();
+      const url = request.url();
+
+      if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
+        try {
+          validateHltvNavigationUrl(request.url());
+        } catch (error) {
+          blockedHltvNavigationErrors.set(page, error);
+          return route.abort('blockedbyclient');
+        }
+      }
       
       if (['image', 'font', 'media', 'other', 'manifest', 'texttrack'].includes(resourceType)) {
         return route.abort();
@@ -185,6 +194,8 @@ async function scrapeHltv() {
       Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
       window.chrome = { runtime: {} };
     });
+
+    await warmUpHltvSession(page);
     
     if (MODE === 'search') {
       console.error(`[HLTV Playwright] Searching for: ${QUERY}`);
@@ -215,6 +226,9 @@ async function scrapeHltv() {
           throw new Error('Cloudflare block/challenge detected on HLTV search page');
         }
       }
+
+      const searchSemantics = classifyHltvPageHtml('search', await page.content());
+      assertHltvSemantics(searchSemantics, 'search');
 
       const results = await page.evaluate((query) => {
         const normalizeSearchText = (value) => value
@@ -292,7 +306,7 @@ async function scrapeHltv() {
           try {
             console.error(`[HLTV Playwright] Checking event status/date: ${cleanTitle} (${id})`);
             await new Promise(r => setTimeout(r, 500 + Math.random() * 700));
-            await page.goto('https://www.hltv.org' + href, { waitUntil: 'domcontentloaded', timeout: 8000 });
+            await gotoHltvPage(page, 'https://www.hltv.org' + href, `search-event-${id}`);
             await new Promise(r => setTimeout(r, 300 + Math.random() * 500));
             
             const pageDetails = await page.evaluate(() => {
@@ -345,17 +359,24 @@ async function scrapeHltv() {
         }
       }
 
-      const finalResult = { ok: true, events: events.slice(0, maxValidEvents) };
+      const finalEvents = events.slice(0, maxValidEvents);
+      if (finalEvents.length === 0 && !searchSemantics.validEmpty) {
+        throw hltvSemanticError('parse_failed', 'HLTV search parse failed: the page contained no validated event results.');
+      }
+      const finalResult = {
+        ok: true,
+        events: finalEvents,
+        validEmpty: searchSemantics.validEmpty,
+        emptyState: searchSemantics.emptyState,
+      };
       setCache(finalResult);
       console.log(JSON.stringify(finalResult));
     } else if (MODE === 'health') {
       console.error('[HLTV Playwright] Health Check...');
-      await page.goto('https://www.hltv.org', { waitUntil: 'load', timeout: 20000 });
       const title = await page.title();
-      console.log(JSON.stringify({ ok: true, title }));
+      console.log(JSON.stringify({ ok: true, title, validEmpty: false, emptyState: null }));
     } else if (MODE === 'events') {
       console.error('[HLTV Playwright] Scraping Ongoing and Upcoming Events...');
-      await gotoHltvPage(page, 'https://www.hltv.org/events', 'events');
 
       await page.waitForFunction(() => {
         const eventItems = document.querySelectorAll('.ongoing-event, .small-event, .big-event');
@@ -363,7 +384,10 @@ async function scrapeHltv() {
 
         return Array.from(document.querySelectorAll('.ongoing-events-holder, .events-holder'))
           .some((el) => (el.textContent || '').replace(/\s+/g, ' ').trim().length > 20);
-      }, { timeout: 15000 });
+      }, null, { timeout: 15000 }).catch(() => {});
+
+      const eventsSemantics = classifyHltvPageHtml('events', await page.content());
+      assertHltvSemantics(eventsSemantics, 'events');
 
       const events = await page.evaluate((futureWindowDays) => {
         const results = [];
@@ -404,8 +428,8 @@ async function scrapeHltv() {
             if (!id || seenIds.has(id)) return;
             seenIds.add(id);
 
-            const titleEl = el.querySelector('.text-ellipsis, .event-name-container, .event-name-small, .big-event-name');
-            const title = titleEl?.textContent?.trim() || el.getAttribute('alt') || a.textContent.trim();
+            const titleEl = el.querySelector('.event-name-small > .text-ellipsis, .event-name-container > .text-ellipsis, .big-event-name, .text-ellipsis');
+            const title = titleEl?.textContent?.trim() || el.querySelector('img[alt]')?.getAttribute('alt') || el.getAttribute('alt') || '';
             const datesEl = el.querySelector('.eventDetails, .event-date-container, .col-date, [class*="date"]');
             const dates = datesEl?.textContent?.trim() || "";
             const stars = el.querySelectorAll('.stars i.fa-star, .stars .fa-star, .star, [class*="star"]').length;
@@ -430,8 +454,8 @@ async function scrapeHltv() {
              const id = parts[2];
              if (!id || seenIds.has(id)) return;
 
-             const titleEl = el.querySelector('.text-ellipsis, .event-name-container, .event-name-small, .big-event-name');
-             const title = titleEl?.textContent?.trim() || el.getAttribute('alt') || a.textContent.trim();
+             const titleEl = el.querySelector('.event-name-small > .text-ellipsis, .event-name-container > .text-ellipsis, .big-event-name, .text-ellipsis');
+             const title = titleEl?.textContent?.trim() || el.querySelector('img[alt]')?.getAttribute('alt') || el.getAttribute('alt') || '';
              const datesEl = el.querySelector('.eventDetails, .event-date-container, .col-date, [class*="date"]');
              const dates = datesEl?.textContent?.trim() || "";
              const stars = el.querySelectorAll('.stars i.fa-star, .stars .fa-star, .star, [class*="star"]').length;
@@ -453,126 +477,50 @@ async function scrapeHltv() {
         });
         return results;
       }, HLTV_EVENTS_FUTURE_WINDOW_DAYS);
-      const finalResult = { ok: true, events };
+      if (events.length === 0 && !eventsSemantics.validEmpty) {
+        throw hltvSemanticError('parse_failed', 'HLTV events parse failed: known event markup produced no current events.');
+      }
+      const finalResult = {
+        ok: true,
+        events,
+        validEmpty: eventsSemantics.validEmpty,
+        emptyState: eventsSemantics.emptyState,
+      };
       setCache(finalResult);
       console.log(JSON.stringify(finalResult));
     } else {
       let targetUrl = 'https://www.hltv.org/matches';
+      let targetAlreadyLoaded = false;
       if (MODE === 'event' && EVENT_ID) {
-        targetUrl = `https://www.hltv.org/events/${EVENT_ID}/matches`;
+        targetUrl = await navigateToHltvEventMatches(page, EVENT_ID, EVENT_URL);
+        targetAlreadyLoaded = true;
         console.error(`[HLTV Playwright] Scraping Event Matches: ${targetUrl}`);
       } else {
         console.error('[HLTV Playwright] Navigating to HLTV Global Matches...');
       }
 
-      await page.goto(targetUrl, { waitUntil: 'load', timeout: 40000 });
+      if (!targetAlreadyLoaded) {
+        await gotoHltvPage(page, targetUrl, 'matches');
+      }
       
       try {
         await page.waitForSelector('.match-wrapper, .upcomingMatch, .upcoming-match, .liveMatch, .live-match', { timeout: 15000 });
       } catch (e) {}
-      
-      const matches = await page.evaluate(() => {
-        const results = [];
-        const els = document.querySelectorAll('.match-wrapper, .upcomingMatch, .upcoming-match, .liveMatch, .live-match, [class*="match-fixture"]');
-        const cleanTeamName = (value) => String(value || '')
-          .replace(/\u00a0/g, ' ')
-          .replace(/\s+/g, ' ')
-          .trim()
-          .replace(/\s+\d{1,2}$/, '')
-          .trim();
-        const cleanBestOfFormat = (value) => {
-          const text = String(value || '').replace(/\u00a0/g, ' ').trim();
-          if (!text) return '';
-          const explicit = text.match(/\bbo\s*[-:]?\s*([1-9]\d?)\b/i)
-            || text.match(/\bbest\s*[-\s]?of\s*[-:]?\s*([1-9]\d?)\b/i)
-            || text.match(/\bbestof\s*([1-9]\d?)\b/i);
-          return explicit?.[1] ? `BO${Number(explicit[1])}` : '';
-        };
-        const normalizeUnixTime = (value, isLive) => {
-          const parsed = parseInt(value || "0", 10);
-          if (!parsed) return isLive ? Math.floor(Date.now() / 1000) : 0;
-          return parsed > 9999999999 ? Math.floor(parsed / 1000) : parsed;
-        };
-        const now = Math.floor(Date.now() / 1000);
-        
-        els.forEach(el => {
-          let team1 = "", team2 = "", tournament = "Upcoming", unixTime = "0", id = "", isLive = false, format = "";
-          const rawText = String(el.textContent || '')
-            .replace(/\u00a0/g, ' ')
-            .replace(/\s+/g, ' ')
-            .trim()
-            .slice(0, 1500);
 
-          isLive = el.classList.contains('liveMatch') ||
-            el.classList.contains('live-match') ||
-            el.classList.contains('live-match-container') ||
-            el.getAttribute('live') === 'true' ||
-            !!el.querySelector('.live-flag, .match-meta-live');
+      const matchesHtml = await page.content();
+      const matchSemantics = classifyHltvPageHtml(MODE, matchesHtml);
+      assertHltvSemantics(matchSemantics, MODE);
+      const matches = parseHltvMatchesHtml(matchesHtml);
+      if (matches.length === 0 && !matchSemantics.validEmpty) {
+        throw hltvSemanticError('parse_failed', `HLTV ${MODE} parse failed: match containers produced no semantic matches.`);
+      }
 
-          const isFinished = el.classList.contains('finished') ||
-            el.classList.contains('result') ||
-            el.getAttribute('finished') === 'true' ||
-            !!el.querySelector('.match-finished, .match-meta-result, .result-score');
-
-          const teamNames = el.querySelectorAll('.match-teamname, .matchTeamName, .team-name, .team-1 .team-name, .team-2 .team-name');
-          if (teamNames.length >= 2) {
-            team1 = cleanTeamName(teamNames[0].textContent) || "TBD";
-            team2 = cleanTeamName(teamNames[1].textContent) || "TBD";
-          } else {
-            team1 = teamNames[0] ? (cleanTeamName(teamNames[0].textContent) || "TBD") : "TBD";
-            team2 = teamNames[1] ? (cleanTeamName(teamNames[1].textContent) || "TBD") : "TBD";
-          }
-          
-          const eventEl = el.querySelector('.match-event, .matchEventName, .event-headline, .event, [class*="event-name"]');
-          tournament = eventEl?.getAttribute('data-event-headline') ||
-            eventEl?.textContent?.trim() ||
-            "Upcoming";
-
-          const stageText = el.querySelector('.match-stage, .matchStage, .stage, [class*="stage-name"], [class*="round-name"]')?.textContent?.trim() || "";
-
-          const formatCandidates = [
-            el.querySelector('.matchMeta, .match-meta, .match-meta-type, [class*="matchMeta"], [class*="match-meta"]')?.textContent,
-            ...Array.from(el.querySelectorAll('[class*="meta"], [class*="format"], [class*="best"]')).map(node => node.textContent),
-            el.textContent
-          ];
-          for (const candidate of formatCandidates) {
-            format = cleanBestOfFormat(candidate);
-            if (format) break;
-          }
-          
-          const timeEl = el.querySelector('[data-unix], .matchTime, .time');
-          unixTime = timeEl?.getAttribute('data-unix') || timeEl?.getAttribute('data-time') || "0";
-          const normalizedUnixTime = normalizeUnixTime(unixTime, isLive);
-
-          if (isFinished || (!isLive && normalizedUnixTime > 0 && normalizedUnixTime < now - 300)) {
-            return;
-          }
-
-          const link = el.querySelector('a[href*="/matches/"]');
-          if (link) {
-            const parts = link.getAttribute('href').split('/');
-            id = parts[parts.length - 2] || parts[2];
-          }
-
-          if (team1 && team2) {
-            results.push({
-              id: id || Math.random().toString(36).substr(2, 9),
-              tournament,
-              team1,
-              team2,
-              unix_time: normalizedUnixTime,
-              format,
-              stage: stageText,
-              round: stageText,
-              rawText,
-              isLive
-            });
-          }
-        });
-        return results;
-      });
-
-      const finalResult = { ok: true, matches };
+      const finalResult = {
+        ok: true,
+        matches,
+        validEmpty: matchSemantics.validEmpty,
+        emptyState: matchSemantics.emptyState,
+      };
       setCache(finalResult);
       console.log(JSON.stringify(finalResult));
     }
@@ -598,15 +546,100 @@ async function scrapeHltv() {
           warning: `HLTV upstream error, returned related cache: ${err.message}`,
         }));
       } else {
-        console.log(JSON.stringify({ ok: false, error: normalizeClosedBrowserError(err.message) }));
+        console.log(JSON.stringify({ ok: false, error: normalizeClosedBrowserError(err.message), errorClass: err.errorClass || classifyHltvScriptError(err.message) }));
       }
     } else {
-      console.log(JSON.stringify({ ok: false, error: normalizeClosedBrowserError(err.message) }));
+      console.log(JSON.stringify({ ok: false, error: normalizeClosedBrowserError(err.message), errorClass: err.errorClass || classifyHltvScriptError(err.message) }));
     }
   } finally {
     clearTimeout(scriptTimeout);
     if (browser) await browser.close();
   }
+}
+
+async function warmUpHltvSession(page) {
+  await gotoHltvPage(page, 'https://www.hltv.org/events', 'warmup-events');
+  const semantics = classifyHltvPageHtml('events', await page.content());
+  assertHltvSemantics(semantics, 'warmup-events');
+}
+
+async function navigateToHltvEventMatches(page, eventId, eventUrl) {
+  const listingLink = page.locator(`a[href^="/events/${eventId}/"]:visible`).first();
+  const listingHref = await listingLink.getAttribute('href').catch(() => null);
+  const requestedEventUrl = new URL(
+    String(eventUrl || listingHref || `https://www.hltv.org/events/${eventId}`),
+    'https://www.hltv.org',
+  ).toString();
+  const overviewUrl = buildHltvEventMatchesUrl(requestedEventUrl).replace(/\/matches$/i, '');
+
+  if (listingHref) {
+    await clickHltvPageLink(page, listingLink, 'event-overview');
+  } else {
+    await gotoHltvPage(page, new URL(overviewUrl, 'https://www.hltv.org').toString(), 'event-overview');
+  }
+
+  const matchesLink = page.locator(`a[href*="/events/${eventId}/"][href*="/matches"]:visible`).first();
+  const matchesHref = await matchesLink.getAttribute('href').catch(() => null);
+  const canonicalOverviewUrl = page.url().replace(/\/matches\/?(?:[?#].*)?$/i, '');
+  const matchesUrl = matchesHref
+    ? buildHltvEventMatchesUrl(new URL(matchesHref, 'https://www.hltv.org').toString())
+    : buildHltvEventMatchesUrl(canonicalOverviewUrl);
+  if (matchesHref) {
+    await clickHltvPageLink(page, matchesLink, 'event-matches');
+  } else {
+    await gotoHltvPage(page, matchesUrl, 'event-matches');
+  }
+  return matchesUrl;
+}
+
+async function clickHltvPageLink(page, locator, reason) {
+  try {
+    const [response] = await Promise.all([
+      page.waitForNavigation({ waitUntil: 'commit', timeout: 35000 }),
+      locator.click({ timeout: 10000 }),
+    ]);
+    await page.waitForLoadState('domcontentloaded', { timeout: 15000 }).catch(() => {});
+    await page.waitForTimeout(1000 + Math.random() * 1000);
+    const status = response?.status?.();
+    if (status === 403 || status === 424 || await isCloudflareChallenge(page)) {
+      throw hltvSemanticError('cloudflare_block', `Cloudflare block/challenge detected on HLTV ${reason} page (${status || 'challenge'})`);
+    }
+    if (status && status >= 500) {
+      throw hltvSemanticError('upstream_error', `HLTV source returned ${status} on ${reason} page`);
+    }
+    if (await isBrowserErrorPage(page)) {
+      throw hltvSemanticError('proxy_tunnel', `Proxy tunnel/browser navigation failed on HLTV ${reason} page`);
+    }
+  } catch (error) {
+    throw await normalizeNavigationError(page, error, reason);
+  }
+}
+
+function assertHltvSemantics(semantics, reason) {
+  if (semantics?.ok) return;
+  const errorClass = semantics?.errorClass || 'selector_changed';
+  const message = errorClass === 'cloudflare_block'
+    ? `Cloudflare block/challenge detected on HLTV ${reason} page`
+    : errorClass === 'proxy_tunnel'
+      ? `Proxy tunnel/browser navigation failed on HLTV ${reason} page`
+      : `HLTV selector validation failed on ${reason} page`;
+  throw hltvSemanticError(errorClass, message);
+}
+
+function hltvSemanticError(errorClass, message) {
+  const error = new Error(message);
+  error.errorClass = errorClass;
+  return error;
+}
+
+function classifyHltvScriptError(message) {
+  const text = String(message || '');
+  if (/cloudflare|challenge|cf-ray|403|424/i.test(text)) return 'cloudflare_block';
+  if (/selector/i.test(text)) return 'selector_changed';
+  if (/parse failed|produced no semantic/i.test(text)) return 'parse_failed';
+  if (/timed out|timeout/i.test(text)) return 'timeout';
+  if (/proxy|tunnel|ERR_CONNECTION/i.test(text)) return 'proxy_tunnel';
+  return 'unknown';
 }
 
 async function safeMouseWheel(page, deltaX, deltaY, reason) {
@@ -634,6 +667,7 @@ function getRelatedSearchCache(query) {
     try {
       const cachePath = path.join(CACHE_DIR, entry);
       const data = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+      if (data.version !== CACHE_VERSION || data.cacheKind !== 'positive') continue;
       const events = Array.isArray(data?.result?.events) ? data.result.events : [];
       if (events.length === 0) continue;
 
@@ -837,7 +871,8 @@ async function saveDebugScreenshot(page, reason) {
 
 async function gotoHltvPage(page, url, reason) {
   try {
-    const response = await page.goto(url, { waitUntil: 'commit', timeout: 35000 });
+    const safeUrl = validateHltvNavigationUrl(url);
+    const response = await page.goto(safeUrl, { waitUntil: 'commit', timeout: 35000 });
     await page.waitForLoadState('domcontentloaded', { timeout: 15000 }).catch(() => {});
     await page.waitForTimeout(1500 + Math.random() * 1500);
 
@@ -870,6 +905,12 @@ async function gotoHltvPage(page, url, reason) {
 }
 
 async function normalizeNavigationError(page, error, reason) {
+  const blockedNavigationError = blockedHltvNavigationErrors.get(page);
+  if (blockedNavigationError) {
+    blockedHltvNavigationErrors.delete(page);
+    return blockedNavigationError;
+  }
+
   const message = String(error?.message || error || '');
   if (
     /chrome-error:\/\/chromewebdata|ERR_TUNNEL|ERR_PROXY|ERR_SOCKS|ERR_CONNECTION|ERR_ABORTED|ERR_NAME_NOT_RESOLVED|ERR_HTTP2_PROTOCOL_ERROR/i.test(message) ||

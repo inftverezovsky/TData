@@ -1,4 +1,5 @@
 import { formatMoscowDate, formatMoscowDateTime } from "@backend/matches/scheduleOffset";
+import { readBoundedBodyText } from "@backend/http/boundedResponse";
 import {
   normalizeTableTennisCategoryScope,
   type TableTennisCategoryScope,
@@ -144,6 +145,35 @@ type SourceSchedulePayload = Array<{
     Unit?: SourceWttUnit[] | null;
   } | null;
 }>;
+
+export type WttScheduleSource = "filtered_static" | "full_static" | "score_api";
+
+export type WttScheduleSourceProvenance = Readonly<{
+  source: WttScheduleSource;
+  status: "success" | "failed";
+  rowCount: number;
+}>;
+
+type WttScheduleSourceAttempt = Readonly<{
+  provenance: WttScheduleSourceProvenance;
+  payload: SourceSchedulePayload;
+  error?: string;
+}>;
+
+export class WttIncompleteScheduleError extends Error {
+  readonly code = "wtt_incomplete_schedule";
+
+  constructor(
+    eventId: string,
+    readonly provenance: readonly WttScheduleSourceProvenance[],
+  ) {
+    const summary = provenance
+      .map((entry) => `${entry.source}:${entry.status}(${entry.rowCount})`)
+      .join(", ");
+    super(`WTT schedule is incomplete for eventId=${eventId}: ${summary}`);
+    this.name = "WttIncompleteScheduleError";
+  }
+}
 
 type SourceWttUnit = {
   Code?: string | null;
@@ -380,11 +410,12 @@ export function resolveWttDateRange(input: { fromDate?: string | null; toDate?: 
   };
 }
 
-export async function fetchWttEvents(): Promise<SourceWttEvent[]> {
+export async function fetchWttEvents(options: { signal?: AbortSignal } = {}): Promise<SourceWttEvent[]> {
   try {
-    const events = await fetchWttPrimaryEvents();
+    const events = await fetchWttPrimaryEvents(options.signal);
     if (events.length > 0) return events as SourceWttEvent[];
   } catch {
+    options.signal?.throwIfAborted();
     // Fall through to the title-only WTT blob. The caller still gets a useful tournament list.
   }
 
@@ -392,13 +423,14 @@ export async function fetchWttEvents(): Promise<SourceWttEvent[]> {
   const payload = await fetchJson<unknown>(
     `${WTT_EVENTS_TITLE_FALLBACK_ENDPOINT}?q=${encodeURIComponent(dateKey)}`,
     "TData TableT/WTT (+https://www.worldtabletennis.com/eventslist)",
+    options.signal,
   );
-  return unwrapRows(payload) as SourceWttEvent[];
+  return unwrapWttRows(payload) as SourceWttEvent[];
 }
 
-async function fetchWttPrimaryEvents(): Promise<SourceWttEvent[]> {
-  const payload = await fetchJson<unknown>(WTT_EVENTS_ENDPOINT, "TData TableT/WTT (+https://www.worldtabletennis.com/eventslist)");
-  return unwrapRows(payload) as SourceWttEvent[];
+async function fetchWttPrimaryEvents(signal?: AbortSignal): Promise<SourceWttEvent[]> {
+  const payload = await fetchJson<unknown>(WTT_EVENTS_ENDPOINT, "TData TableT/WTT (+https://www.worldtabletennis.com/eventslist)", signal);
+  return unwrapWttRows(payload) as SourceWttEvent[];
 }
 
 export async function searchWttTournaments(input: {
@@ -406,18 +438,19 @@ export async function searchWttTournaments(input: {
   fromDate?: string | null;
   toDate?: string | null;
   days?: number | string | null;
+  signal?: AbortSignal;
 } = {}): Promise<WttTournamentSearch> {
   const range = resolveWttDateRange(input);
   const query = normalizeSearch(input.query || "");
-  const events = normalizeWttTournamentEvents(await fetchWttEvents())
-    .filter((event) => isTournamentInRange(event, range.fromDate, range.toDate))
+  const events = normalizeWttTournamentEvents(await fetchWttEvents({ signal: input.signal }))
+    .filter((event) => isWttTournamentInRange(event, range.fromDate, range.toDate))
     .filter((event) => {
       if (!query) return true;
       return normalizeSearch(`${event.title} ${event.location} ${event.categoryName} ${event.tierName}`).includes(query);
     })
     .sort(compareWttTournamentEvents);
 
-  const tournaments = await enrichWttTournamentsWithScheduleSummaries(events);
+  const tournaments = await enrichWttTournamentsWithScheduleSummaries(events, input.signal);
 
   return {
     ok: true,
@@ -440,44 +473,86 @@ export function normalizeWttTournamentEvents(events: SourceWttEvent[]): WttTourn
     .filter((event) => !isYouthTournament(event));
 }
 
-export async function fetchWttSchedule(eventId: string | number, input: { allowApiFallback?: boolean } = {}): Promise<SourceSchedulePayload> {
+export async function fetchWttSchedule(eventId: string | number, input: { allowApiFallback?: boolean; signal?: AbortSignal } = {}): Promise<SourceSchedulePayload> {
   const id = clean(eventId);
   if (!id) throw new Error("WTT eventId is required.");
 
-  const staticUrls = [
-    `${WTT_FRONTDOOR_ORIGIN}/websitecacheddata/${encodeURIComponent(id)}/schedule/schedule_filtered.json`,
-    `${WTT_FRONTDOOR_ORIGIN}/websitecacheddata/${encodeURIComponent(id)}/schedule/schedule.json`,
+  const staticSources: Array<{ source: WttScheduleSource; url: string }> = [
+    {
+      source: "filtered_static",
+      url: `${WTT_FRONTDOOR_ORIGIN}/websitecacheddata/${encodeURIComponent(id)}/schedule/schedule_filtered.json`,
+    },
+    {
+      source: "full_static",
+      url: `${WTT_FRONTDOOR_ORIGIN}/websitecacheddata/${encodeURIComponent(id)}/schedule/schedule.json`,
+    },
   ];
 
-  const errors: string[] = [];
-  const staticPayloads: SourceSchedulePayload[] = [];
-  for (const url of staticUrls) {
-    try {
-      const payload = await fetchJson<unknown>(url, "TData TableT/WTT schedule (+https://www.worldtabletennis.com/eventslist)");
-      const rows = unwrapRows(payload);
-      if (rows.length > 0) staticPayloads.push(rows as SourceSchedulePayload);
-    } catch (error) {
-      errors.push(error instanceof Error ? error.message : String(error));
-    }
+  const attempts: WttScheduleSourceAttempt[] = [];
+  for (const staticSource of staticSources) {
+    attempts.push(await fetchWttScheduleSource(staticSource, input.signal));
   }
-
-  const apiPayloads: SourceSchedulePayload[] = [];
 
   if (input.allowApiFallback) {
-    const apiUrl = `${WTT_SCORE_API_ORIGIN}/cms/GetEventSchedule/${encodeURIComponent(id)}`;
-    try {
-      const payload = await fetchJson<unknown>(apiUrl, "TData TableT/WTT schedule (+https://www.worldtabletennis.com/eventslist)");
-      const rows = unwrapRows(payload);
-      if (rows.length > 0) apiPayloads.push(rows as SourceSchedulePayload);
-    } catch (error) {
-      errors.push(error instanceof Error ? error.message : String(error));
-    }
+    attempts.push(await fetchWttScheduleSource({
+      source: "score_api",
+      url: `${WTT_SCORE_API_ORIGIN}/cms/GetEventSchedule/${encodeURIComponent(id)}`,
+    }, input.signal));
   }
 
-  const payloads = [...staticPayloads, ...apiPayloads];
+  const payloads = attempts
+    .filter((attempt) => attempt.provenance.status === "success" && attempt.payload.length > 0)
+    .map((attempt) => attempt.payload);
+  const staticSnapshotComplete = staticSources.every(({ source }) => attempts.some(
+    (attempt) => attempt.provenance.source === source && attempt.provenance.status === "success",
+  ));
+  const apiSnapshotComplete = attempts.some(
+    (attempt) => attempt.provenance.source === "score_api"
+      && attempt.provenance.status === "success"
+      && attempt.payload.length > 0,
+  );
+
+  if (!staticSnapshotComplete && !apiSnapshotComplete && payloads.length > 0) {
+    throw new WttIncompleteScheduleError(id, attempts.map((attempt) => attempt.provenance));
+  }
+
   if (payloads.length > 0) return payloads.flat();
 
-  throw new Error(`Не удалось загрузить расписание WTT eventId=${id}: ${errors[0] || "пустой ответ"}`);
+  const firstError = attempts.find((attempt) => attempt.error)?.error;
+  throw new Error(`Не удалось загрузить расписание WTT eventId=${id}: ${firstError || "пустой ответ"}`);
+}
+
+async function fetchWttScheduleSource(
+  input: { source: WttScheduleSource; url: string },
+  signal?: AbortSignal,
+): Promise<WttScheduleSourceAttempt> {
+  try {
+    const payload = await fetchJson<unknown>(
+      input.url,
+      "TData TableT/WTT schedule (+https://www.worldtabletennis.com/eventslist)",
+      signal,
+    );
+    const rows = unwrapWttRows(payload) as SourceSchedulePayload;
+    return {
+      provenance: {
+        source: input.source,
+        status: "success",
+        rowCount: rows.length,
+      },
+      payload: rows,
+    };
+  } catch (error) {
+    signal?.throwIfAborted();
+    return {
+      provenance: {
+        source: input.source,
+        status: "failed",
+        rowCount: 0,
+      },
+      payload: [],
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 export function normalizeWttSchedule(
@@ -626,18 +701,18 @@ function normalizeWttTournamentEvent(event: SourceWttEvent): WttTournamentEvent 
   };
 }
 
-async function enrichWttTournamentsWithScheduleSummaries(tournaments: WttTournamentEvent[]) {
-  return Promise.all(tournaments.map(async (tournament, index) => {
+async function enrichWttTournamentsWithScheduleSummaries(tournaments: WttTournamentEvent[], signal?: AbortSignal) {
+  const results = await Promise.allSettled(tournaments.map(async (tournament, index) => {
     if (index >= SCHEDULE_SUMMARY_LIMIT) return tournament;
 
     const enrichedTournament = getWttTimeZoneCode(tournament.timeZoneId)
       ? tournament
-      : await recoverWttTournamentDetails(tournament);
+      : await recoverWttTournamentDetails(tournament, signal);
     if (!getWttTimeZoneCode(enrichedTournament.timeZoneId)) return enrichedTournament;
 
     try {
       const schedule = normalizeWttSchedule(
-        await fetchWttSchedule(enrichedTournament.eventId, { allowApiFallback: true }),
+        await fetchWttSchedule(enrichedTournament.eventId, { allowApiFallback: true, signal }),
         { eventId: enrichedTournament.eventId, timeZoneId: enrichedTournament.timeZoneId },
       );
       const activeMatches = schedule.matches.filter((match) => isActiveWttMatch(match));
@@ -650,14 +725,19 @@ async function enrichWttTournamentsWithScheduleSummaries(tournaments: WttTournam
         status: activeMatches.some((match) => match.status === "live") ? "ongoing" : enrichedTournament.status,
       };
     } catch {
+      signal?.throwIfAborted();
       return enrichedTournament;
     }
   }));
+  signal?.throwIfAborted();
+  const failure = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
+  if (failure) throw failure.reason;
+  return results.map((result) => (result as PromiseFulfilledResult<WttTournamentEvent>).value);
 }
 
-async function recoverWttTournamentDetails(tournament: WttTournamentEvent): Promise<WttTournamentEvent> {
+async function recoverWttTournamentDetails(tournament: WttTournamentEvent, signal?: AbortSignal): Promise<WttTournamentEvent> {
   try {
-    const events = normalizeWttTournamentEvents(await fetchWttPrimaryEvents());
+    const events = normalizeWttTournamentEvents(await fetchWttPrimaryEvents(signal));
     const fullEvent = events.find((event) => event.eventId === tournament.eventId);
     if (!fullEvent || !getWttTimeZoneCode(fullEvent.timeZoneId)) return tournament;
 
@@ -667,6 +747,7 @@ async function recoverWttTournamentDetails(tournament: WttTournamentEvent): Prom
       pageUrl: tournament.pageUrl || fullEvent.pageUrl,
     };
   } catch {
+    signal?.throwIfAborted();
     return tournament;
   }
 }
@@ -908,7 +989,7 @@ function compareWttTournamentEvents(left: WttTournamentEvent, right: WttTourname
     || left.title.localeCompare(right.title);
 }
 
-function isTournamentInRange(event: WttTournamentEvent, fromDate: string, toDate: string) {
+export function isWttTournamentInRange(event: WttTournamentEvent, fromDate: string, toDate: string) {
   const start = event.startDate || event.endDate;
   const end = event.endDate || event.startDate;
   if (!start && !end) return false;
@@ -1083,8 +1164,11 @@ function formatUtcOffsetCode(offsetMinutes: number) {
   return `UTC${sign}${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
 }
 
-async function fetchJson<T>(url: string, userAgent: string): Promise<T> {
+async function fetchJson<T>(url: string, userAgent: string, signal?: AbortSignal): Promise<T> {
   const controller = new AbortController();
+  const onAbort = () => controller.abort(signal?.reason);
+  signal?.addEventListener("abort", onAbort, { once: true });
+  if (signal?.aborted) onAbort();
   const timeout = setTimeout(() => controller.abort(), 20_000);
 
   try {
@@ -1098,7 +1182,11 @@ async function fetchJson<T>(url: string, userAgent: string): Promise<T> {
         "User-Agent": userAgent,
       },
     });
-    const raw = await response.text();
+    const raw = await readBoundedBodyText(response, {
+      maxBytes: 8 * 1024 * 1024,
+      signal: controller.signal,
+      label: "WTT response",
+    });
     const text = raw.replace(/^\uFEFF/, "").trim();
 
     if (!response.ok) {
@@ -1111,10 +1199,11 @@ async function fetchJson<T>(url: string, userAgent: string): Promise<T> {
     return JSON.parse(text) as T;
   } finally {
     clearTimeout(timeout);
+    signal?.removeEventListener("abort", onAbort);
   }
 }
 
-function unwrapRows(payload: unknown): unknown[] {
+export function unwrapWttRows(payload: unknown): unknown[] {
   if (Array.isArray(payload)) {
     if (payload.length === 1 && isRecord(payload[0]) && Array.isArray(payload[0].rows)) {
       return payload[0].rows;
@@ -1122,7 +1211,7 @@ function unwrapRows(payload: unknown): unknown[] {
     return payload;
   }
   if (isRecord(payload) && Array.isArray(payload.rows)) return payload.rows;
-  return [];
+  throw new Error("WTT returned an unexpected rows schema.");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

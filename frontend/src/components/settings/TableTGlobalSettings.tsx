@@ -1,11 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { WTT_EVENTS_ENDPOINT } from "@backend/sources/tablet/WTT";
 
 const DEFAULT_SETTINGS = {
-  tablet_wtt_events_endpoint: WTT_EVENTS_ENDPOINT,
-  tablet_wtt_user_agent: "TData TableT/WTT (+https://www.worldtabletennis.com/eventslist)",
   tablet_wtt_default_days: "14",
   tablet_wtt_window_days: "60",
   tablet_admin_api_url: "",
@@ -79,20 +76,6 @@ export default function TableTGlobalSettings() {
             <div className="mb-8 h-px bg-slate-100" />
 
             <dl className="grid gap-6">
-              <SettingsRow
-                label="WTT Events Endpoint"
-                name="tablet_wtt_events_endpoint"
-                value={settings.tablet_wtt_events_endpoint}
-                isEditing={isEditing}
-                onChange={(val) => setSettings({ ...settings, tablet_wtt_events_endpoint: val })}
-              />
-              <SettingsRow
-                label="WTT User-Agent"
-                name="tablet_wtt_user_agent"
-                value={settings.tablet_wtt_user_agent}
-                isEditing={isEditing}
-                onChange={(val) => setSettings({ ...settings, tablet_wtt_user_agent: val })}
-              />
               <SettingsRow
                 label="Default Days"
                 name="tablet_wtt_default_days"

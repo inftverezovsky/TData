@@ -10,7 +10,6 @@ import type {
 } from "@backend/sources/tbvolley/VolleyballWorld";
 
 const BEACH_VOLLEYBALL_SLUG = "beachvolleyball";
-
 const searchGenders: VolleyballWorldGender[] = ["men", "women"];
 
 type CombinedVolleyballWorldTournamentSearch = Omit<VolleyballWorldBeachTournamentSearch, "gender"> & {
@@ -53,36 +52,30 @@ export default function VolleyballWorldTournamentSearch() {
     setError(null);
 
     try {
-      const searches = await Promise.all(searchGenders.map(async (gender) => {
-        const params = new URLSearchParams({
-          gender,
-          query: query.trim(),
-          fromDate,
-          days,
-        });
-        const response = await fetch(`/api/tbvolley/volleyballworld/tournaments?${params.toString()}`, { cache: "no-store" });
-        const payload = (await response.json().catch(() => ({}))) as VolleyballWorldBeachTournamentSearch & { error?: string };
+      const params = new URLSearchParams({
+        gender: "all",
+        query: query.trim(),
+        fromDate,
+        days,
+      });
+      const response = await fetch(`/api/tbvolley/volleyballworld/tournaments?${params.toString()}`, { cache: "no-store" });
+      const payload = (await response.json().catch(() => ({}))) as CombinedVolleyballWorldTournamentSearch & { error?: string };
 
-        if (!response.ok || !payload.ok) {
-          throw new Error(payload.error || "Не удалось загрузить турниры VolleyballWorld");
-        }
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || "Не удалось загрузить турниры VolleyballWorld");
+      }
 
-        return payload;
-      }));
-
-      const first = searches[0];
-      const tournaments = searches
-        .flatMap((search) => search.tournaments)
-        .sort(compareVolleyballWorldTournaments);
+      const tournaments = [...payload.tournaments].sort(compareVolleyballWorldTournaments);
       const tournamentGroups = groupVolleyballWorldTournaments(tournaments);
 
       setData({
         ok: true,
         source: "volleyballworld",
-        fromDate: first.fromDate,
-        toDate: first.toDate,
+        fromDate: payload.fromDate,
+        toDate: payload.toDate,
         gender: "all",
         query: query.trim(),
+        upstream: payload.upstream,
         tournaments,
         summary: {
           total: tournamentGroups.length,

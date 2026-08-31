@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
+import { requireSameOriginMutation } from "../backend/src/auth/adminAuth";
+import { readImportTournamentRequestBody } from "../frontend/src/app/api/[disciplineSlug]/import-tournament/route";
+import { BoundedBodyReadError } from "../backend/src/http/boundedResponse";
 
 const API_ROOT = path.join(process.cwd(), "frontend", "src", "app", "api");
 const ADMIN_GUARD_PATTERN = /\brequireAdmin\s*\(/;
@@ -42,6 +45,52 @@ test("parser and upload workflow routes stay callable from ungated UI pages", ()
     .sort();
 
   assert.deepEqual(guardedWorkflowRoutes, []);
+});
+
+test("admin origin validation ignores forwarded headers unless explicitly trusted", () => {
+  const previous = process.env.TRUST_PROXY_HEADERS;
+  try {
+    delete process.env.TRUST_PROXY_HEADERS;
+    const request = new Request("http://internal:3010/api/admin", {
+      method: "POST",
+      headers: {
+        Origin: "https://admin.example",
+        "Content-Type": "application/json",
+        "X-Forwarded-Host": "admin.example",
+        "X-Forwarded-Proto": "https",
+      },
+      body: "{}",
+    });
+    assert.equal(requireSameOriginMutation(request, ["application/json"])?.status, 403);
+
+    process.env.TRUST_PROXY_HEADERS = "1";
+    assert.equal(requireSameOriginMutation(request, ["application/json"]), null);
+  } finally {
+    if (previous === undefined) delete process.env.TRUST_PROXY_HEADERS;
+    else process.env.TRUST_PROXY_HEADERS = previous;
+  }
+});
+
+test("admin tournament import enforces 64 KiB while streaming chunked JSON", async () => {
+  const encoder = new TextEncoder();
+  const request = new Request("http://localhost/api/counterstrike/import-tournament", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode(`{"source":"hltv","padding":"`));
+        controller.enqueue(new Uint8Array(65_536));
+        controller.enqueue(encoder.encode('"}'));
+        controller.close();
+      },
+    }),
+    duplex: "half",
+  } as RequestInit & { duplex: "half" });
+
+  await assert.rejects(
+    readImportTournamentRequestBody(request),
+    (error: unknown) => error instanceof BoundedBodyReadError && error.code === "body_too_large",
+  );
 });
 
 function collectRouteFiles(directory: string): string[] {

@@ -8,6 +8,16 @@ import {
   parseVlrMatchesHtml,
   parseVlrUtcTimestamp,
 } from "../backend/src/sources/tdata/vlr/parse";
+import {
+  findExistingVlrTournament,
+  resolveVlrImportStatus,
+  shouldReplaceVlrMatchesOnImport,
+} from "../backend/src/sources/tdata/vlr/importTournament";
+import {
+  resolveVlrEventUrl,
+  resolveVlrRedirectUrl,
+  validateVlrFetchUrl,
+} from "../backend/src/sources/tdata/vlr/scraper";
 
 test("buildVlrEventMatchesUrl points event imports at the full schedule page", () => {
   assert.equal(
@@ -18,6 +28,43 @@ test("buildVlrEventMatchesUrl points event imports at the full schedule page", (
     buildVlrEventMatchesUrl("2765"),
     "https://www.vlr.gg/event/matches/2765",
   );
+});
+
+test("VLR outbound URLs stay on the canonical HTTPS origin", () => {
+  assert.equal(
+    validateVlrFetchUrl("https://www.vlr.gg/674859/fnatic-vs-karmine-corp"),
+    "https://www.vlr.gg/674859/fnatic-vs-karmine-corp",
+  );
+  assert.equal(
+    resolveVlrEventUrl("https://vlr.gg/event/2954/test"),
+    "https://www.vlr.gg/event/2954/test",
+  );
+  assert.throws(() => validateVlrFetchUrl("http://www.vlr.gg/674859/test"), /same-origin HTTPS/u);
+  assert.throws(() => validateVlrFetchUrl("https://evil.example/674859/test"), /same-origin HTTPS/u);
+  assert.throws(() => validateVlrFetchUrl("https://user:pass@www.vlr.gg/674859/test"), /same-origin HTTPS/u);
+});
+
+test("VLR redirects are resolved and validated before another request", () => {
+  assert.equal(
+    resolveVlrRedirectUrl("https://www.vlr.gg/event/2954/test", "/event/2954/canonical"),
+    "https://www.vlr.gg/event/2954/canonical",
+  );
+  assert.throws(
+    () => resolveVlrRedirectUrl("https://www.vlr.gg/event/2954/test", "https://metadata.example/latest"),
+    /same-origin HTTPS/u,
+  );
+});
+
+test("VLR parser drops malicious absolute match detail URLs", () => {
+  const matches = parseVlrMatchesHtml(`
+    <div class="wf-label mod-large">Sun, May 24, 2026</div>
+    <a href="https://evil.example/674859/stolen" class="wf-module-item match-item">
+      <div class="match-item-time">6:00 PM</div>
+      <div class="match-item-vs-team-name"><div class="text-of">FNATIC</div></div>
+      <div class="match-item-vs-team-name"><div class="text-of">Karmine Corp</div></div>
+    </a>
+  `);
+  assert.deepEqual(matches, []);
 });
 
 test("parseVlrMatchesHtml parses grouped VLR match cards", () => {
@@ -123,6 +170,139 @@ test("parseVlrMatchDetailHtml omits empty fields so detail enrichment preserves 
   assert.equal("unix_time" in detail, false);
   assert.equal("format" in detail, false);
   assert.equal("status" in detail, false);
+});
+
+test("VLR does not report unexplained empty discovery as a successful import", () => {
+  assert.equal(resolveVlrImportStatus({
+    ok: true,
+    matchUrlsFound: 0,
+    matchPagesFailed: 0,
+    savedMatchesCount: 0,
+  }), "PARTIAL");
+});
+
+test("VLR preserves last-good data for partial, stale, or unexplained snapshots", () => {
+  const complete = { ok: true, stale: false, matchUrlsFound: 3, matchPagesFailed: 0, saveableMatchesCount: 3 };
+  assert.equal(shouldReplaceVlrMatchesOnImport(complete), true);
+  assert.equal(shouldReplaceVlrMatchesOnImport({ ...complete, matchPagesFailed: 1 }), false);
+  assert.equal(shouldReplaceVlrMatchesOnImport({ ...complete, stale: true }), false);
+  assert.equal(shouldReplaceVlrMatchesOnImport({ ...complete, warning: "full schedule request failed" }), false);
+  assert.equal(shouldReplaceVlrMatchesOnImport({ ...complete, saveableMatchesCount: 0 }), false);
+});
+
+const VLR_EVENT_IDENTITY_WHERE = {
+  disciplineSlug: "valorant",
+  sourcePageId: 2954,
+  OR: [
+    { sourceUrl: { startsWith: "https://www.vlr.gg/event/" } },
+    { sourceUrl: { startsWith: "https://vlr.gg/event/" } },
+  ],
+};
+
+test("VLR tournament lookup prioritizes source identity over a newer title duplicate", async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const client = {
+    tournament: {
+      findFirst: async ({ where }: { where: Record<string, unknown> }) => {
+        calls.push(where);
+        if (where.sourcePageId === 2954) return { id: "by-source-page-id" };
+        if (where.sourceTitle === "Shared title") return { id: "newer-title-duplicate" };
+        return null;
+      },
+    },
+  };
+
+  const found = await findExistingVlrTournament({
+    disciplineSlug: "valorant",
+    sourceTitle: "Shared title",
+    sourceUrl: "https://www.vlr.gg/event/2954/canonical-event",
+    sourcePageId: 2954,
+  }, client as never);
+
+  assert.equal(found?.id, "by-source-page-id");
+  assert.deepEqual(calls, [VLR_EVENT_IDENTITY_WHERE]);
+});
+
+test("VLR tournament lookup uses canonical URL before title fallback", async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const client = {
+    tournament: {
+      findFirst: async ({ where }: { where: Record<string, unknown> }) => {
+        calls.push(where);
+        if (where.sourceUrl === "https://www.vlr.gg/event/2954/canonical-event") return { id: "by-canonical-url" };
+        if (where.sourceTitle === "Shared title") return { id: "wrong-title-duplicate" };
+        return null;
+      },
+    },
+  };
+
+  const found = await findExistingVlrTournament({
+    disciplineSlug: "valorant",
+    sourceTitle: "Shared title",
+    sourceUrl: "https://www.vlr.gg/event/2954/canonical-event",
+    sourcePageId: 2954,
+  }, client as never);
+
+  assert.equal(found?.id, "by-canonical-url");
+  assert.deepEqual(calls, [
+    VLR_EVENT_IDENTITY_WHERE,
+    { disciplineSlug: "valorant", sourceUrl: "https://www.vlr.gg/event/2954/canonical-event" },
+  ]);
+});
+
+test("VLR tournament lookup reaches title only after identity lookups miss", async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const client = {
+    tournament: {
+      findFirst: async ({ where }: { where: Record<string, unknown> }) => {
+        calls.push(where);
+        return where.sourceTitle === "Legacy title" && "OR" in where ? { id: "by-title-fallback" } : null;
+      },
+    },
+  };
+
+  const found = await findExistingVlrTournament({
+    disciplineSlug: "valorant",
+    sourceTitle: "Legacy title",
+    sourceUrl: "https://www.vlr.gg/event/2954/canonical-event",
+    sourcePageId: 2954,
+  }, client as never);
+
+  assert.equal(found?.id, "by-title-fallback");
+  assert.deepEqual(calls, [
+    VLR_EVENT_IDENTITY_WHERE,
+    { disciplineSlug: "valorant", sourceUrl: "https://www.vlr.gg/event/2954/canonical-event" },
+    {
+      disciplineSlug: "valorant",
+      sourceTitle: "Legacy title",
+      OR: [
+        { sourceUrl: { startsWith: "https://www.vlr.gg/event/" } },
+        { sourceUrl: { startsWith: "https://vlr.gg/event/" } },
+        { sourceUrl: "" },
+      ],
+    },
+  ]);
+});
+
+test("VLR title fallback cannot claim another provider's tournament", async () => {
+  const client = {
+    tournament: {
+      findFirst: async ({ where }: { where: Record<string, unknown> }) => (
+        where.sourceTitle === "Shared title" && !("OR" in where)
+          ? { id: "foreign-provider" }
+          : null
+      ),
+    },
+  };
+
+  const found = await findExistingVlrTournament({
+    disciplineSlug: "valorant",
+    sourceTitle: "Shared title",
+    sourceUrl: "https://www.vlr.gg/event/2954/canonical-event",
+    sourcePageId: 2954,
+  }, client as never);
+
+  assert.equal(found, null);
 });
 
 test("parseVlrEventMatchesHtml parses upcoming sidebar matches with TBD", () => {

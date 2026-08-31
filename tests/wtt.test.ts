@@ -9,6 +9,7 @@ import {
   parseWttLocalDateTime,
   searchWttTournaments,
   summarizeWttMatchCategories,
+  WttIncompleteScheduleError,
 } from "../backend/src/sources/tablet/WTT";
 
 test("WTT event normalization excludes Youth and U-age tournaments", () => {
@@ -132,6 +133,84 @@ test("WTT schedule fetch merges filtered current day and full future days", asyn
     assert.deepEqual(schedule.matches.map((match) => match.dateKey), ["2026-06-10", "2026-06-11"]);
     assert.ok(fetchedUrls.some((url) => url.includes("schedule_filtered.json")));
     assert.ok(fetchedUrls.some((url) => url.includes("schedule.json")));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("WTT schedule fetch rejects a partial redundant-source response", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const requestUrl = String(url);
+
+    if (requestUrl.includes("schedule_filtered.json")) {
+      return new Response(JSON.stringify([
+        {
+          Competition: {
+            Unit: [
+              {
+                Code: "PARTIAL001",
+                StartDate: "2026-06-10T10:00:00",
+                ScheduleStatus: "Scheduled",
+                SubEvent: "Men's Singles",
+              },
+            ],
+          },
+        },
+      ]), { status: 200, headers: { "content-type": "application/json" } });
+    }
+
+    return new Response("temporary upstream failure", { status: 503 });
+  };
+
+  try {
+    await assert.rejects(
+      fetchWttSchedule(3240, { allowApiFallback: true }),
+      (error) => {
+        assert.ok(error instanceof WttIncompleteScheduleError);
+        assert.deepEqual(error.provenance, [
+          { source: "filtered_static", status: "success", rowCount: 1 },
+          { source: "full_static", status: "failed", rowCount: 0 },
+          { source: "score_api", status: "failed", rowCount: 0 },
+        ]);
+        return true;
+      },
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("WTT schedule fetch accepts an authoritative API fallback", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const requestUrl = String(url);
+
+    if (requestUrl.includes("GetEventSchedule/3240")) {
+      return new Response(JSON.stringify([
+        {
+          Competition: {
+            Unit: [
+              {
+                Code: "API001",
+                StartDate: "2026-06-12T10:00:00",
+                ScheduleStatus: "Scheduled",
+                SubEvent: "Women's Singles",
+              },
+            ],
+          },
+        },
+      ]), { status: 200, headers: { "content-type": "application/json" } });
+    }
+
+    return new Response("temporary upstream failure", { status: 503 });
+  };
+
+  try {
+    const payload = await fetchWttSchedule(3240, { allowApiFallback: true });
+    const schedule = normalizeWttSchedule(payload, { eventId: 3240, timeZoneId: 49 });
+
+    assert.deepEqual(schedule.matches.map((match) => match.code), ["API001"]);
   } finally {
     globalThis.fetch = originalFetch;
   }

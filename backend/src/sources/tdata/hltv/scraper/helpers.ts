@@ -1,16 +1,17 @@
 import fs from "fs";
 import path from "path";
 import { prisma } from "@backend/db/db";
-import { emptyValidIfNoItems } from "@backend/proxy/parserErrors";
 import { HltvMode } from "../scraper";
 
 export const HLTV_CACHE_DIR = path.join(process.cwd(), "cache", "hltv");
 const HLTV_RELATED_CACHE_TTL_MS = Number(process.env.HLTV_RELATED_CACHE_TTL_MS || 6 * 60 * 60 * 1000);
 
 export function classifyHltvEmptyResult(mode: HltvMode, data: any, matchesCount: number | null, eventsCount: number | null) {
-  if (data.cacheKind === "negative") return "empty_valid";
-  if (mode === "search" || mode === "events") return emptyValidIfNoItems([eventsCount]);
-  if (mode === "scrape" || mode === "event") return emptyValidIfNoItems([matchesCount]);
+  const count = mode === "search" || mode === "events" ? eventsCount : matchesCount;
+  if (count !== 0) return null;
+  if (data.validEmpty === true) return "empty_valid";
+  if (mode === "search" || mode === "events") return "selector_changed";
+  if (mode === "scrape" || mode === "event") return "parse_failed";
   return null;
 }
 
@@ -36,6 +37,7 @@ export function readRelatedHltvSearchCache(query?: string) {
     try {
       const cachePath = path.join(HLTV_CACHE_DIR, entry);
       const data = JSON.parse(fs.readFileSync(cachePath, "utf8"));
+      if (data.version !== "hltv-upcoming-only-v4" || data.cacheKind !== "positive") continue;
       const timestamp = Number(data.timestamp || 0);
       if (!timestamp || Date.now() - timestamp > HLTV_RELATED_CACHE_TTL_MS) continue;
 

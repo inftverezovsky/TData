@@ -1,7 +1,5 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@backend/db/db";
-import { clearCachedSearchPageMetadata } from "@backend/sources/tdata/liquipedia/client";
-import { clearSourceFetchCache } from "@backend/utils/sourceFetchCache";
 import {
   buildTeamNameCanonicalizer,
   canonicalizeMatchTeams,
@@ -13,135 +11,24 @@ import { hasPlaceholderTeams } from "@backend/matches/quality";
 export const IMPORT_MATCH_FUTURE_WINDOW_DAYS = Number(process.env.IMPORT_MATCH_FUTURE_WINDOW_DAYS || 365);
 export const IMPORT_MATCH_PAST_GRACE_DAYS = Number(process.env.IMPORT_MATCH_PAST_GRACE_DAYS || 0);
 
-export type ForceRefreshCleanupStats = {
-  tournamentId: string | null;
-  matchesDeleted: number;
-  participantsDeleted: number;
-  rawSnapshotsDeleted: number;
-  sourceFetchCachesDeleted: number;
-  fileCachesDeleted: number;
-};
-
-export async function clearTournamentForceRefreshState(params: {
-  disciplineSlug: string;
-  pageId?: number;
-  title: string;
-  pageUrl?: string | null;
-}): Promise<ForceRefreshCleanupStats> {
-  const titleVariants = getTitleVariants(params.title, params.pageUrl, params.disciplineSlug);
-  const tournament = await prisma.tournament.findFirst({
-    where: {
-      disciplineSlug: params.disciplineSlug,
-      OR: [
-        { sourceTitle: { in: [...titleVariants] } },
-        ...(params.pageUrl ? [{ sourceUrl: params.pageUrl }] : []),
-        ...(params.pageId ? [{ sourcePageId: params.pageId }] : []),
-      ],
-    },
-    select: { id: true, sourceTitle: true },
-  });
-
-  if (tournament?.sourceTitle) {
-    for (const variant of getTitleVariants(tournament.sourceTitle, null, params.disciplineSlug)) {
-      titleVariants.add(variant);
-    }
-  }
-
-  let matchesDeleted = 0;
-  let participantsDeleted = 0;
-  if (tournament?.id) {
-    const [matches, participants] = await prisma.$transaction([
-      prisma.tournamentMatch.deleteMany({ where: { tournamentId: tournament.id } }),
-      prisma.tournamentParticipant.deleteMany({ where: { tournamentId: tournament.id } }),
-    ]);
-    matchesDeleted = matches.count;
-    participantsDeleted = participants.count;
-
-    await prisma.tournament.update({
-      where: { id: tournament.id },
-      data: {
-        extractionStatus: "PENDING",
-        normalization: {
-          forceRefresh: true,
-          cacheClearedAt: new Date().toISOString(),
-        } as Prisma.InputJsonValue,
-      },
-    }).catch(() => {});
-  }
-
-  const pageCacheStats = await Promise.all(
-    [...titleVariants].map((title) => clearPageFetchCaches(params.disciplineSlug, title))
-  );
-
-  return {
-    tournamentId: tournament?.id ?? null,
-    matchesDeleted,
-    participantsDeleted,
-    rawSnapshotsDeleted: pageCacheStats.reduce((sum, item) => sum + item.rawSnapshotsDeleted, 0),
-    sourceFetchCachesDeleted: pageCacheStats.reduce((sum, item) => sum + item.sourceFetchCachesDeleted, 0),
-    fileCachesDeleted: pageCacheStats.reduce((sum, item) => sum + item.fileCachesDeleted, 0),
-  };
-}
-
-export async function clearPageFetchCaches(disciplineSlug: string, title: string) {
-  const titleVariants = getTitleVariants(title, null, disciplineSlug);
-  const [rawSnapshotsResult, sourceFetchResults] = await Promise.all([
-    prisma.rawSnapshot.deleteMany({
-      where: {
-        pageTitle: { in: [...titleVariants] },
-        OR: [
-          { disciplineSlug },
-          { disciplineSlug: null },
-        ],
-      },
-    }),
-    Promise.all([...titleVariants].map((variant) => clearSourceFetchCache({
-      source: "liquipedia",
-      disciplineSlug,
-      resourceType: "page",
-      resourceKey: titleKey(variant),
-    }))),
-  ]);
-
-  const fileCachesDeleted = [...titleVariants].reduce(
-    (count, variant) => count + clearCachedSearchPageMetadata(disciplineSlug, variant),
-    0
-  );
-
-  return {
-    rawSnapshotsDeleted: rawSnapshotsResult.count,
-    sourceFetchCachesDeleted: sourceFetchResults.reduce((sum, result) => sum + result.count, 0),
-    fileCachesDeleted,
-  };
-}
-
-export function getTitleVariants(title: string, pageUrl: string | null | undefined, disciplineSlug: string) {
-  const variants = new Set<string>();
-  const add = (value?: string | null) => {
-    const cleaned = String(value || "").trim();
-    if (!cleaned) return;
-    variants.add(cleaned);
-    variants.add(cleaned.replace(/_/g, " "));
-    variants.add(cleaned.replace(/ /g, "_"));
-  };
-
-  add(title);
-  if (pageUrl) add(titleFromLiquipediaUrl(pageUrl, disciplineSlug));
-
-  return variants;
-}
-
-export async function canonicalizeMatchesWithTournamentTeams(matches: any[], tournamentId: string, disciplineSlug: string) {
+export async function canonicalizeMatchesWithTournamentTeams(
+  matches: any[],
+  tournamentId: string,
+  disciplineSlug: string,
+  incomingParticipants: any[] = [],
+  transactionClient?: Prisma.TransactionClient,
+) {
+  const client = transactionClient || prisma;
   const [participants, mappings] = await Promise.all([
-    prisma.tournamentParticipant.findMany({
+    client.tournamentParticipant.findMany({
       where: { tournamentId },
       select: { name: true, rawText: true, platformId: true, logoUrl: true },
     }),
-    prisma.teamMapping.findMany({ where: { disciplineSlug } }),
+    client.teamMapping.findMany({ where: { disciplineSlug } }),
   ]);
 
   const canonicalizer = buildTeamNameCanonicalizer({
-    participants,
+    participants: [...participants, ...incomingParticipants],
     mappings,
     extraNames: matches.flatMap((match: any) => [match.teamAName, match.teamBName]),
   });
@@ -151,29 +38,44 @@ export async function canonicalizeMatchesWithTournamentTeams(matches: any[], tou
   }
 }
 
-export async function appendTournamentWarning(tournamentId: string, warning: string) {
-  const tournament = await prisma.tournament.findUnique({
-    where: { id: tournamentId },
+type TournamentWarningClient = Pick<Prisma.TransactionClient, "tournament">;
+
+export async function appendTournamentWarning(params: {
+  client: TournamentWarningClient;
+  tournamentId: string;
+  warning: string;
+}) {
+  const tournament = await params.client.tournament.findUnique({
+    where: { id: params.tournamentId },
     select: { normalization: true },
   });
-  const normalization = isPlainObject(tournament?.normalization)
-    ? tournament?.normalization as Record<string, unknown>
+  const normalization = mergeTournamentWarningNormalization(
+    tournament?.normalization,
+    params.warning,
+  );
+
+  await params.client.tournament.update({
+    where: { id: params.tournamentId },
+    data: {
+      extractionStatus: "PARTIAL",
+      normalization,
+    },
+  });
+}
+
+export function mergeTournamentWarningNormalization(value: unknown, warning: string) {
+  const normalization = isPlainObject(value)
+    ? value as Record<string, unknown>
     : {};
   const existingWarnings = Array.isArray(normalization.warnings)
     ? normalization.warnings.filter((item): item is string => typeof item === "string")
     : [];
 
-  await prisma.tournament.update({
-    where: { id: tournamentId },
-    data: {
-      extractionStatus: "PARTIAL",
-      normalization: {
-        ...normalization,
-        warnings: Array.from(new Set([...existingWarnings, warning])),
-        qualityGateKeptPrevious: true,
-      } as Prisma.InputJsonValue,
-    },
-  });
+  return {
+    ...normalization,
+    warnings: Array.from(new Set([...existingWarnings, warning])),
+    qualityGateKeptPrevious: true,
+  } as Prisma.InputJsonValue;
 }
 
 export function extractRevisionId(rawJson: any) {

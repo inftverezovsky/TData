@@ -1,5 +1,6 @@
 import { getLiquipediaUserAgent } from "@backend/config/env";
 import { prisma } from "@backend/db/db";
+import { readBoundedBodyText } from "@backend/http/boundedResponse";
 import { registerLiquipediaBackoff, withGenericRateLimit, withParseRateLimit } from "@backend/sources/tdata/liquipedia/rateLimiter";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import { SocksProxyAgent } from "socks-proxy-agent";
@@ -13,6 +14,7 @@ import type { ParserErrorClass } from "@backend/proxy/parserErrors";
 export const LIQUIPEDIA_API_TIMEOUT_MS = Number(process.env.LIQUIPEDIA_API_TIMEOUT_MS || 40000);
 export const LIQUIPEDIA_API_MAX_RETRIES = Number(process.env.LIQUIPEDIA_API_MAX_RETRIES || 1);
 export const LIQUIPEDIA_DIRECT_FALLBACK_ENABLED = process.env.LIQUIPEDIA_DIRECT_FALLBACK_ENABLED !== "0";
+const LIQUIPEDIA_MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 
 export class LiquipediaRequestError extends Error {
   errorClass: ParserErrorClass;
@@ -27,27 +29,31 @@ export class LiquipediaRequestError extends Error {
   }
 }
 
-export async function fetchHtml(url: string): Promise<string> {
+export async function fetchHtml(url: string, options: { signal?: AbortSignal } = {}): Promise<string> {
   const controller = new AbortController();
+  const onAbort = () => controller.abort(options.signal?.reason);
+  options.signal?.addEventListener("abort", onAbort, { once: true });
+  if (options.signal?.aborted) onAbort();
   const timeoutId = setTimeout(() => controller.abort(), LIQUIPEDIA_API_TIMEOUT_MS);
-  const fetchOptions: any = {
-    method: "GET",
-    headers: {
-      "User-Agent": getLiquipediaUserAgent(),
-      "Accept-Encoding": "gzip",
-      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
-    },
-    signal: controller.signal
-  };
+  try {
+    const fetchOptions: any = {
+      method: "GET",
+      headers: {
+        "User-Agent": getLiquipediaUserAgent(),
+        "Accept-Encoding": "gzip",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8"
+      },
+      signal: controller.signal
+    };
 
-  const proxy = await selectProxyCandidate();
-  const startedAt = Date.now();
-  if (proxy?.proxyUrl) {
-    fetchOptions.agent = proxy.proxyUrl.startsWith('socks') ? new SocksProxyAgent(proxy.proxyUrl) : new HttpsProxyAgent(proxy.proxyUrl);
-  }
+    const proxy = await selectProxyCandidate();
+    options.signal?.throwIfAborted();
+    const startedAt = Date.now();
+    if (proxy?.proxyUrl) {
+      fetchOptions.agent = proxy.proxyUrl.startsWith('socks') ? new SocksProxyAgent(proxy.proxyUrl) : new HttpsProxyAgent(proxy.proxyUrl);
+    }
 
-  const response = await nodeFetch(url, fetchOptions as any)
-    .catch(async (error) => {
+    const response = await nodeFetch(url, fetchOptions as any).catch(async (error) => {
       const errorClass = classifyParserError({ message: error instanceof Error ? error.message : String(error) });
       await markProxyFailure(proxy?.proxyId || null, {
         errorClass,
@@ -55,29 +61,41 @@ export async function fetchHtml(url: string): Promise<string> {
         durationMs: Date.now() - startedAt,
       });
       throw error;
-    })
-    .finally(() => clearTimeout(timeoutId));
-  if (!response.ok) {
-    const errorClass = classifyParserError({ statusCode: response.status, message: `Failed to fetch HTML ${response.status}` });
-    if (shouldCooldownProxyForError(errorClass)) {
-      await markProxyFailure(proxy?.proxyId || null, {
-        errorClass,
-        errorMessage: `Liquipedia HTML request failed with ${response.status} (${errorClass})`,
-        durationMs: Date.now() - startedAt,
-        blocked: errorClass === "cloudflare_block",
-      });
+    });
+    const text = await readBoundedBodyText(response, {
+      maxBytes: LIQUIPEDIA_MAX_RESPONSE_BYTES,
+      signal: controller.signal,
+      label: "Liquipedia HTML response",
+    });
+    if (!response.ok) {
+      const errorClass = classifyParserError({ statusCode: response.status, message: text.slice(0, 500) });
+      if (shouldCooldownProxyForError(errorClass)) {
+        await markProxyFailure(proxy?.proxyId || null, {
+          errorClass,
+          errorMessage: `Liquipedia HTML request failed with ${response.status} (${errorClass})`,
+          durationMs: Date.now() - startedAt,
+          blocked: errorClass === "cloudflare_block",
+        });
+      }
+      if (response.status === 403 || response.status === 424) {
+        options.signal?.throwIfAborted();
+        const htmlFromApi = await fetchHtmlViaMediaWikiApi(url, options).catch(() => {
+          options.signal?.throwIfAborted();
+          return "";
+        });
+        if (htmlFromApi) return htmlFromApi;
+      }
+      throw new LiquipediaRequestError(
+        `Liquipedia HTML request failed with ${response.status} (${errorClass})`,
+        { errorClass, statusCode: response.status }
+      );
     }
-    if (response.status === 403 || response.status === 424) {
-      const htmlFromApi = await fetchHtmlViaMediaWikiApi(url).catch(() => "");
-      if (htmlFromApi) return htmlFromApi;
-    }
-    throw new LiquipediaRequestError(
-      `Liquipedia HTML request failed with ${response.status} (${errorClass})`,
-      { errorClass, statusCode: response.status }
-    );
+    await markProxySuccess(proxy?.proxyId || null, Date.now() - startedAt);
+    return text;
+  } finally {
+    clearTimeout(timeoutId);
+    options.signal?.removeEventListener("abort", onAbort);
   }
-  await markProxySuccess(proxy?.proxyId || null, Date.now() - startedAt);
-  return response.text();
 }
 
 export async function apiRequest<T>(
@@ -92,6 +110,7 @@ export async function apiRequest<T>(
   const proxyKey = proxy?.proxyId || "direct";
 
   const execute = async () => {
+    options.signal?.throwIfAborted();
     const timeoutMs = options.timeoutMs ?? LIQUIPEDIA_API_TIMEOUT_MS;
     const maxRetries = options.maxRetries ?? LIQUIPEDIA_API_MAX_RETRIES;
     const requestMode = options.mode ?? (isParse ? "parse" : "api");
@@ -103,9 +122,17 @@ export async function apiRequest<T>(
     console.log(`[Liquipedia API Request] URL: ${url.toString()}`);
 
     const controller = new AbortController();
+    const onAbort = () => controller.abort(options.signal?.reason);
+    options.signal?.addEventListener("abort", onAbort, { once: true });
+    if (options.signal?.aborted) onAbort();
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    const cleanupRequests: Array<() => void> = [() => {
+      clearTimeout(timeoutId);
+      options.signal?.removeEventListener("abort", onAbort);
+    }];
 
-    const fetchOptions: any = {
+    try {
+      const fetchOptions: any = {
       method: "GET",
       headers: {
         "User-Agent": getLiquipediaUserAgent(),
@@ -132,9 +159,11 @@ export async function apiRequest<T>(
     let activeProxyId = proxy?.proxyId ?? null;
     let startedAt = Date.now();
     let recoveredWithDirectFallback = false;
+    let responseSignal: AbortSignal = controller.signal;
     try {
-      response = await nodeFetch(url.toString(), fetchOptions as any).finally(() => clearTimeout(timeoutId));
+      response = await nodeFetch(url.toString(), fetchOptions as any);
     } catch (e: any) {
+      options.signal?.throwIfAborted();
       const durationMs = Date.now() - startedAt;
       const errorClass = classifyParserError({ message: e.message });
       await markProxyFailure(activeProxyId, {
@@ -152,7 +181,14 @@ export async function apiRequest<T>(
       if (LIQUIPEDIA_DIRECT_FALLBACK_ENABLED && activeProxyId) {
         console.warn(`[Liquipedia API] Proxy failed with ${errorClass}; trying direct fallback.`);
         const directController = new AbortController();
+        const onDirectAbort = () => directController.abort(options.signal?.reason);
+        options.signal?.addEventListener("abort", onDirectAbort, { once: true });
+        if (options.signal?.aborted) onDirectAbort();
         const directTimeoutId = setTimeout(() => directController.abort(), timeoutMs);
+        cleanupRequests.push(() => {
+          clearTimeout(directTimeoutId);
+          options.signal?.removeEventListener("abort", onDirectAbort);
+        });
         const directFetchOptions = {
           ...fetchOptions,
           headers: {
@@ -166,9 +202,11 @@ export async function apiRequest<T>(
         activeProxyId = null;
         startedAt = Date.now();
         try {
-          response = await nodeFetch(url.toString(), directFetchOptions as any).finally(() => clearTimeout(directTimeoutId));
+          response = await nodeFetch(url.toString(), directFetchOptions as any);
           recoveredWithDirectFallback = true;
+          responseSignal = directController.signal;
         } catch (directError: any) {
+          options.signal?.throwIfAborted();
           const directDurationMs = Date.now() - startedAt;
           const directErrorClass = classifyParserError({ message: directError.message });
           await logLiquipediaRequest({
@@ -196,6 +234,12 @@ export async function apiRequest<T>(
     if (!response) {
       throw new Error("Liquipedia API request failed without a response");
     }
+
+    const text = await readBoundedBodyText(response, {
+      maxBytes: LIQUIPEDIA_MAX_RESPONSE_BYTES,
+      signal: responseSignal,
+      label: "Liquipedia API response",
+    });
 
     if (response.status === 424 || response.status === 403) {
       const durationMs = Date.now() - startedAt;
@@ -225,7 +269,6 @@ export async function apiRequest<T>(
     console.log(`[Liquipedia API Response] Status: ${response.status}, Content-Type: ${contentType}`);
 
     if (!response.ok) {
-      const text = await response.text();
       const errorClass = classifyParserError({ statusCode: response.status, message: text });
       console.log(`[Liquipedia API Error Body] ${text.slice(0, 500)}`);
       registerLiquipediaBackoff(proxyKey, errorClass, response.headers.get("retry-after"), isParse ? "parse" : "generic");
@@ -253,7 +296,6 @@ export async function apiRequest<T>(
     }
 
     if (!contentType.includes("application/json") && !contentType.includes("application/mediawiki+json")) {
-      const text = await response.text();
       const errorClass = classifyParserError({
         statusCode: response.status,
         message: `non-json response ${text.slice(0, 500)}`,
@@ -283,7 +325,6 @@ export async function apiRequest<T>(
       );
     }
 
-    const text = await response.text();
     try {
       const parsed = JSON.parse(text) as T;
       await markProxySuccess(activeProxyId, Date.now() - startedAt);
@@ -311,12 +352,15 @@ export async function apiRequest<T>(
         { errorClass: "parse_failed", statusCode: response.status }
       );
     }
+    } finally {
+      for (const cleanup of cleanupRequests) cleanup();
+    }
   };
 
   return isParse ? withParseRateLimit(execute, proxyKey) : withGenericRateLimit(execute, proxyKey);
 }
 
-export async function fetchHtmlViaMediaWikiApi(pageUrl: string) {
+export async function fetchHtmlViaMediaWikiApi(pageUrl: string, options: ApiRequestOptions = {}) {
   const url = new URL(pageUrl);
   const [, slug, ...titleParts] = url.pathname.split("/");
   const title = decodeURIComponent(titleParts.join("/")).replace(/_/g, " ");
@@ -333,7 +377,9 @@ export async function fetchHtmlViaMediaWikiApi(pageUrl: string) {
       disabletoc: "1",
       redirects: "1"
     },
-    true
+    true,
+    0,
+    options,
   );
 
   return response.parse?.text?.["*"] ?? "";
