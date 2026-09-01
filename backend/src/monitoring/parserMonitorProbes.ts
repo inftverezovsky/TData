@@ -6,6 +6,7 @@ import type { ParserProbeErrorClass } from "./parserMonitorTypes";
 const LIQUIPEDIA_SCOPES = ["dota2", "counterstrike", "leagueoflegends", "valorant"] as const;
 const TLINE_BUILTIN_PROVIDERS = ["volley-ru", "nffr-floorball", "hockey-by"] as const;
 const MAX_SEMANTIC_CANARY_CANDIDATES = 5;
+const HLTV_SEMANTIC_CANARY_CANDIDATES = 2;
 const HLTV_FALLBACK_EVENT_URL = "https://www.hltv.org/events/8249/blast-open-porto-2026";
 const DLTV_HISTORICAL_CANARY_URL = "https://dltv.org/events/the-international-2026";
 const WTT_PRIMARY_HOSTNAME = "wtt-web-frontdoor-cthahjeqhbh6aqe3.a01.azurefd.net";
@@ -388,6 +389,7 @@ function createHltvProbe(dependencies: StaticParserProbeDependencies): ParserPro
     source: "hltv",
     hostname: "hltv.org",
     required: true,
+    timeoutMs: 180_000,
     async run(_attempt, signal) {
       const { runHltvScript } = await (dependencies.loadHltv?.()
         ?? import("@backend/sources/tdata/hltv/scraper"));
@@ -421,7 +423,7 @@ function createHltvProbe(dependencies: StaticParserProbeDependencies): ParserPro
       }
       const canary = await findSemanticCanary({
         candidates,
-        maxCandidates: MAX_SEMANTIC_CANARY_CANDIDATES,
+        maxCandidates: HLTV_SEMANTIC_CANARY_CANDIDATES,
         signal,
         async load(candidate) {
           const detail: any = await runHltvScript("event", candidate, { noCache: true, signal });

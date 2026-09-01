@@ -737,10 +737,34 @@ test("HLTV monitor preserves an upstream typed Cloudflare error", async () => {
     }),
   } as any).find((candidate) => candidate.id === "hltv");
   assert.ok(hltv);
+  assert.equal(hltv.timeoutMs, 180_000);
   await assert.rejects(
     hltv.run(1, new AbortController().signal),
     (error: unknown) => error instanceof MonitorProbeError && error.errorClass === "cloudflare_block",
   );
+});
+
+test("HLTV monitor bounds semantic event discovery to two fresh candidates", async () => {
+  const visited: string[] = [];
+  const hltv = createStaticParserProbesWithDependencies({
+    loadHltv: async () => ({
+      runHltvScript: async (mode: string, candidate?: string) => {
+        if (mode === "events") {
+          return { ok: true, events: [{ id: "1" }, { id: "2" }, { id: "3" }] };
+        }
+        visited.push(String(candidate));
+        return { ok: true, matches: [], validEmpty: true };
+      },
+    }),
+  } as any).find((candidate) => candidate.id === "hltv");
+  assert.ok(hltv);
+
+  const result = await hltv.run(1, new AbortController().signal);
+  assert.deepEqual(visited, [
+    "https://www.hltv.org/events/1",
+    "https://www.hltv.org/events/2",
+  ]);
+  assert.equal(result.detailChecked, false);
 });
 
 test("DLTV monitor accepts an explicit current empty state only after a historical semantic canary", async () => {
