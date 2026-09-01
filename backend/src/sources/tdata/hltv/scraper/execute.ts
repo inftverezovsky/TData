@@ -51,6 +51,10 @@ export async function executeScraper(
   }
 
   if (!proxyStr && !direct) {
+    if (shouldTryHltvDirectFallback("proxy_missing", false)) {
+      console.log("[HLTV Scraper Lib] Proxy pool is unavailable, retrying once without proxy...");
+      return executeScraper(mode, queryOrId, requestId, 1, true, options);
+    }
     throw new Error("Прокси не настроены. Пожалуйста, добавьте прокси в Proxy Pool.");
   }
 
@@ -143,7 +147,7 @@ export async function executeScraper(
         bytesIn: stdout.length + stderr.length,
       });
 
-      if (shouldTryDirectFallback(errorClass, direct)) {
+      if (shouldTryHltvDirectFallback(errorClass, direct)) {
         console.log(`[HLTV Scraper Lib] ${errorClass} through proxy, retrying once without proxy...`);
         executeScraper(mode, queryOrId, requestId, 1, true, options).then(settleResolve, settleReject);
         return;
@@ -252,7 +256,7 @@ export async function executeScraper(
           return;
         }
 
-        if (shouldTryDirectFallback(errorClass, direct)) {
+        if (shouldTryHltvDirectFallback(errorClass, direct)) {
           console.log(`[HLTV Scraper Lib] ${errorClass} through proxy, retrying once without proxy...`);
           executeScraper(mode, queryOrId, requestId, 1, true, options).then(settleResolve, settleReject);
           return;
@@ -375,7 +379,7 @@ export async function executeScraper(
              executeScraper(mode, queryOrId, requestId, attempt + 1, direct, options).then(settleResolve, settleReject);
              return;
           }
-          if (shouldTryDirectFallback(errorClass, direct)) {
+          if (shouldTryHltvDirectFallback(errorClass, direct)) {
             console.log(`[HLTV Scraper Lib] ${errorClass} through proxy, retrying once without proxy...`);
             executeScraper(mode, queryOrId, requestId, 1, true, options).then(settleResolve, settleReject);
             return;
@@ -501,11 +505,17 @@ function allowDirectFallback() {
   return process.env.HLTV_ALLOW_DIRECT_FALLBACK !== "0";
 }
 
-function shouldTryDirectFallback(errorClass: string, direct: boolean) {
-  if (direct || !allowDirectFallback()) return false;
+export function shouldTryHltvDirectFallback(
+  errorClass: string,
+  direct: boolean,
+  enabled = allowDirectFallback(),
+) {
+  if (direct || !enabled) return false;
 
   const normalized = normalizeParserErrorClass(errorClass);
-  return normalized === "proxy_tunnel"
+  return normalized === "cloudflare_block"
+    || normalized === "proxy_missing"
+    || normalized === "proxy_tunnel"
     || normalized === "timeout"
     || normalized === "network_error"
     || normalized === "process_failed";

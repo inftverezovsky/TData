@@ -90,6 +90,18 @@ export function buildHltvEventMatchesUrl(eventUrl) {
   return parsed.toString().replace(/\/$/, '');
 }
 
+export function buildHltvNumericEventMatchesUrl(eventId) {
+  const normalized = String(eventId || '').trim();
+  if (!/^[1-9]\d{0,15}$/.test(normalized)) {
+    throw new Error('Invalid HLTV event ID');
+  }
+  return `https://www.hltv.org/events/${normalized}/matches`;
+}
+
+export function shouldWarmUpHltvSession(mode) {
+  return String(mode || '').trim().toLowerCase() !== 'event';
+}
+
 export function parseHltvMatchesHtml(html, nowSeconds = Math.floor(Date.now() / 1000)) {
   const $ = cheerio.load(String(html || ''));
   const results = [];

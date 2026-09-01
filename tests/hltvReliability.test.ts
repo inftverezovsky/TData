@@ -9,13 +9,16 @@ import {
   parseHltvSourcePageId,
   shouldReplaceHltvMatchesOnImport,
 } from "../backend/src/sources/tdata/hltv/importTournament";
-import { forceKillChild } from "../backend/src/sources/tdata/hltv/scraper/execute";
+import {
+  forceKillChild,
+  shouldTryHltvDirectFallback,
+} from "../backend/src/sources/tdata/hltv/scraper/execute";
 import { maskProxyUrl } from "../backend/src/proxy/proxySelector";
 import { validateHltvRepairSnapshot } from "../backend/src/sources/tdata/hltv/repairSnapshot";
 
 // The browser scraper is plain ESM because it is executed directly by Node in production.
 // @ts-expect-error The production browser helper intentionally remains plain ESM.
-import { buildHltvEventMatchesUrl, classifyHltvPageHtml, extractHltvEventTitle, parseHltvMatchesHtml, validateHltvNavigationUrl } from "../scripts/hltv_semantics.mjs";
+import { buildHltvEventMatchesUrl, buildHltvNumericEventMatchesUrl, classifyHltvPageHtml, extractHltvEventTitle, parseHltvMatchesHtml, shouldWarmUpHltvSession, validateHltvNavigationUrl } from "../scripts/hltv_semantics.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 
@@ -192,6 +195,15 @@ test("HLTV proxy credentials are passed outside argv and removed before Chromium
   assert.match(executeSource, /env:\s*buildHltvChildEnvironment\(proxyStr\)/);
   assert.match(browserSource, /process\.env\.HLTV_PLAYWRIGHT_PROXY/);
   assert.match(browserSource, /delete process\.env\.HLTV_PLAYWRIGHT_PROXY/);
+});
+
+test("HLTV retries directly when a selected proxy is blocked by Cloudflare", () => {
+  assert.equal(shouldTryHltvDirectFallback("cloudflare_block", false, true), true);
+  assert.equal(shouldTryHltvDirectFallback("proxy_missing", false, true), true);
+  assert.equal(shouldTryHltvDirectFallback("timeout", false, true), true);
+  assert.equal(shouldTryHltvDirectFallback("cloudflare_block", true, true), false);
+  assert.equal(shouldTryHltvDirectFallback("cloudflare_block", false, false), false);
+  assert.equal(shouldTryHltvDirectFallback("selector_changed", false, true), false);
 });
 
 test("HLTV Unix child cleanup targets the detached process group", async () => {
@@ -442,6 +454,22 @@ test("HLTV keeps the canonical event slug while building the matches tab URL", (
     buildHltvEventMatchesUrl("https://www.hltv.org/events/8249/blast-open-porto-2026?next=https://metadata.example/#matches"),
     "https://www.hltv.org/events/8249/blast-open-porto-2026/matches"
   );
+});
+
+test("HLTV restores the numeric matches route used by the working parser", () => {
+  assert.equal(
+    buildHltvNumericEventMatchesUrl("8249"),
+    "https://www.hltv.org/events/8249/matches",
+  );
+  assert.throws(() => buildHltvNumericEventMatchesUrl("8249/other"), /event ID/i);
+  assert.throws(() => buildHltvNumericEventMatchesUrl("0"), /event ID/i);
+});
+
+test("HLTV event detail avoids the Cloudflare-triggering discovery preflight", () => {
+  assert.equal(shouldWarmUpHltvSession("event"), false);
+  assert.equal(shouldWarmUpHltvSession("events"), true);
+  assert.equal(shouldWarmUpHltvSession("search"), true);
+  assert.equal(shouldWarmUpHltvSession("health"), true);
 });
 
 test("HLTV stores a safe numeric event identity independently of title and slug", () => {

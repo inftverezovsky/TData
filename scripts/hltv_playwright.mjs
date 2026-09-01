@@ -5,9 +5,10 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import {
-  buildHltvEventMatchesUrl,
+  buildHltvNumericEventMatchesUrl,
   classifyHltvPageHtml,
   parseHltvMatchesHtml,
+  shouldWarmUpHltvSession,
   validateHltvNavigationUrl,
 } from './hltv_semantics.mjs';
 
@@ -195,7 +196,9 @@ async function scrapeHltv() {
       window.chrome = { runtime: {} };
     });
 
-    await warmUpHltvSession(page);
+    if (shouldWarmUpHltvSession(MODE)) {
+      await warmUpHltvSession(page);
+    }
     
     if (MODE === 'search') {
       console.error(`[HLTV Playwright] Searching for: ${QUERY}`);
@@ -492,7 +495,7 @@ async function scrapeHltv() {
       let targetUrl = 'https://www.hltv.org/matches';
       let targetAlreadyLoaded = false;
       if (MODE === 'event' && EVENT_ID) {
-        targetUrl = await navigateToHltvEventMatches(page, EVENT_ID, EVENT_URL);
+        targetUrl = await navigateToHltvEventMatches(page, EVENT_ID);
         targetAlreadyLoaded = true;
         console.error(`[HLTV Playwright] Scraping Event Matches: ${targetUrl}`);
       } else {
@@ -563,56 +566,14 @@ async function warmUpHltvSession(page) {
   assertHltvSemantics(semantics, 'warmup-events');
 }
 
-async function navigateToHltvEventMatches(page, eventId, eventUrl) {
-  const listingLink = page.locator(`a[href^="/events/${eventId}/"]:visible`).first();
-  const listingHref = await listingLink.getAttribute('href').catch(() => null);
-  const requestedEventUrl = new URL(
-    String(eventUrl || listingHref || `https://www.hltv.org/events/${eventId}`),
-    'https://www.hltv.org',
-  ).toString();
-  const overviewUrl = buildHltvEventMatchesUrl(requestedEventUrl).replace(/\/matches$/i, '');
-
-  if (listingHref) {
-    await clickHltvPageLink(page, listingLink, 'event-overview');
-  } else {
-    await gotoHltvPage(page, new URL(overviewUrl, 'https://www.hltv.org').toString(), 'event-overview');
-  }
-
-  const matchesLink = page.locator(`a[href*="/events/${eventId}/"][href*="/matches"]:visible`).first();
-  const matchesHref = await matchesLink.getAttribute('href').catch(() => null);
-  const canonicalOverviewUrl = page.url().replace(/\/matches\/?(?:[?#].*)?$/i, '');
-  const matchesUrl = matchesHref
-    ? buildHltvEventMatchesUrl(new URL(matchesHref, 'https://www.hltv.org').toString())
-    : buildHltvEventMatchesUrl(canonicalOverviewUrl);
-  if (matchesHref) {
-    await clickHltvPageLink(page, matchesLink, 'event-matches');
-  } else {
-    await gotoHltvPage(page, matchesUrl, 'event-matches');
-  }
+async function navigateToHltvEventMatches(page, eventId) {
+  // HLTV's numeric matches route remains the least challenged event endpoint.
+  // It was also the route used by the previously working parser. Avoid the
+  // slug overview/click hop because Cloudflare can block that hop while this
+  // canonical event ID route still returns the complete schedule.
+  const matchesUrl = buildHltvNumericEventMatchesUrl(eventId);
+  await gotoHltvPage(page, matchesUrl, 'event-matches');
   return matchesUrl;
-}
-
-async function clickHltvPageLink(page, locator, reason) {
-  try {
-    const [response] = await Promise.all([
-      page.waitForNavigation({ waitUntil: 'commit', timeout: 35000 }),
-      locator.click({ timeout: 10000 }),
-    ]);
-    await page.waitForLoadState('domcontentloaded', { timeout: 15000 }).catch(() => {});
-    await page.waitForTimeout(1000 + Math.random() * 1000);
-    const status = response?.status?.();
-    if (status === 403 || status === 424 || await isCloudflareChallenge(page)) {
-      throw hltvSemanticError('cloudflare_block', `Cloudflare block/challenge detected on HLTV ${reason} page (${status || 'challenge'})`);
-    }
-    if (status && status >= 500) {
-      throw hltvSemanticError('upstream_error', `HLTV source returned ${status} on ${reason} page`);
-    }
-    if (await isBrowserErrorPage(page)) {
-      throw hltvSemanticError('proxy_tunnel', `Proxy tunnel/browser navigation failed on HLTV ${reason} page`);
-    }
-  } catch (error) {
-    throw await normalizeNavigationError(page, error, reason);
-  }
 }
 
 function assertHltvSemantics(semantics, reason) {
