@@ -30,6 +30,7 @@ import {
 import {
   processTelegramTransition,
   redactMonitorText,
+  selectTelegramProxyUrls,
   sendTelegramMessage,
   sendTelegramTestNotification,
   type TelegramNotificationState,
@@ -555,6 +556,81 @@ test("Telegram delivery retries twice and succeeds on the third attempt", async 
     },
   });
   assert.equal(attempts, 3);
+});
+
+test("Telegram delivery falls back to an authenticated proxy after a direct network failure", async () => {
+  const attempts: Array<{ proxied: boolean }> = [];
+  const proxyUrlsSeen: string[] = [];
+
+  await sendTelegramMessage({
+    botToken: "12345:ABCDEF",
+    chatId: "42",
+    text: "test",
+    proxyUrls: ["http://alice:secret@proxy.example:8080"],
+    retryDelaysMs: [0],
+    sleep: async () => undefined,
+    proxyAgentFactory(proxyUrl) {
+      proxyUrlsSeen.push(proxyUrl);
+      return { kind: "test-proxy-agent" } as never;
+    },
+    fetchImpl: async (_url, init) => {
+      const proxied = Boolean((init as RequestInit & { agent?: unknown })?.agent);
+      attempts.push({ proxied });
+      if (!proxied) throw new TypeError("direct network unavailable");
+      return new Response("{}", { status: 200 });
+    },
+  });
+
+  assert.deepEqual(attempts, [{ proxied: false }, { proxied: true }]);
+  assert.deepEqual(proxyUrlsSeen, ["http://alice:secret@proxy.example:8080"]);
+});
+
+test("Telegram proxy selection deduplicates candidates and ignores selector failures", async () => {
+  const proxyUrls = await selectTelegramProxyUrls(async (attempt) => {
+    if (attempt === 2) throw new Error("database temporarily unavailable");
+    if (attempt === 3) return { proxyId: "proxy-duplicate", proxyUrl: "http://user:password@proxy.example:8080" };
+    return { proxyId: "proxy-primary", proxyUrl: "http://user:password@proxy.example:8080" };
+  });
+
+  assert.deepEqual(proxyUrls, ["http://user:password@proxy.example:8080"]);
+});
+
+test("Telegram proxy fallback ignores invalid proxy schemes and never leaks proxy credentials in errors", async () => {
+  let attempts = 0;
+  await assert.rejects(
+    sendTelegramMessage({
+      botToken: "12345:ABCDEF",
+      chatId: "42",
+      text: "test",
+      proxyUrls: [
+        "not-a-url",
+        "socks5://hidden:secret@proxy.example:1080",
+        "https://hidden:secret@proxy.example:8443",
+      ],
+      retryDelaysMs: [0],
+      sleep: async () => undefined,
+      fetchImpl: async () => {
+        attempts += 1;
+        throw new TypeError("hidden:secret should not escape");
+      },
+    }),
+    (error: unknown) => {
+      assert.match(String(error), /API is unreachable/);
+      assert.doesNotMatch(String(error), /hidden|secret|proxy\.example|12345:ABCDEF/);
+      return true;
+    },
+  );
+  assert.equal(attempts, 2);
+});
+
+test("Telegram proxy selection ignores null and unsupported candidates", async () => {
+  const proxyUrls = await selectTelegramProxyUrls(async (attempt) => {
+    if (attempt === 1) return null;
+    if (attempt === 2) return { proxyId: "proxy-socks", proxyUrl: "socks5://proxy.example:1080" };
+    return { proxyId: "proxy-https", proxyUrl: "https://proxy.example:8443" };
+  });
+
+  assert.deepEqual(proxyUrls, ["https://proxy.example:8443"]);
 });
 
 test("Telegram rejects missing configuration and surfaces failure after all retries", async () => {

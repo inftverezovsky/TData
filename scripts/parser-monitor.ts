@@ -14,7 +14,11 @@ import {
 } from "../backend/src/monitoring/parserMonitorPersistence";
 import { createProductionParserProbes } from "../backend/src/monitoring/parserMonitorProbes";
 import { redactMonitorText } from "../backend/src/monitoring/parserMonitorRedaction";
-import { processTelegramTransition, sendTelegramTestNotification } from "../backend/src/monitoring/parserMonitorTelegram";
+import {
+  processTelegramTransition,
+  selectTelegramProxyUrls,
+  sendTelegramTestNotification,
+} from "../backend/src/monitoring/parserMonitorTelegram";
 
 type NotifyMode = "never" | "telegram" | "test";
 
@@ -30,7 +34,8 @@ type RunnerFailureDependencies = {
   readNotificationState?: typeof readParserMonitorNotificationState;
   processTransition?: typeof processTelegramTransition;
   persistNotificationState?: typeof persistParserMonitorNotificationState;
-  readTelegramConfig?: typeof readTelegramConfiguration;
+  readTelegramConfig?: () => ReturnType<typeof readTelegramConfiguration>
+    | Promise<Awaited<ReturnType<typeof readTelegramDeliveryConfiguration>>>;
   logError?: (label: string, message: string) => void;
 };
 
@@ -47,7 +52,7 @@ async function main(signal?: AbortSignal) {
   const options = parseArgs(process.argv.slice(2));
   activeOptions = options;
   if (options.notify === "test") {
-    const telegram = readTelegramConfiguration();
+    const telegram = await readTelegramDeliveryConfiguration();
     await sendTelegramTestNotification(telegram);
     console.log(JSON.stringify({ ok: true, notification: "test-sent" }));
     return;
@@ -65,9 +70,9 @@ async function main(signal?: AbortSignal) {
   const files = persistParserMonitorReport(report, { directory: options.reportDirectory, retentionDays: 90 });
 
   if (options.notify === "telegram") {
-    const { botToken, chatId } = readTelegramConfiguration();
+    const telegram = await readTelegramDeliveryConfiguration();
     const previous = readParserMonitorNotificationState(options.reportDirectory);
-    const transition = await processTelegramTransition(report, previous, { botToken, chatId });
+    const transition = await processTelegramTransition(report, previous, telegram);
     persistParserMonitorNotificationState(transition.state, options.reportDirectory);
   }
 
@@ -153,6 +158,13 @@ function readTelegramConfiguration() {
   return { botToken, chatId };
 }
 
+async function readTelegramDeliveryConfiguration() {
+  const configuration = readTelegramConfiguration();
+  databaseMayBeInitialized = true;
+  const proxyUrls = await selectTelegramProxyUrls();
+  return { ...configuration, proxyUrls };
+}
+
 function parsePositiveInteger(value: string, flag: string) {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < 1) throw new ConfigurationError(`${flag} requires a positive integer`);
@@ -202,11 +214,11 @@ export async function handleParserMonitorRunnerFailure(
     }
 
     try {
-      const { botToken, chatId } = (dependencies.readTelegramConfig ?? readTelegramConfiguration)();
+      const telegram = await (dependencies.readTelegramConfig ?? readTelegramDeliveryConfiguration)();
       const transition = await (dependencies.processTransition ?? processTelegramTransition)(
         report,
         previous,
-        { botToken, chatId },
+        telegram,
       );
       (dependencies.persistNotificationState ?? persistParserMonitorNotificationState)(
         transition.state,
