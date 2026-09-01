@@ -72,6 +72,7 @@ export type TwelveNdrTournamentSearch = {
   gender: TwelveNdrGender;
   query: string;
   tournaments: TwelveNdrTournament[];
+  monitorCanaries?: TwelveNdrTournament[];
   summary: {
     total: number;
     matches: number;
@@ -176,6 +177,7 @@ export async function searchTwelveNdrTournaments(input: {
   gender?: string | null;
   query?: string | null;
   signal?: AbortSignal;
+  monitorMode?: boolean;
 }): Promise<TwelveNdrTournamentSearch> {
   const season = normalizeSeason(input.season);
   const gender = normalizeTwelveNdrGender(input.gender);
@@ -200,6 +202,7 @@ export async function searchTwelveNdrTournaments(input: {
     gender,
     query,
     tournaments,
+    monitorCanaries: input.monitorMode ? selectTwelveNdrMonitorCanaries(discovered) : undefined,
     summary: {
       total: tournaments.length,
       matches: tournaments.reduce((sum, tournament) => sum + (tournament.matchCount || 0), 0),
@@ -208,6 +211,22 @@ export async function searchTwelveNdrTournaments(input: {
       emptyReason: discovered.length > 0 && tournaments.length === 0 ? "date_window" : null,
     },
   };
+}
+
+export function selectTwelveNdrMonitorCanaries(
+  tournaments: readonly TwelveNdrTournament[],
+  limit = 5,
+) {
+  return tournaments
+    .filter((tournament) => tournament.status === "finished" && Boolean(tournament.tcode || tournament.id))
+    .slice()
+    .sort((left, right) => twelveNdrMonitorCanaryDate(right).localeCompare(twelveNdrMonitorCanaryDate(left))
+      || left.title.localeCompare(right.title))
+    .slice(0, Math.max(1, Math.trunc(limit)));
+}
+
+function twelveNdrMonitorCanaryDate(tournament: Pick<TwelveNdrTournament, "startDate" | "endDate">) {
+  return tournament.endDate || tournament.startDate || "0000-00-00";
 }
 
 export async function fetchTwelveNdrTournament(input: {

@@ -8,7 +8,18 @@ import {
   parseBeachVolleyRuCalendar,
   parseBeachVolleyRuMatches,
   resolveBeachVolleyRuUpcomingWindow,
+  selectBeachVolleyRuMonitorCanaries,
 } from "../backend/src/sources/tbvolley/beach.volley.ru";
+
+test("BeachVolleyRu monitor canaries select the most recent finished tournaments immutably", () => {
+  const input = [
+    { id: "future", title: "Future", status: "upcoming", startDate: "2026-09-10", endDate: "2026-09-12" },
+    { id: "old", title: "Old", status: "finished", startDate: "2026-07-01", endDate: "2026-07-03" },
+    { id: "recent", title: "Recent", status: "finished", startDate: "2026-08-20", endDate: "2026-08-23" },
+  ] as any;
+  assert.deepEqual(selectBeachVolleyRuMonitorCanaries(input).map((item) => item.id), ["recent", "old"]);
+  assert.deepEqual(input.map((item: any) => item.id), ["future", "old", "recent"]);
+});
 
 test("BeachVolleyRu calendar parser keeps Russia Cup and Championship events", () => {
   const html = `

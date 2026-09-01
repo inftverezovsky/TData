@@ -7,6 +7,7 @@ const LIQUIPEDIA_SCOPES = ["dota2", "counterstrike", "leagueoflegends", "valoran
 const TLINE_BUILTIN_PROVIDERS = ["volley-ru", "nffr-floorball", "hockey-by"] as const;
 const MAX_SEMANTIC_CANARY_CANDIDATES = 5;
 const HLTV_FALLBACK_EVENT_URL = "https://www.hltv.org/events/8249/blast-open-porto-2026";
+const DLTV_HISTORICAL_CANARY_URL = "https://dltv.org/events/the-international-2026";
 const WTT_PRIMARY_HOSTNAME = "wtt-web-frontdoor-cthahjeqhbh6aqe3.a01.azurefd.net";
 
 type LiquipediaScope = typeof LIQUIPEDIA_SCOPES[number];
@@ -553,9 +554,42 @@ function createDltvProbe(dependencies: StaticParserProbeDependencies): ParserPro
       });
       throwIfAllCandidateLoadsFailed(canary, "DLTV event detail candidates failed");
       const matches = arrayOf((canary.detail as any)?.matches);
+      if (!canary.detail && canary.failures.length === 0 && isExplicitDltvEmptyDetail(canary.lastDetail)) {
+        const historical: any = await runDltv("event", DLTV_HISTORICAL_CANARY_URL, {
+          noCache: true,
+          signal,
+          monitorMode: true,
+        });
+        assertFreshResult(historical, "DLTV historical event detail");
+        const historicalFailure = buildDltvProbeFailure(arrayOf(historical?.matchPageFailures));
+        if (historicalFailure) throw new MonitorProbeError(historicalFailure.errorClass, historicalFailure.summary);
+        const historicalMatches = arrayOf(historical?.matches);
+        if (!historicalMatches.some((match) => Boolean(clean(match?.id)) && Boolean(clean(match?.team1)) && Boolean(clean(match?.team2)))) {
+          throw new MonitorProbeError("schema_drift", "DLTV current events are empty and the historical canary yielded no semantic matches");
+        }
+        return observation(
+          events.length,
+          0,
+          true,
+          true,
+          `DLTV: ${events.length} current events explicitly publish 0 teams/matches; historical canary verified ${historicalMatches.length} semantic matches`,
+        );
+      }
       return observation(events.length, matches.length, Boolean(canary.detail), false, `DLTV: ${events.length} events; ${canary.attempted} candidates checked; ${matches.length} semantic matches`);
     },
   };
+}
+
+function isExplicitDltvEmptyDetail(detail: unknown) {
+  const record = detail && typeof detail === "object" ? detail as Record<string, any> : null;
+  return Boolean(
+    record
+    && arrayOf(record.matches).length === 0
+    && arrayOf(record.matchPageFailures).length === 0
+    && record.event
+    && arrayOf(record.event.participants).length === 0
+    && arrayOf(record.event.matchUrls).length === 0,
+  );
 }
 
 export function buildDltvProbeFailure(failures: readonly unknown[]): {
@@ -615,7 +649,7 @@ function createVolleyballWorldProbe(dependencies: StaticParserProbeDependencies)
     source: "volleyballworld",
     hostname: "en.volleyballworld.com",
     required: true,
-    timeoutMs: 120_000,
+    timeoutMs: 270_000,
     async run(_attempt, signal) {
       signal.throwIfAborted();
       const { searchAllVolleyballWorldBeachTournaments } = await (dependencies.loadVolleyballWorld?.()
@@ -674,12 +708,13 @@ function createBeachVolleyRuProbe(dependencies: StaticParserProbeDependencies): 
       signal.throwIfAborted();
       const source = await (dependencies.loadBeachVolleyRu?.()
         ?? import("@backend/sources/tbvolley/beach.volley.ru"));
-      const result = await source.searchBeachVolleyRuTournaments({ gender: "men", signal });
+      const result = await source.searchBeachVolleyRuTournaments({ gender: "men", signal, monitorMode: true });
       signal.throwIfAborted();
       return runTournamentMatchCanary({
         result,
         label: "beach.volley.ru",
         signal,
+        historicalCandidates: arrayOf(result.monitorCanaries),
         async loadDetail(candidate, requestSignal) {
           return source.fetchBeachVolleyRuTournament({
             ...(candidate as (typeof result.tournaments)[number]),
@@ -732,12 +767,13 @@ function createTwelveNdrProbe(
       signal.throwIfAborted();
       const source = await (dependencies.loadTwelveNdr?.()
         ?? import("@backend/sources/tbvolley/TwelveNdr"));
-      const result = await source.searchTwelveNdrTournaments({ source: sourceId, calendarMode, gender: "men", signal });
+      const result = await source.searchTwelveNdrTournaments({ source: sourceId, calendarMode, gender: "men", signal, monitorMode: true });
       signal.throwIfAborted();
       return runTournamentMatchCanary({
         result,
         label: sourceId,
         signal,
+        historicalCandidates: arrayOf(result.monitorCanaries),
         async loadDetail(candidate, requestSignal) {
           return source.fetchTwelveNdrTournament({
             ...(candidate as (typeof result.tournaments)[number]),
@@ -819,7 +855,10 @@ function createWttProbe(dependencies: StaticParserProbeDependencies): ParserProb
       signal.throwIfAborted();
       const normalized = source.normalizeWttTournamentEvents(raw);
       const range = source.resolveWttDateRange({ days: 90 });
-      const inWindow = normalized.filter((event: any) => source.isWttTournamentInRange(event, range.fromDate, range.toDate));
+      const inWindow = sortWttCanaryCandidates(
+        normalized.filter((event: any) => source.isWttTournamentInRange(event, range.fromDate, range.toDate)),
+        range.fromDate,
+      );
       let detailChecked = false;
       if (inWindow.length > 0) {
         const canary = await findSemanticCanary({
@@ -827,7 +866,7 @@ function createWttProbe(dependencies: StaticParserProbeDependencies): ParserProb
           maxCandidates: MAX_SEMANTIC_CANARY_CANDIDATES,
           signal,
           async load(event: any) {
-            const schedule = await source.fetchWttSchedule(event.eventId, { allowApiFallback: false, signal });
+            const schedule = await source.fetchWttSchedule(event.eventId, { allowApiFallback: true, signal });
             try {
               return source.normalizeWttSchedule(schedule, {
                 eventId: event.eventId,
@@ -1066,6 +1105,7 @@ export async function runTournamentMatchCanary(input: {
   signal: AbortSignal;
   maxCandidates?: number;
   requireRawSummary?: boolean;
+  historicalCandidates?: readonly unknown[];
   loadDetail(candidate: unknown, signal: AbortSignal): Promise<unknown>;
 }): Promise<ProbeObservation> {
   input.signal.throwIfAborted();
@@ -1120,6 +1160,35 @@ export async function runTournamentMatchCanary(input: {
   });
   throwIfAllCandidateLoadsFailed(canary, `${input.label} detail candidates failed`);
   if (!canary.detail) {
+    const futureScheduleEmpty = discovery.tournaments.every(isFutureTournamentWithoutPublishedSchedule);
+    if (futureScheduleEmpty && input.historicalCandidates?.length) {
+      const historical = await findSemanticCanary({
+        candidates: input.historicalCandidates.filter(isSemanticTournamentCandidate),
+        maxCandidates: input.maxCandidates ?? MAX_SEMANTIC_CANARY_CANDIDATES,
+        signal: input.signal,
+        async load(candidate) {
+          const detail = await input.loadDetail(candidate, input.signal);
+          input.signal.throwIfAborted();
+          const parsed = assertTournamentDetailSchema(detail, `${input.label} historical canary`);
+          return {
+            detail,
+            rawMatchCount: parsed.matches.length,
+            semanticMatches: parsed.matches.filter(isSemanticTournamentMatch),
+          };
+        },
+        isSemantic: (detail) => detail.semanticMatches.length > 0,
+      });
+      throwIfAllCandidateLoadsFailed(historical, `${input.label} historical detail candidates failed`);
+      if (historical.detail) {
+        return observation(
+          discovery.rawCandidates,
+          0,
+          true,
+          true,
+          `${input.label}: ${discovery.tournaments.length} future tournament schedules are not published yet; historical canary verified ${historical.detail.semanticMatches.length} semantic matches`,
+        );
+      }
+    }
     throw new MonitorProbeError(
       "schema_drift",
       `${input.label}: ${discovery.tournaments.length} active tournaments discovered, but ${canary.attempted} fresh details yielded no semantic match schedule`,
@@ -1133,6 +1202,13 @@ export async function runTournamentMatchCanary(input: {
     false,
     `${input.label}: ${discovery.rawCandidates} raw tournaments, ${discovery.tournaments.length} after filters; ${canary.attempted} candidates checked; ${canary.detail.rawMatchCount} raw detail matches, ${canary.detail.semanticMatches.length} semantic`,
   );
+}
+
+function isFutureTournamentWithoutPublishedSchedule(value: unknown) {
+  const record = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const startDate = clean(record.startDate);
+  const today = new Date().toISOString().slice(0, 10);
+  return clean(record.status) === "upcoming" && /^\d{4}-\d{2}-\d{2}$/u.test(startDate) && startDate > today;
 }
 
 function assertTournamentSearchSchema(result: unknown, label: string, requireRawSummary: boolean) {
@@ -1279,12 +1355,14 @@ export async function findSemanticCanary<T, Detail>(input: {
 }): Promise<{
   candidate: T | null;
   detail: Detail | null;
+  lastDetail: Detail | null;
   attempted: number;
   failures: Array<{ candidate: T; error: unknown }>;
 }> {
   const failures: Array<{ candidate: T; error: unknown }> = [];
   const limit = Math.max(1, Math.trunc(input.maxCandidates ?? MAX_SEMANTIC_CANARY_CANDIDATES));
   let attempted = 0;
+  let lastDetail: Detail | null = null;
 
   for (const candidate of input.candidates.slice(0, limit)) {
     input.signal?.throwIfAborted();
@@ -1292,14 +1370,41 @@ export async function findSemanticCanary<T, Detail>(input: {
     try {
       const detail = await input.load(candidate);
       input.signal?.throwIfAborted();
-      if (input.isSemantic(detail)) return { candidate, detail, attempted, failures };
+      lastDetail = detail;
+      if (input.isSemantic(detail)) return { candidate, detail, lastDetail, attempted, failures };
     } catch (error) {
       input.signal?.throwIfAborted();
       failures.push({ candidate, error });
     }
   }
 
-  return { candidate: null, detail: null, attempted, failures };
+  return { candidate: null, detail: null, lastDetail, attempted, failures };
+}
+
+export function sortWttCanaryCandidates<T extends { startDate?: unknown; endDate?: unknown }>(
+  events: readonly T[],
+  referenceDate = new Date().toISOString().slice(0, 10),
+) {
+  return events.slice().sort((left, right) => (
+    wttCanaryDistance(left, referenceDate) - wttCanaryDistance(right, referenceDate)
+    || clean(left.startDate).localeCompare(clean(right.startDate))
+  ));
+}
+
+function wttCanaryDistance(event: { startDate?: unknown; endDate?: unknown }, referenceDate: string) {
+  const start = parseMonitorDate(clean(event.startDate));
+  const end = parseMonitorDate(clean(event.endDate)) ?? start;
+  const reference = parseMonitorDate(referenceDate);
+  if (reference === null || (start === null && end === null)) return Number.MAX_SAFE_INTEGER;
+  if (start !== null && start <= reference && (end === null || end >= reference)) return 0;
+  if (start !== null && start > reference) return start - reference;
+  return end === null ? Number.MAX_SAFE_INTEGER : reference - end + 365 * 86_400_000;
+}
+
+function parseMonitorDate(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(value)) return null;
+  const time = new Date(`${value}T00:00:00.000Z`).getTime();
+  return Number.isFinite(time) ? time : null;
 }
 
 function throwIfAllCandidateLoadsFailed(
@@ -1380,7 +1485,10 @@ function classifySourceError(value: unknown): "cloudflare_block" | "upstream_tim
 
 function classifyProbeError(error: unknown): ParserProbeErrorClass {
   if (error instanceof MonitorProbeError) return error.errorClass;
-  return classifySourceError(error instanceof Error ? error.message : error);
+  const typedClass = error && typeof error === "object"
+    ? (error as { errorClass?: unknown }).errorClass
+    : undefined;
+  return classifySourceError(typedClass || (error instanceof Error ? error.message : error));
 }
 
 function arrayOf(value: unknown): any[] {

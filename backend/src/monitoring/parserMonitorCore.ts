@@ -463,12 +463,31 @@ async function waitForProbeCleanup(operation: Promise<unknown>, cleanupGraceMs: 
 
 function classifyMonitorError(error: unknown): ParserProbeErrorClass {
   if (error instanceof MonitorProbeError) return error.errorClass;
+  const typedClass = readParserProbeErrorClass(error);
+  if (typedClass) return typedClass;
   const message = safeErrorMessage(error).toLowerCase();
   if (/cloudflare|just a moment|challenge-platform|http 403/.test(message)) return "cloudflare_block";
   if (/abort|timed?\s*out|timeout/.test(message)) return "upstream_timeout";
   if (/404|not found/.test(message)) return "placeholder_404";
   if (/selector|schema|unexpected|invalid json|invalid html/.test(message)) return "schema_drift";
   return "parse_failed";
+}
+
+function readParserProbeErrorClass(error: unknown): ParserProbeErrorClass | null {
+  const value = error && typeof error === "object"
+    ? String((error as { errorClass?: unknown }).errorClass || "")
+    : "";
+  const allowed: readonly ParserProbeErrorClass[] = [
+    "cloudflare_block",
+    "upstream_timeout",
+    "schema_drift",
+    "parse_failed",
+    "stale_cache",
+    "filter_excluded",
+    "placeholder_404",
+    "uncovered_provider",
+  ];
+  return allowed.includes(value as ParserProbeErrorClass) ? value as ParserProbeErrorClass : null;
 }
 
 function defaultSummary(status: ParserProbeStatus, observation: ProbeObservation) {

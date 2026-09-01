@@ -17,6 +17,7 @@ import {
   getTournamentMonitorCoverage,
   runLiquipediaSemanticCanary,
   runTournamentMatchCanary,
+  sortWttCanaryCandidates,
 } from "../backend/src/monitoring/parserMonitorProbes";
 import { MonitorProbeError } from "../backend/src/monitoring/parserMonitorCore";
 import { buildMonitorRequestPlan } from "../backend/src/sources/monitorCanary";
@@ -67,8 +68,22 @@ test("semantic canary iteration skips empty and failed candidates before stoppin
   assert.deepEqual(visited, ["empty", "broken", "good"]);
   assert.equal(result.candidate, "good");
   assert.deepEqual(result.detail, [{ id: "match-1" }]);
+  assert.deepEqual(result.lastDetail, [{ id: "match-1" }]);
   assert.equal(result.attempted, 3);
   assert.equal(result.failures.length, 1);
+});
+
+test("semantic canary retains the last structurally loaded empty detail", async () => {
+  const result = await findSemanticCanary({
+    candidates: ["first", "second"],
+    async load(candidate) {
+      return { candidate, matches: [] };
+    },
+    isSemantic: (detail) => detail.matches.length > 0,
+  });
+
+  assert.equal(result.detail, null);
+  assert.deepEqual(result.lastDetail, { candidate: "second", matches: [] });
 });
 
 test("semantic canary iteration stops immediately when its monitor signal is aborted", async () => {
@@ -713,6 +728,59 @@ test("fresh-probe failures retain cloudflare and stale-cache classifications", a
   );
 });
 
+test("HLTV monitor preserves an upstream typed Cloudflare error", async () => {
+  const hltv = createStaticParserProbesWithDependencies({
+    loadHltv: async () => ({
+      runHltvScript: async () => {
+        throw Object.assign(new Error("challenge page"), { errorClass: "cloudflare_block" });
+      },
+    }),
+  } as any).find((candidate) => candidate.id === "hltv");
+  assert.ok(hltv);
+  await assert.rejects(
+    hltv.run(1, new AbortController().signal),
+    (error: unknown) => error instanceof MonitorProbeError && error.errorClass === "cloudflare_block",
+  );
+});
+
+test("DLTV monitor accepts an explicit current empty state only after a historical semantic canary", async () => {
+  const visited: string[] = [];
+  const dltv = createStaticParserProbesWithDependencies({
+    loadDltv: async () => ({
+      runDltv: async (mode: string, candidate?: string) => {
+        if (mode === "events") {
+          return { ok: true, events: [{ id: "current", url: "https://dltv.org/events/current" }] };
+        }
+        visited.push(String(candidate));
+        if (String(candidate).includes("the-international-2026")) {
+          return {
+            ok: true,
+            event: { participants: [{ name: "Alpha" }], matchUrls: ["https://dltv.org/matches/1"] },
+            matches: [{ id: "1", team1: "Alpha", team2: "Beta" }],
+            matchPageFailures: [],
+          };
+        }
+        return {
+          ok: true,
+          event: { participants: [], matchUrls: [] },
+          matches: [],
+          matchPageFailures: [],
+        };
+      },
+    }),
+  } as any).find((candidate) => candidate.id === "dltv");
+  assert.ok(dltv);
+
+  const result = await dltv.run(1, new AbortController().signal);
+  assert.equal(result.normalizedItems, 0);
+  assert.equal(result.detailChecked, true);
+  assert.equal(result.explicitEmpty, true);
+  assert.deepEqual(visited, [
+    "https://dltv.org/events/current",
+    "https://dltv.org/events/the-international-2026",
+  ]);
+});
+
 test("WTT monitor validates raw schedule with the production normalizer", async () => {
   let normalizerCalls = 0;
   const probes = createStaticParserProbesWithDependencies({
@@ -761,6 +829,44 @@ test("WTT monitor checks later in-window candidates when the first schedule has 
   const result = await probe.run(1, new AbortController().signal);
   assert.deepEqual(visited, ["wtt-empty", "wtt-good"]);
   assert.equal(result.detailChecked, true);
+});
+
+test("WTT monitor prioritizes the current event and enables the production API fallback", async () => {
+  const visited: Array<{ id: string; allowApiFallback: boolean }> = [];
+  const probes = createStaticParserProbesWithDependencies({
+    loadWtt: async () => ({
+      fetchWttEvents: async () => [{ id: "raw-current" }, { id: "raw-future" }],
+      normalizeWttTournamentEvents: () => [
+        { eventId: "far-future", timeZoneId: "2", startDate: "2026-11-01", endDate: "2026-11-05" },
+        { eventId: "current", timeZoneId: "75", startDate: "2026-08-31", endDate: "2026-09-05" },
+      ],
+      resolveWttDateRange: () => ({ fromDate: "2026-09-01", toDate: "2026-11-29" }),
+      isWttTournamentInRange: () => true,
+      fetchWttSchedule: async (eventId: string, options: { allowApiFallback: boolean }) => {
+        visited.push({ id: eventId, allowApiFallback: options.allowApiFallback });
+        return [{ eventId }];
+      },
+      normalizeWttSchedule: (_schedule: unknown, context: { eventId: string }) => ({
+        matches: context.eventId === "current" ? [{ id: "match-1" }] : [],
+      }),
+    }),
+  } as any);
+  const probe = probes.find((candidate) => candidate.id === "wtt");
+  assert.ok(probe);
+
+  const result = await probe.run(1, new AbortController().signal);
+  assert.equal(result.detailChecked, true);
+  assert.deepEqual(visited, [{ id: "current", allowApiFallback: true }]);
+});
+
+test("WTT canary ordering is immutable and ranks an overlapping event before future events", () => {
+  const input = [
+    { eventId: "future", startDate: "2026-10-01", endDate: "2026-10-05" },
+    { eventId: "current", startDate: "2026-08-31", endDate: "2026-09-05" },
+  ];
+  const sorted = sortWttCanaryCandidates(input, "2026-09-01");
+  assert.deepEqual(sorted.map((event) => event.eventId), ["current", "future"]);
+  assert.deepEqual(input.map((event) => event.eventId), ["future", "current"]);
 });
 
 test("KHL monitor fail-closes when production detail normalization rejects upstream schema", async () => {
@@ -897,6 +1003,40 @@ test("VolleyballWorld monitor uses one shared all-gender range with raw counters
   assert.equal(receivedSignal, signal);
   assert.equal(result.rawCandidates, 2);
   assert.equal(result.detailChecked, true);
+  assert.equal(probe.timeoutMs, 270_000);
+});
+
+test("future beach and OEVV schedules use recent finished semantic canaries", async () => {
+  const futureSearch = {
+    ok: true,
+    tournaments: [{ id: "future", title: "Future", status: "upcoming", startDate: "2099-09-10" }],
+    monitorCanaries: [{ id: "history", title: "History", status: "finished", startDate: "2099-08-01" }],
+    summary: { total: 1, matches: 0, rawTotal: 2, filteredOut: 1, emptyReason: null },
+  };
+  const source = (searchName: string, detailName: string) => ({
+    [searchName]: async () => futureSearch,
+    [detailName]: async (candidate: { id: string }) => ({
+      ...candidate,
+      matches: candidate.id === "history"
+        ? [{ id: "match-1", teamA: "Alpha", teamB: "Beta" }]
+        : [],
+      matchCount: candidate.id === "history" ? 1 : 0,
+    }),
+  });
+  const probes = createStaticParserProbesWithDependencies({
+    loadBeachVolleyRu: async () => source("searchBeachVolleyRuTournaments", "fetchBeachVolleyRuTournament"),
+    loadTwelveNdr: async () => source("searchTwelveNdrTournaments", "fetchTwelveNdrTournament"),
+  } as any);
+
+  for (const id of ["beachvolleyru", "twelvendroevv"]) {
+    const probe = probes.find((candidate) => candidate.id === id);
+    assert.ok(probe);
+    const result = await probe.run(1, new AbortController().signal);
+    assert.equal(result.normalizedItems, 0);
+    assert.equal(result.detailChecked, true);
+    assert.equal(result.explicitEmpty, true);
+    assert.match(result.summary || "", /historical canary/i);
+  }
 });
 
 test("VolleyballWorld monitor rejects shared results without both gender split counters", async () => {

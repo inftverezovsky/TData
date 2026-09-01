@@ -8,7 +8,18 @@ import {
   isActiveTwelveNdrMatch,
   parseTwelveNdrCalendarJson,
   parseTwelveNdrTournamentPage,
+  selectTwelveNdrMonitorCanaries,
 } from "../backend/src/sources/tbvolley/TwelveNdr";
+
+test("12ndr monitor canaries select the most recent finished tournaments immutably", () => {
+  const input = [
+    { tcode: "FUTURE", title: "Future", status: "upcoming", startDate: "2026-09-10", endDate: "2026-09-12" },
+    { tcode: "OLD", title: "Old", status: "finished", startDate: "2026-07-01", endDate: "2026-07-03" },
+    { tcode: "RECENT", title: "Recent", status: "finished", startDate: "2026-08-20", endDate: "2026-08-23" },
+  ] as any;
+  assert.deepEqual(selectTwelveNdrMonitorCanaries(input).map((item) => item.tcode), ["RECENT", "OLD"]);
+  assert.deepEqual(input.map((item: any) => item.tcode), ["FUTURE", "OLD", "RECENT"]);
+});
 
 test("12ndr calendar parser keeps CSVP rows and extracts tcode", () => {
   const json = JSON.stringify([

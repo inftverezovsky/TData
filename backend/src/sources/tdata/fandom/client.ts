@@ -107,17 +107,43 @@ export async function fetchFandomTournamentCargoEvents(
   const now = new Date();
   const today = now.toISOString().slice(0, 10);
   const futureLimit = new Date(now.getTime() + FANDOM_EVENTS_FUTURE_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const fields = "Name,OverviewPage,DateStart,Date,Region,TournamentLevel";
+  const where = `DateStart >= '${today}' AND DateStart <= '${futureLimit}'`;
+
+  try {
+    const rows = await fandomCargoExportRequest(apiUrl, {
+      tables: "Tournaments",
+      fields,
+      where,
+      orderBy: "DateStart ASC",
+      limit: 50,
+      signal: options.signal,
+    });
+    return normalizeFandomCargoQueryRows(rows);
+  } catch {
+    options.signal?.throwIfAborted();
+    // CargoExport avoids the heavily rate-limited MediaWiki API. Keep the API
+    // as a compatibility fallback for installations where the special page is blocked.
+  }
+
   const json = await fandomApiRequest(apiUrl, {
     action: "cargoquery",
     tables: "Tournaments",
-    fields: "Name,OverviewPage,DateStart,Date,Region,TournamentLevel",
-    where: `DateStart >= '${today}' AND DateStart <= '${futureLimit}'`,
+    fields,
+    where,
     order_by: "DateStart ASC",
     limit: "50",
     format: "json",
   }, options);
 
   return Array.isArray(json?.cargoquery) ? json.cargoquery : [];
+}
+
+function normalizeFandomCargoQueryRows(rows: readonly unknown[]) {
+  return rows.map((row) => {
+    const record = row && typeof row === "object" ? row as Record<string, unknown> : {};
+    return record.title && typeof record.title === "object" ? record : { title: record };
+  });
 }
 
 export async function fetchFandomMatchScheduleCargo(input: {

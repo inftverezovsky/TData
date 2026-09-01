@@ -198,6 +198,23 @@ test("a global monitor abort cancels the retry wait and prevents another attempt
   assert.equal(attempts, 1);
 });
 
+test("monitor runner classifies plain typed parser errors without losing their error class", async () => {
+  const report = await runParserMonitor({
+    probes: [{
+      id: "typed",
+      source: "typed",
+      hostname: "typed.example",
+      required: true,
+      async run() {
+        throw Object.assign(new Error("challenge"), { errorClass: "cloudflare_block" });
+      },
+    }],
+    retryDelaysMs: [],
+  });
+
+  assert.equal(report.results[0].errorClass, "cloudflare_block");
+});
+
 function warningProbe(id: string, required: boolean, onRun: () => void): ParserProbe {
   return {
     id,

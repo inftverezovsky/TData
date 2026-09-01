@@ -69,6 +69,7 @@ export type BeachVolleyRuTournamentSearch = {
   kind: BeachVolleyRuTournamentKind;
   query: string;
   tournaments: BeachVolleyRuTournament[];
+  monitorCanaries?: BeachVolleyRuTournament[];
   summary: {
     total: number;
     cup: number;
@@ -149,6 +150,7 @@ export async function searchBeachVolleyRuTournaments(input: {
   kind?: string | null;
   query?: string | null;
   signal?: AbortSignal;
+  monitorMode?: boolean;
 } = {}): Promise<BeachVolleyRuTournamentSearch> {
   const year = normalizeYear(input.year);
   const gender = normalizeBeachVolleyRuGender(input.gender);
@@ -172,6 +174,7 @@ export async function searchBeachVolleyRuTournaments(input: {
     kind,
     query,
     tournaments,
+    monitorCanaries: input.monitorMode ? selectBeachVolleyRuMonitorCanaries(discovered) : undefined,
     summary: {
       total: tournaments.length,
       cup: tournaments.filter((tournament) => tournament.kind === "cup").length,
@@ -181,6 +184,22 @@ export async function searchBeachVolleyRuTournaments(input: {
       emptyReason: discovered.length > 0 && tournaments.length === 0 ? "date_window" : null,
     },
   };
+}
+
+export function selectBeachVolleyRuMonitorCanaries(
+  tournaments: readonly BeachVolleyRuTournament[],
+  limit = 5,
+) {
+  return tournaments
+    .filter((tournament) => tournament.status === "finished" && Boolean(tournament.eventId || tournament.id))
+    .slice()
+    .sort((left, right) => monitorCanaryDate(right).localeCompare(monitorCanaryDate(left))
+      || left.title.localeCompare(right.title))
+    .slice(0, Math.max(1, Math.trunc(limit)));
+}
+
+function monitorCanaryDate(tournament: Pick<BeachVolleyRuTournament, "startDate" | "endDate">) {
+  return tournament.endDate || tournament.startDate || "0000-00-00";
 }
 
 export async function fetchBeachVolleyRuTournament(input: {
