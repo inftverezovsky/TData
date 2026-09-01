@@ -11,6 +11,7 @@ import {
 } from "../backend/src/sources/tdata/hltv/importTournament";
 import { forceKillChild } from "../backend/src/sources/tdata/hltv/scraper/execute";
 import { maskProxyUrl } from "../backend/src/proxy/proxySelector";
+import { validateHltvRepairSnapshot } from "../backend/src/sources/tdata/hltv/repairSnapshot";
 
 // The browser scraper is plain ESM because it is executed directly by Node in production.
 // @ts-expect-error The production browser helper intentionally remains plain ESM.
@@ -330,6 +331,89 @@ test("HLTV current match fixture produces a semantic match", () => {
     unix_time: 1_788_091_200,
     format: "BO3",
   }]);
+});
+
+test("HLTV repair snapshot accepts a fresh official event snapshot", () => {
+  const fetchedAt = new Date("2026-09-01T11:00:00.000Z");
+  const matches = validateHltvRepairSnapshot({
+    eventId: "8249",
+    eventUrl: "https://www.hltv.org/events/8249/blast-open-porto-2026",
+    title: "BLAST Open Porto 2026",
+    fetchedAt: fetchedAt.toISOString(),
+    source: "hltv-official",
+    matches: [{
+      id: "2396947",
+      sourceUrl: "https://www.hltv.org/matches/2396947/falcons-vs-g2-blast-open-porto-2026",
+      tournament: "BLAST Open Porto 2026",
+      team1: "Falcons",
+      team2: "G2",
+      unix_time: 1_788_537_600,
+      format: "BO3",
+      stage: "Quarterfinal",
+    }],
+  }, {
+    eventId: "8249",
+    eventUrl: "https://www.hltv.org/events/8249/blast-open-porto-2026",
+    title: "BLAST Open Porto 2026",
+    now: fetchedAt,
+  });
+
+  assert.equal(matches.length, 1);
+  assert.equal(matches[0].id, "2396947");
+  assert.equal(matches[0].format, "BO3");
+});
+
+test("HLTV repair snapshot rejects untrusted, stale, empty, and duplicate input", () => {
+  const expected = {
+    eventId: "8249",
+    eventUrl: "https://www.hltv.org/events/8249/blast-open-porto-2026",
+    title: "BLAST Open Porto 2026",
+    now: new Date("2026-09-01T12:00:00.000Z"),
+  };
+  const validMatch = {
+    id: "2396947",
+    sourceUrl: "https://www.hltv.org/matches/2396947/falcons-vs-g2-blast-open-porto-2026",
+    tournament: "BLAST Open Porto 2026",
+    team1: "Falcons",
+    team2: "G2",
+    unix_time: 1_788_537_600,
+    format: "BO3",
+  };
+  const base = {
+    eventId: "8249",
+    eventUrl: expected.eventUrl,
+    title: expected.title,
+    fetchedAt: "2026-09-01T11:00:00.000Z",
+    source: "hltv-official",
+    matches: [validMatch],
+  };
+
+  assert.throws(() => validateHltvRepairSnapshot({ ...base, source: "manual" }, expected), /official/i);
+  assert.throws(() => validateHltvRepairSnapshot({ ...base, fetchedAt: "2026-08-30T11:00:00.000Z" }, expected), /fresh/i);
+  assert.throws(() => validateHltvRepairSnapshot({ ...base, matches: [] }, expected), /non-empty/i);
+  assert.throws(() => validateHltvRepairSnapshot({ ...base, matches: [validMatch, validMatch] }, expected), /duplicate/i);
+  assert.throws(() => validateHltvRepairSnapshot({
+    ...base,
+    matches: [{ ...validMatch, sourceUrl: "https://example.com/matches/2396947/fake" }],
+  }, expected), /match URL/i);
+  assert.throws(() => validateHltvRepairSnapshot({ ...base, eventId: "8250" }, expected), /event ID/i);
+  assert.throws(() => validateHltvRepairSnapshot({ ...base, eventUrl: "https://www.hltv.org/events/8250/other" }, expected), /event URL/i);
+  assert.throws(() => validateHltvRepairSnapshot({ ...base, title: "Other event" }, expected), /title/i);
+  assert.throws(() => validateHltvRepairSnapshot({ ...base, fetchedAt: "not-a-date" }, expected), /ISO timestamp/i);
+  assert.throws(() => validateHltvRepairSnapshot({ ...base, fetchedAt: "2026-09-01T12:06:00.000Z" }, expected), /fresh/i);
+  assert.throws(() => validateHltvRepairSnapshot({ ...base, matches: Array.from({ length: 257 }, () => validMatch) }, expected), /safety limit/i);
+  assert.throws(() => validateHltvRepairSnapshot({ ...base, matches: [null] }, expected), /must be an object/i);
+  assert.throws(() => validateHltvRepairSnapshot({ ...base, matches: [{ ...validMatch, id: "bad" }] }, expected), /match ID/i);
+  assert.throws(() => validateHltvRepairSnapshot({
+    ...base,
+    matches: [{ ...validMatch, tournament: "Other event" }],
+  }, expected), /another tournament/i);
+  assert.throws(() => validateHltvRepairSnapshot({ ...base, matches: [{ ...validMatch, unix_time: 0 }] }, expected), /timestamp/i);
+  assert.throws(() => validateHltvRepairSnapshot({ ...base, matches: [{ ...validMatch, format: "many" }] }, expected), /format/i);
+  assert.throws(() => validateHltvRepairSnapshot({
+    ...base,
+    matches: [{ ...validMatch, sourceUrl: "https://user:pass@www.hltv.org/matches/2396947/fake" }],
+  }, expected), /match URL/i);
 });
 
 test("HLTV event title excludes the LAN badge and repairs the legacy glued suffix", () => {

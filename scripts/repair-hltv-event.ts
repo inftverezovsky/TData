@@ -12,6 +12,7 @@ import {
   saveHltvTournamentMatches,
 } from "@backend/sources/tdata/hltv/importTournament";
 import { runHltvScript } from "@backend/sources/tdata/hltv/scraper";
+import { validateHltvRepairSnapshot } from "@backend/sources/tdata/hltv/repairSnapshot";
 
 const DEFAULT_EVENT_ID = "8249";
 const DEFAULT_TITLE = "BLAST Open Porto 2026";
@@ -27,7 +28,16 @@ async function main() {
   if (extractHltvEventId(url) !== eventId) throw new Error("HLTV URL does not match the requested event id");
   if (!title) throw new Error("HLTV title must not be empty");
 
-  const scrape = await runHltvScript("event", url, { noCache: true });
+  const scrape = args["snapshot-stdin"]
+    ? {
+        ok: true,
+        matches: validateHltvRepairSnapshot(await readJsonFromStdin(), {
+          eventId,
+          eventUrl: url,
+          title,
+        }),
+      }
+    : await runHltvScript("event", url, { noCache: true });
   const matches = Array.isArray(scrape.matches) ? scrape.matches : [];
   if (!scrape.ok || matches.length === 0 || scrape.stale) {
     throw new Error(`Fresh HLTV validation failed; refusing repair (${scrape.errorClass || scrape.error || "empty result"})`);
@@ -146,7 +156,7 @@ async function main() {
 function parseArguments(values: readonly string[]) {
   const strings = new Map<string, string>();
   const booleans = new Set<string>();
-  const booleanNames = new Set(["apply", "backup-confirmed"]);
+  const booleanNames = new Set(["apply", "backup-confirmed", "snapshot-stdin"]);
   const stringNames = new Set(["event-id", "title", "url"]);
 
   for (let index = 0; index < values.length; index += 1) {
@@ -171,10 +181,30 @@ function parseArguments(values: readonly string[]) {
   return {
     apply: booleans.has("apply"),
     "backup-confirmed": booleans.has("backup-confirmed"),
+    "snapshot-stdin": booleans.has("snapshot-stdin"),
     "event-id": strings.get("event-id") ?? DEFAULT_EVENT_ID,
     title: strings.get("title") ?? DEFAULT_TITLE,
     url: strings.get("url") ?? DEFAULT_URL,
   };
+}
+
+async function readJsonFromStdin() {
+  const chunks: Buffer[] = [];
+  let totalBytes = 0;
+  for await (const chunk of process.stdin) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    totalBytes += buffer.length;
+    if (totalBytes > 1024 * 1024) {
+      throw new Error("HLTV repair snapshot exceeds the 1 MiB input limit");
+    }
+    chunks.push(buffer);
+  }
+  if (totalBytes === 0) throw new Error("HLTV repair snapshot stdin is empty");
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    throw new Error("HLTV repair snapshot stdin is not valid JSON");
+  }
 }
 
 async function mergeExistingEventRows(input: {
