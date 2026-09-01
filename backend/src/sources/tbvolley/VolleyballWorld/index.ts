@@ -61,6 +61,8 @@ export type VolleyballWorldBeachSchedule = {
     live: number;
     finished: number;
     competitions: number;
+    rawCompetitions: number;
+    beachCompetitions: number;
   };
 };
 
@@ -601,7 +603,7 @@ export type VolleyballWorldBeachTournamentSearchAll = Omit<VolleyballWorldBeachT
   summary: VolleyballWorldBeachTournamentSearch["summary"] & {
     rawTotal: number;
     filteredOut: number;
-    emptyReason: "date_window" | null;
+    emptyReason: "date_window" | "category_filter" | null;
     byGender: Record<VolleyballWorldGender, VolleyballWorldTournamentGenderSummary>;
   };
 };
@@ -657,17 +659,27 @@ export async function searchAllVolleyballWorldBeachTournaments(input: {
 }
 
 export function buildVolleyballWorldTournamentSearchAllSummary(
-  schedules: ReadonlyArray<Pick<VolleyballWorldBeachSchedule, "gender" | "matches">>,
+  schedules: ReadonlyArray<Pick<VolleyballWorldBeachSchedule, "gender" | "matches"> & {
+    summary?: Partial<Pick<VolleyballWorldBeachSchedule["summary"], "rawCompetitions" | "beachCompetitions">>;
+  }>,
   tournaments: ReadonlyArray<Pick<VolleyballWorldBeachTournament, "gender" | "matchCount">>,
 ): VolleyballWorldBeachTournamentSearchAll["summary"] {
+  let beachRawTotal = 0;
   const byGender = Object.fromEntries((["men", "women"] as const).map((gender) => {
     const schedule = schedules.find((candidate) => candidate.gender === gender);
-    const rawTournamentKeys = new Set((schedule?.matches || [])
+    const normalizedTournamentKeys = new Set((schedule?.matches || [])
       .map((match) => clean(match.tournamentNo) || clean(match.competitionSlug))
       .filter(Boolean));
+    const rawTotal = isNonNegativeInteger(schedule?.summary?.rawCompetitions)
+      ? Number(schedule?.summary?.rawCompetitions)
+      : normalizedTournamentKeys.size;
+    const beachTotal = isNonNegativeInteger(schedule?.summary?.beachCompetitions)
+      ? Number(schedule?.summary?.beachCompetitions)
+      : normalizedTournamentKeys.size;
+    beachRawTotal += beachTotal;
     const filtered = tournaments.filter((tournament) => tournament.gender === gender);
     return [gender, {
-      rawTotal: rawTournamentKeys.size,
+      rawTotal,
       total: filtered.length,
       matches: filtered.reduce((sum, tournament) => sum + tournament.matchCount, 0),
     }];
@@ -679,7 +691,9 @@ export function buildVolleyballWorldTournamentSearchAllSummary(
     matches: tournaments.reduce((sum, tournament) => sum + tournament.matchCount, 0),
     rawTotal,
     filteredOut: rawTotal - total,
-    emptyReason: total === 0 && rawTotal > 0 ? "date_window" : null,
+    emptyReason: total === 0 && rawTotal > 0
+      ? (beachRawTotal === 0 ? "category_filter" : "date_window")
+      : null,
     byGender,
   };
 }
@@ -749,9 +763,11 @@ export function normalizeVolleyballWorldSchedule(
     if (team.no !== undefined && team.no !== null) teamsByNo.set(String(team.no), team);
   }
 
-  const matches = (payload.matches || [])
-    .filter((match) => String(match.discipline || "").toLowerCase() === "beach")
-    .filter((match) => readVolleyballWorldGender(match.gender) === options.gender)
+  const genderMatches = (payload.matches || [])
+    .filter((match) => readVolleyballWorldGender(match.gender) === options.gender);
+  const beachMatches = genderMatches
+    .filter((match) => String(match.discipline || "").toLowerCase() === "beach");
+  const matches = beachMatches
     .map((match) => normalizeMatch(match, teamsByNo, options.gender))
     .sort((a, b) => {
       const aTime = a.startTimeUtc ? new Date(a.startTimeUtc).getTime() : Number.MAX_SAFE_INTEGER;
@@ -765,7 +781,15 @@ export function normalizeVolleyballWorldSchedule(
       acc[match.status] += 1;
       return acc;
     },
-    { total: 0, upcoming: 0, live: 0, finished: 0, competitions: 0 },
+    {
+      total: 0,
+      upcoming: 0,
+      live: 0,
+      finished: 0,
+      competitions: 0,
+      rawCompetitions: countSourceCompetitions(genderMatches),
+      beachCompetitions: countSourceCompetitions(beachMatches),
+    },
   );
   summary.competitions = new Set(matches.map((match) => match.tournamentNo || match.competitionSlug)).size;
 
@@ -786,6 +810,18 @@ export function normalizeVolleyballWorldSchedule(
     matches,
     summary,
   };
+}
+
+function countSourceCompetitions(matches: readonly SourceMatch[]) {
+  return new Set(matches.map((match) => (
+    clean(match.tournamentNo)
+    || clean(match.competitionSlug)
+    || `match:${clean(match.matchNo)}`
+  )).filter((value) => value !== "match:")).size;
+}
+
+function isNonNegativeInteger(value: unknown) {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
 
 export function isActiveVolleyballWorldMatch(match: Pick<VolleyballWorldBeachMatch, "status" | "startTimeUtc">, now = new Date()) {

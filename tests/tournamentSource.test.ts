@@ -48,6 +48,7 @@ test("detectTournamentSource detects CBV and Federvolley URLs", () => {
   assert.equal(detectTournamentSource("https://evolleyball.cbv.com.br/#!/tabelas?etapaId=950"), "cbv");
   assert.equal(detectTournamentSource("CBVP ADULTO [CBV:37:23:950]"), "cbv");
   assert.equal(detectTournamentSource("https://beachvolley.federvolley.it/index.php/node/66744"), "federvolley");
+  assert.equal(detectTournamentSource("https://www.federvolley.it/campionati/beach-volley/2026/BVLM11295"), "federvolley");
   assert.equal(detectTournamentSource("https://srv.matchshare.it/bvl_test/bracket.php?lid=11518&client_name=bvl_development"), "federvolley");
   assert.equal(detectTournamentSource("Caorle [FIPAV:assoluto:66744:11518]"), "federvolley");
 });

@@ -64,8 +64,8 @@ const SOURCE_URL_POLICIES: Record<TournamentImportSource, SourceUrlPolicy> = {
   },
   federvolley: {
     disciplines: ["beachvolleyball"],
-    hostnames: ["beachvolley.federvolley.it", "srv.matchshare.it"],
-    path: /^(?:\/index\.php\/node\/[1-9]\d{0,31}|\/bvl_test\/bracket\.php)\/?$/iu,
+    hostnames: ["www.federvolley.it", "federvolley.it", "beachvolley.federvolley.it", "srv.matchshare.it"],
+    path: /^(?:\/campionati\/beach-volley\/20\d{2}\/BVL[MF][1-9]\d{0,15}|\/index\.php\/node\/[1-9]\d{0,31}|\/bvl_test\/bracket\.php)\/?$/iu,
   },
   wtt: {
     disciplines: ["tabletennis"],

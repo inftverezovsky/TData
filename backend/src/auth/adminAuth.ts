@@ -5,6 +5,13 @@ import { prisma } from "@backend/db/db";
 const ADMIN_SESSION_COOKIE = "tdata_admin_session";
 const SESSION_TTL_SECONDS = 12 * 60 * 60;
 const SESSION_SIGNATURE_VERSION = "settings-password-v2";
+const PUBLIC_ORIGIN_ENV_KEYS = [
+  "TDATA_PUBLIC_BASE_URL",
+  "NEXT_PUBLIC_APP_URL",
+  "NEXT_PUBLIC_SITE_URL",
+  "PUBLIC_BASE_URL",
+  "APP_URL",
+] as const;
 
 export async function verifyAdminPassword(password: string) {
   const configuredPassword = await getConfiguredAdminPassword();
@@ -155,6 +162,11 @@ function requestOrigins(request: Request) {
   const origins = new Set<string>();
   const requestOrigin = normalizeOrigin(request.url);
   if (requestOrigin) origins.add(requestOrigin);
+
+  for (const key of PUBLIC_ORIGIN_ENV_KEYS) {
+    const configuredOrigin = normalizeOrigin(process.env[key] || null);
+    if (configuredOrigin) origins.add(configuredOrigin);
+  }
 
   if (process.env.TRUST_PROXY_HEADERS === "1") {
     const forwardedHost = request.headers.get("x-forwarded-host")?.split(",", 1)[0].trim();

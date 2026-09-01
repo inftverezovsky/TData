@@ -146,15 +146,14 @@ test("DLTV outbound requests allow only explicit HTTPS DLTV origins", () => {
   }
 });
 
-test("DLTV redirects stay on the exact starting origin", () => {
+test("DLTV redirects stay within the exact approved DLTV host set", () => {
   assert.equal(
     resolveDltvRedirectUrl("https://ru.dltv.org/events/test", "/events/canonical"),
     "https://ru.dltv.org/events/canonical",
   );
-  assert.throws(
-    () => resolveDltvRedirectUrl("https://ru.dltv.org/events/test", "https://www.dltv.org/events/test"),
-    (error: unknown) => error instanceof Error
-      && (error as Error & { errorClass?: string }).errorClass === "parse_failed",
+  assert.equal(
+    resolveDltvRedirectUrl("https://ru.dltv.org/events/test", "https://www.dltv.org/events/test"),
+    "https://www.dltv.org/events/test",
   );
   assert.throws(
     () => resolveDltvRedirectUrl("https://ru.dltv.org/events/test", "//metadata.example/latest"),
@@ -192,6 +191,35 @@ test("DLTV fetch follows same-origin redirects manually and validates before the
     { url: "https://ru.dltv.org/events/test", redirect: "manual" },
     { url: "https://ru.dltv.org/events/canonical", redirect: "manual" },
   ]);
+});
+
+test("DLTV fetch follows the production ru.dltv.org to dltv.org canonical redirect", async () => {
+  const requestedUrls: string[] = [];
+  let index = 0;
+  const responses = [
+    {
+      status: 301,
+      url: "https://ru.dltv.org/events",
+      headers: { get: (name: string) => name.toLowerCase() === "location" ? "https://dltv.org/events" : null },
+    },
+    {
+      status: 200,
+      url: "https://dltv.org/events",
+      headers: { get: (_name: string) => null },
+    },
+  ];
+
+  const response = await fetchDltvWithRedirects(
+    "https://ru.dltv.org/events",
+    async (url: string, _options: Record<string, unknown>) => {
+      requestedUrls.push(url);
+      return responses[index++];
+    },
+    {},
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(requestedUrls, ["https://ru.dltv.org/events", "https://dltv.org/events"]);
 });
 
 test("DLTV fetch blocks a cross-origin redirect before issuing another request", async () => {

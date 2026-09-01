@@ -379,6 +379,20 @@ test("tournament match canary accepts seasonal empty only when raw discovery exp
   assert.equal(seasonal.detailChecked, true);
   assert.equal(seasonal.explicitEmpty, true);
 
+  const categoryFiltered = await runTournamentMatchCanary({
+    label: "VolleyballWorld",
+    signal,
+    result: {
+      ok: true,
+      tournaments: [],
+      summary: { total: 0, matches: 0, rawTotal: 4, filteredOut: 4, emptyReason: "category_filter" },
+    },
+    loadDetail,
+  });
+  assert.equal(categoryFiltered.rawCandidates, 4);
+  assert.equal(categoryFiltered.explicitEmpty, true);
+  assert.match(categoryFiltered.summary || "", /category_filter/);
+
   for (const summary of [
     { total: 0, matches: 0, rawTotal: 0, filteredOut: 0, emptyReason: null },
     { total: 0, matches: 0, rawTotal: 7, filteredOut: 6, emptyReason: "date_window" },
@@ -682,9 +696,10 @@ test("fresh-probe failures retain cloudflare and stale-cache classifications", a
     }),
   } as any).find((candidate) => candidate.id === "hltv");
   assert.ok(hltv);
-  const fallback = await hltv.run(1, signal);
-  assert.equal(fallback.status, "warning");
-  assert.equal(fallback.errorClass, "cloudflare_block");
+  await assert.rejects(
+    hltv.run(1, signal),
+    (error: unknown) => error instanceof MonitorProbeError && error.errorClass === "cloudflare_block",
+  );
 
   const vlr = createStaticParserProbesWithDependencies({
     loadVlr: async () => ({
@@ -800,6 +815,45 @@ test("KHL monitor verifies a historical detail before accepting an empty local c
   assert.equal(result.normalizedItems, 0);
   assert.equal(result.detailChecked, true);
   assert.equal(result.explicitEmpty, true);
+});
+
+test("KHL monitor uses the previous stage when the current stage only has scheduled games", async () => {
+  const requestedStages: string[] = [];
+  const detailStages: string[] = [];
+  const probes = createStaticParserProbesWithDependencies({
+    loadKhl: async () => ({
+      KhlApiClient: class {
+        async listStages() {
+          return [
+            { stageId: "407", current: true },
+            { stageId: "395", current: false },
+          ];
+        }
+        async listEvents(input: { stageId: string }) {
+          requestedStages.push(input.stageId);
+          return input.stageId === "407"
+            ? [{ apiEventId: "future-1", stageId: "407", status: "scheduled", startsAt: new Date(Date.now() + 86_400_000).toISOString() }]
+            : [{ apiEventId: "finished-1", stageId: "395", status: "finished", startsAt: new Date(Date.now() - 86_400_000).toISOString() }];
+        }
+        async getEventDetail(input: { stageId: string }) {
+          detailStages.push(input.stageId);
+          return { id: "finished-1" };
+        }
+      },
+    }),
+    loadKhlNormalizer: async () => ({
+      normalizeKhlEventDetail: () => ({ identity: { apiEventId: "finished-1", matchId: "match-1" } }),
+    }),
+  } as any);
+  const probe = probes.find((candidate) => candidate.id === "khl");
+  assert.ok(probe);
+
+  const result = await probe.run(1, new AbortController().signal);
+  assert.deepEqual(requestedStages, ["407", "395"]);
+  assert.deepEqual(detailStages, ["395"]);
+  assert.equal(result.rawCandidates, 1);
+  assert.equal(result.normalizedItems, 1);
+  assert.equal(result.detailChecked, true);
 });
 
 test("VolleyballWorld monitor uses one shared all-gender range with raw counters", async () => {

@@ -71,6 +71,41 @@ test("admin origin validation ignores forwarded headers unless explicitly truste
   }
 });
 
+test("admin origin validation accepts the explicitly configured public origin", () => {
+  const previousPublicBaseUrl = process.env.TDATA_PUBLIC_BASE_URL;
+  const previousTrustProxyHeaders = process.env.TRUST_PROXY_HEADERS;
+  try {
+    process.env.TDATA_PUBLIC_BASE_URL = "https://www.tdata.info/app";
+    delete process.env.TRUST_PROXY_HEADERS;
+
+    const publicRequest = new Request("http://internal:3010/api/counterstrike/import-tournament", {
+      method: "POST",
+      headers: {
+        Origin: "https://www.tdata.info",
+        "Content-Type": "application/json",
+      },
+      body: "{}",
+    });
+    assert.equal(requireSameOriginMutation(publicRequest, ["application/json"]), null);
+
+    const foreignRequest = new Request("http://internal:3010/api/counterstrike/import-tournament", {
+      method: "POST",
+      headers: {
+        Origin: "https://attacker.example",
+        "Content-Type": "application/json",
+      },
+      body: "{}",
+    });
+    assert.equal(requireSameOriginMutation(foreignRequest, ["application/json"])?.status, 403);
+  } finally {
+    if (previousPublicBaseUrl === undefined) delete process.env.TDATA_PUBLIC_BASE_URL;
+    else process.env.TDATA_PUBLIC_BASE_URL = previousPublicBaseUrl;
+
+    if (previousTrustProxyHeaders === undefined) delete process.env.TRUST_PROXY_HEADERS;
+    else process.env.TRUST_PROXY_HEADERS = previousTrustProxyHeaders;
+  }
+});
+
 test("admin tournament import enforces 64 KiB while streaming chunked JSON", async () => {
   const encoder = new TextEncoder();
   const request = new Request("http://localhost/api/counterstrike/import-tournament", {

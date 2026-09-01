@@ -112,8 +112,9 @@ export const sourceProviders = [
     label: "Источник: Federvolley",
     supportsStageAnnouncements: true,
     isBeachVolleyball: true,
-    hostnames: ["beachvolley.federvolley.it", "srv.matchshare.it"],
+    hostnames: ["www.federvolley.it", "federvolley.it", "beachvolley.federvolley.it", "srv.matchshare.it"],
     fallbackPatterns: [
+      /(?:^|\/\/)(?:www\.)?federvolley\.it\/campionati\/beach-volley\//i,
       /(?:^|\/\/)beachvolley\.federvolley\.it\//i,
       /(?:^|\/\/)srv\.matchshare\.it\/bvl_test\//i,
       /\[FIPAV:[^\]]+]/i,

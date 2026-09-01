@@ -36,6 +36,43 @@ test("shared VolleyballWorld summary retains raw-before-filter counts for both g
   });
 });
 
+test("shared VolleyballWorld summary explains an indoor-only range with category_filter", () => {
+  const men = normalizeVolleyballWorldSchedule({
+    allTeams: [],
+    matches: [
+      {
+        matchNo: 9001,
+        tournamentNo: 700,
+        competitionSlug: "vnl-2026",
+        discipline: "volley",
+        gender: "Men",
+        matchDateUtc: "2026-09-02T12:00:00",
+      },
+    ],
+  }, { gender: "men", fromDate: "2026-09-01", toDate: "2026-10-31" });
+  const women = normalizeVolleyballWorldSchedule({
+    allTeams: [],
+    matches: [
+      {
+        matchNo: 9001,
+        tournamentNo: 700,
+        competitionSlug: "vnl-2026",
+        discipline: "volley",
+        gender: "Men",
+        matchDateUtc: "2026-09-02T12:00:00",
+      },
+    ],
+  }, { gender: "women", fromDate: "2026-09-01", toDate: "2026-10-31" });
+
+  const summary = buildVolleyballWorldTournamentSearchAllSummary([men, women], []);
+  assert.equal(summary.rawTotal, 1);
+  assert.equal(summary.filteredOut, 1);
+  assert.equal(summary.total, 0);
+  assert.equal(summary.emptyReason, "category_filter");
+  assert.equal(summary.byGender.men.rawTotal, 1);
+  assert.equal(summary.byGender.women.rawTotal, 0);
+});
+
 test("Volleyball World normalizer keeps only beach matches for selected gender", () => {
   const schedule = normalizeVolleyballWorldSchedule(
     {

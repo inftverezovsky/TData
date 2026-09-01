@@ -217,10 +217,7 @@ export async function fetchDltvWithRedirects<T extends DltvRedirectResponse>(
 
   for (let redirectCount = 0; redirectCount <= DLTV_MAX_REDIRECTS; redirectCount += 1) {
     const response = await fetcher(currentUrl, { ...fetchOptions, redirect: "manual" });
-    const responseUrl = validateDltvFetchUrl(response.url || currentUrl);
-    if (new URL(responseUrl).origin !== new URL(currentUrl).origin) {
-      throw dltvError("DLTV response URL must remain on the same origin", "parse_failed", response.status);
-    }
+    validateDltvFetchUrl(response.url || currentUrl);
 
     if (!isDltvRedirectStatus(response.status)) return response;
 
@@ -268,13 +265,10 @@ export function resolveDltvRedirectUrl(currentUrl: string, location: string): st
   try {
     nextUrl = new URL(String(location || ""), safeCurrentUrl);
   } catch {
-    throw dltvError("DLTV redirect URL must be a same-origin HTTPS DLTV URL", "parse_failed");
+    throw dltvError("DLTV redirect URL must be an approved HTTPS DLTV URL", "parse_failed");
   }
 
   const safeNextUrl = validateDltvFetchUrl(nextUrl.toString());
-  if (new URL(safeNextUrl).origin !== new URL(safeCurrentUrl).origin) {
-    throw dltvError("DLTV redirect URL must be a same-origin HTTPS DLTV URL", "parse_failed");
-  }
   return safeNextUrl;
 }
 

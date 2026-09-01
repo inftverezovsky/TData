@@ -20,6 +20,10 @@ test("tournament import URL policy accepts canonical provider URLs", () => {
     validateTournamentImportSourceUrl("liquipedia", "https://liquipedia.net/dota2/The_International", "dota2"),
     "https://liquipedia.net/dota2/The_International",
   );
+  assert.equal(
+    validateTournamentImportSourceUrl("federvolley", "https://www.federvolley.it/campionati/beach-volley/2026/BVLM11295", "beachvolleyball"),
+    "https://www.federvolley.it/campionati/beach-volley/2026/BVLM11295",
+  );
 });
 
 test("tournament import URL policy rejects SSRF, credentials, ports and cross-provider paths", () => {
@@ -30,6 +34,7 @@ test("tournament import URL policy rejects SSRF, credentials, ports and cross-pr
     ["vlr", "https://www.vlr.gg:444/event/1/x", "valorant"],
     ["liquipedia", "https://liquipedia.net/counterstrike/Foo", "dota2"],
     ["wtt", "https://www.worldtabletennis.com/admin", "tabletennis"],
+    ["federvolley", "https://www.federvolley.it/campionati/beach-volley/2026/../../admin", "beachvolleyball"],
   ] as const;
 
   for (const [source, url, slug] of blocked) {

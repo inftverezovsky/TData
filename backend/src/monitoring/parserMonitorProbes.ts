@@ -396,12 +396,19 @@ function createHltvProbe(dependencies: StaticParserProbeDependencies): ParserPro
         assertFreshResult(listing, "HLTV events");
       } catch (error) {
         signal.throwIfAborted();
+        const discoveryErrorClass = classifyProbeError(error);
+        if (discoveryErrorClass === "cloudflare_block") {
+          throw new MonitorProbeError(
+            "cloudflare_block",
+            `HLTV discovery was blocked by Cloudflare: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
         const fallback: any = await runHltvScript("event", HLTV_FALLBACK_EVENT_URL, { noCache: true, signal });
         assertFreshResult(fallback, "HLTV fallback event detail");
         if (!hltvDetailChecked(fallback)) {
           throw new MonitorProbeError("schema_drift", "HLTV discovery and fallback event detail were both unavailable");
         }
-        return buildHltvFallbackObservation(fallback, classifyProbeError(error));
+        return buildHltvFallbackObservation(fallback, discoveryErrorClass);
       }
 
       const events = arrayOf(listing?.events);
@@ -775,7 +782,7 @@ function createFedervolleyProbe(dependencies: StaticParserProbeDependencies): Pa
   return {
     id: "federvolley",
     source: "federvolley",
-    hostname: "beachvolley.federvolley.it",
+    hostname: "pub-8394085fb0ca451eaa42bc05b01c416f.r2.dev",
     required: true,
     async run(_attempt, signal) {
       signal.throwIfAborted();
@@ -877,43 +884,87 @@ function createKhlProbe(dependencies: StaticParserProbeDependencies): ParserProb
         return Number.isFinite(startsAt) && startsAt >= localFrom.getTime() && startsAt <= localTo.getTime();
       });
       let detailChecked = false;
-      if (rawEvents.length > 0) {
+      if (rawEvents.length > 0 || stages.length > 1) {
         const { normalizeKhlEventDetail } = await (dependencies.loadKhlNormalizer?.()
           ?? import("@backend/sources/results/khl/normalize"));
         const preferredCandidates = [
           ...events,
           ...rawEvents.filter((event: any) => !events.some((localEvent: any) => localEvent.apiEventId === event.apiEventId)),
-        ];
-        const canary = await findSemanticCanary({
+        ].filter(isKhlDetailCandidate);
+        let canary = await runKhlDetailCanary({
           candidates: preferredCandidates,
-          maxCandidates: MAX_SEMANTIC_CANARY_CANDIDATES,
+          fallbackStageId: current.stageId,
+          client,
+          normalizeKhlEventDetail,
           signal,
-          async load(event: any) {
-            const detail = await client.getEventDetail({
-              apiEventId: event.apiEventId,
-              stageId: clean(event.stageId) || current.stageId,
-            });
-            try {
-              return normalizeKhlEventDetail(detail);
-            } catch (error) {
-              throw new MonitorProbeError(
-                "schema_drift",
-                `KHL event detail normalization failed: ${error instanceof Error ? error.message : String(error)}`,
-              );
-            }
-          },
-          isSemantic: (normalized: any) => Boolean(
-            clean(normalized?.identity?.apiEventId)
-            && clean(normalized?.identity?.matchId)
-          ),
         });
-        throwIfAllCandidateLoadsFailed(canary, "KHL event detail candidates failed");
+
+        if (!canary.detail) {
+          for (const historicalStage of stages.filter((stage: any) => stage.stageId !== current.stageId).slice(0, 3)) {
+            signal.throwIfAborted();
+            const historicalEvents = await client.listEvents({
+              stageId: historicalStage.stageId,
+              from: wideFrom,
+              to: new Date(now),
+              orderDirection: "desc",
+            });
+            const historicalCandidates = historicalEvents.filter(isKhlDetailCandidate);
+            if (historicalCandidates.length === 0) continue;
+            canary = await runKhlDetailCanary({
+              candidates: historicalCandidates,
+              fallbackStageId: historicalStage.stageId,
+              client,
+              normalizeKhlEventDetail,
+              signal,
+            });
+            if (canary.detail) break;
+          }
+        }
         detailChecked = Boolean(canary.detail);
       }
       signal.throwIfAborted();
       return buildKhlProbeObservation(stages.length, events.length, detailChecked, rawEvents.length);
     },
   };
+}
+
+function isKhlDetailCandidate(event: any) {
+  const status = clean(event?.status).toLowerCase();
+  return !status || status === "finished" || status === "unknown";
+}
+
+async function runKhlDetailCanary(input: {
+  candidates: readonly any[];
+  fallbackStageId: string;
+  client: any;
+  normalizeKhlEventDetail(detail: unknown): any;
+  signal: AbortSignal;
+}) {
+  const canary = await findSemanticCanary({
+    candidates: input.candidates,
+    maxCandidates: MAX_SEMANTIC_CANARY_CANDIDATES,
+    signal: input.signal,
+    async load(event: any) {
+      const detail = await input.client.getEventDetail({
+        apiEventId: event.apiEventId,
+        stageId: clean(event.stageId) || input.fallbackStageId,
+      });
+      try {
+        return input.normalizeKhlEventDetail(detail);
+      } catch (error) {
+        throw new MonitorProbeError(
+          "schema_drift",
+          `KHL event detail normalization failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    },
+    isSemantic: (normalized: any) => Boolean(
+      clean(normalized?.identity?.apiEventId)
+      && clean(normalized?.identity?.matchId)
+    ),
+  });
+  throwIfAllCandidateLoadsFailed(canary, "KHL event detail candidates failed");
+  return canary;
 }
 
 export function buildKhlProbeObservation(
@@ -1027,7 +1078,7 @@ export async function runTournamentMatchCanary(input: {
   if (discovery.tournaments.length === 0) {
     const seasonalEmpty = discovery.rawCandidates > 0
       && discovery.filteredOut === discovery.rawCandidates
-      && discovery.emptyReason === "date_window";
+      && (discovery.emptyReason === "date_window" || discovery.emptyReason === "category_filter");
     if (!seasonalEmpty) {
       throw new MonitorProbeError(
         "schema_drift",
@@ -1039,7 +1090,7 @@ export async function runTournamentMatchCanary(input: {
       0,
       true,
       true,
-      `${input.label}: ${discovery.rawCandidates} raw tournaments, 0 after filters; empty_reason=date_window`,
+      `${input.label}: ${discovery.rawCandidates} raw tournaments, 0 after filters; empty_reason=${discovery.emptyReason}`,
     );
   }
 
@@ -1118,7 +1169,7 @@ function assertTournamentSearchSchema(result: unknown, label: string, requireRaw
   }
 
   const emptyReason = clean(summary.emptyReason);
-  if (emptyReason && emptyReason !== "date_window") {
+  if (emptyReason && emptyReason !== "date_window" && emptyReason !== "category_filter") {
     throw new MonitorProbeError("schema_drift", `${label}: discovery returned an unknown empty reason`);
   }
   if (tournaments.length > 0 && emptyReason) {

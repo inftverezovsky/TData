@@ -9,9 +9,109 @@ import {
   isActiveFedervolleyMatch,
   parseFedervolleyListing,
   parseFedervolleyMatchshareBracket,
+  parseFedervolleyOfficialCalendar,
+  parseFedervolleyOfficialTournamentRows,
   parseFedervolleyTournamentPage,
   parseFedervolleyTournamentPageMatches,
 } from "../backend/src/sources/tbvolley/Federvolley";
+
+test("Federvolley official feed parser discovers current tournaments", () => {
+  const tournaments = parseFedervolleyOfficialTournamentRows([{
+    path: "2026/BVL/M/11295/calendario.json",
+    codice: "BVLM11295",
+    girone_index: "11295",
+    codice_torneo: "17791",
+    tipologia: "Serie Beach 2",
+    luogo: "Sellia Marina - CALABRIA",
+    genere: "Maschile",
+    montepremi: "0,00 €",
+    ranking_type: "Serie Beach",
+    menu_eventi: "serie-beach",
+    regione: "CALABRIA",
+    comune: "Sellia Marina",
+    data_inizio_iso: "2026-09-04",
+    data_fine_iso: "2026-09-05",
+  }], {
+    year: 2026,
+    gender: "men",
+    category: "all",
+  });
+
+  assert.equal(tournaments.length, 1);
+  assert.equal(tournaments[0].nodeId, "11295");
+  assert.equal(tournaments[0].matchshareLid, "17791");
+  assert.equal(tournaments[0].title, "Serie Beach 2 - Sellia Marina");
+  assert.equal(tournaments[0].pageUrl, "https://www.federvolley.it/campionati/beach-volley/2026/BVLM11295");
+});
+
+test("Federvolley official feed ignores mixed-gender rows instead of coercing them to men", () => {
+  const tournaments = parseFedervolleyOfficialTournamentRows([{
+    path: "2026/BVL/X/11711/calendario.json",
+    codice: "BVLX11711",
+    girone_index: "11711",
+    genere: "Misto",
+    data_inizio_iso: "2026-09-04",
+    data_fine_iso: "2026-09-05",
+  }], {
+    year: 2026,
+    gender: "men",
+    category: "all",
+  });
+
+  assert.deepEqual(tournaments, []);
+});
+
+test("Federvolley official calendar parser normalizes semantic matches", () => {
+  const tournament = parseFedervolleyOfficialCalendar({
+    data: {
+      id: "11562",
+      title: "Finale giovanile nazionale U18 - Bellaria-Igea Marina",
+      "title-short": "BVLM11562",
+      codice_torneo: "18057",
+      tipologia: "Finale giovanile nazionale U18",
+      luogo: "Bellaria-Igea Marina - EMILIA-ROMAGNA",
+      genere: "Maschile",
+      ranking_type: "Under 18",
+      comune: "Bellaria-Igea Marina",
+      regione: "EMILIA-ROMAGNA",
+      data_inizio_iso: "2026-08-31",
+      data_fine_iso: "2026-09-01",
+      matches: [{
+        id: "278778",
+        date: "31/08/2026",
+        time: "08.30",
+        day: "Giornata 1",
+        ng: "1",
+        played: true,
+        ris_ufficiale: "1",
+        "team1-setwin": 2,
+        "team2-setwin": 1,
+        pt_a: [20, 21, 15],
+        pt_b: [22, 18, 10],
+        fase_label: "Qualificazioni",
+        fase: { season_type: "Qualification", season_descrizione: "Girone A" },
+        bvl: { campo: { name: "2" } },
+        team1: { id: "30582", title: "PELLEGRINI TOMMASO - MONTAGNER LEONARDO" },
+        team2: { id: "45207", title: "CROVEGLIA LUCA - CRESCINI MICHELE" },
+      }],
+    },
+  }, {
+    year: 2026,
+    nodeId: "11562",
+    gender: "men",
+  });
+
+  assert.equal(tournament.matchCount, 1);
+  assert.equal(tournament.matches?.[0].id, "278778");
+  assert.equal(tournament.matches?.[0].teamA.name, "PELLEGRINI TOMMASO / MONTAGNER LEONARDO");
+  assert.equal(tournament.matches?.[0].court, "Court 2");
+  assert.equal(tournament.matches?.[0].startTimeMoscow, "31.08.2026 09:30:00");
+  assert.deepEqual(tournament.matches?.[0].score.sets, [
+    { no: 1, teamA: 20, teamB: 22 },
+    { no: 2, teamA: 21, teamB: 18 },
+    { no: 3, teamA: 15, teamB: 10 },
+  ]);
+});
 
 test("Federvolley listing parser extracts Assoluto rows", () => {
   const html = `
@@ -249,6 +349,31 @@ test("Federvolley tournament fetch falls back to page result cards when Matchsha
     assert.equal(tournament.matches?.length, 1);
     assert.equal(tournament.matchCount, 1);
     assert.equal(tournament.matches?.[0].status, "upcoming");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Federvolley official references fail closed instead of falling back to retired HTML", async () => {
+  const originalFetch = globalThis.fetch;
+  const requested: string[] = [];
+  try {
+    globalThis.fetch = async (input: RequestInfo | URL) => {
+      requested.push(String(input));
+      return new Response(JSON.stringify({ error: "unavailable" }), {
+        status: 500,
+        headers: { "content-type": "application/json" },
+      });
+    };
+
+    await assert.rejects(fetchFedervolleyTournament({
+      federvolleyNodeId: "11295",
+      category: "serie",
+      gender: "men",
+      pageUrl: "https://www.federvolley.it/campionati/beach-volley/2026/BVLM11295",
+    }), /HTTP 500/u);
+    assert.equal(requested.length, 1);
+    assert.match(requested[0], /\/2026\/BVL\/M\/11295\/calendario\.json/u);
   } finally {
     globalThis.fetch = originalFetch;
   }
