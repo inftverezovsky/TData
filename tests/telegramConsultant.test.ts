@@ -357,11 +357,13 @@ test("parser status distinguishes healthy empty results and failures", () => {
 
 test("consultant deployment is isolated, read-only in behavior, and ships canonical docs", () => {
   const dockerfile = fs.readFileSync(path.join(process.cwd(), "Dockerfile"), "utf8");
+  const dockerignore = fs.readFileSync(path.join(process.cwd(), ".dockerignore"), "utf8");
   const compose = fs.readFileSync(path.join(process.cwd(), "deploy", "compose", "tdata-telegram-consultant.yml"), "utf8");
   const packageJson = JSON.parse(fs.readFileSync(path.join(process.cwd(), "package.json"), "utf8")) as { scripts: Record<string, string> };
 
   assert.match(dockerfile, /\/app\/docs \.\/docs/);
   assert.match(dockerfile, /\/app\/README\.md \.\/README\.md/);
+  assert.match(dockerignore, /^!README\.md$/m);
   assert.match(compose, /container_name:\s+tdata-telegram-consultant/);
   assert.match(compose, /TDATA_TELEGRAM_CONSULTANT_DEEPSEEK_API_KEY/);
   assert.doesNotMatch(compose, /ports:/);
