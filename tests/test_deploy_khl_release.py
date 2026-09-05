@@ -189,6 +189,25 @@ class DeploymentSafetyTests(unittest.TestCase):
                 with self.assertRaises(deploy.GuardError):
                     deploy.backed_up_chain(directory, manifest)
 
+    def test_restore_readiness_requires_final_pid1_and_authenticated_tcp(self):
+        good = subprocess.CompletedProcess([], 0, b'1\n', b'')
+        with patch.object(deploy, 'run', return_value=good) as execute:
+            self.assertTrue(deploy.restore_ready('owned-restore-container'))
+        command = execute.call_args.args[0]
+        self.assertEqual(command[:4], ['docker', 'exec', 'owned-restore-container', 'sh'])
+        script = command[-1]
+        self.assertIn('test "$(cat /proc/1/comm)" = postgres &&', script)
+        self.assertIn('-h 127.0.0.1', script)
+        self.assertIn('PGPASSWORD="$POSTGRES_PASSWORD"', script)
+        self.assertIn('-d "$POSTGRES_DB"', script)
+        self.assertIn('SELECT 1', script)
+        self.assertNotIn('pg_isready', script)
+
+    def test_restore_readiness_rejects_temporary_server_and_failed_auth(self):
+        for code, stdout in [(1, b''), (1, b'1\n'), (0, b''), (0, b'0\n')]:
+            with self.subTest(code=code, stdout=stdout), patch.object(deploy, 'run', return_value=subprocess.CompletedProcess([], code, stdout, b'withheld')):
+                self.assertFalse(deploy.restore_ready('owned-restore-container'))
+
 
 if __name__ == '__main__':
     unittest.main()

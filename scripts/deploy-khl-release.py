@@ -263,6 +263,18 @@ def web_healthy():
         return False
 
 
+def restore_ready(container):
+    # Official PostgreSQL starts a temporary Unix-socket server during initdb.
+    # Wait for entrypoint exec -> PID 1 postgres AND the real DB over authenticated TCP.
+    result = run(['docker', 'exec', container, 'sh', '-c',
+                  'test "$(cat /proc/1/comm)" = postgres && '
+                  'PGCONNECT_TIMEOUT=3 PGPASSWORD="$POSTGRES_PASSWORD" '
+                  'psql -X -w -v ON_ERROR_STOP=1 -h 127.0.0.1 '
+                  '-U "$POSTGRES_USER" -d "$POSTGRES_DB" -At -c "SELECT 1"'],
+                 allow_failure=True, timeout=15)
+    return result.returncode == 0 and result.stdout.strip() == b'1'
+
+
 def backup(directory, items, files):
     directory.mkdir(mode=0o700, parents=False, exist_ok=False)
     previous = items['tdata-web']
@@ -292,8 +304,7 @@ def backup(directory, items, files):
              '--memory', '768m', '--cpus', '1', '-e', 'POSTGRES_PASSWORD', '-e', 'POSTGRES_USER=khl_restore',
              '-e', 'POSTGRES_DB=khl_restore', 'postgres:16'], env=env)
         own_container = True
-        wait_for(lambda: run(['docker', 'exec', name, 'pg_isready', '-U', 'khl_restore', '-d', 'khl_restore'],
-                            allow_failure=True).returncode == 0)
+        wait_for(lambda: restore_ready(name))
         with dump.open('rb') as handle:
             run(['docker', 'exec', '-i', name, 'pg_restore', '--list'], stdin=handle)
         with dump.open('rb') as handle:
