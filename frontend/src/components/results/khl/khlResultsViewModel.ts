@@ -1,6 +1,7 @@
 import { DateTime } from "luxon";
 
 import type { KhlMatchProtocolView } from "@backend/results/khl/matchProtocol";
+import { getKhlMatchReadiness, hasNewerRejectedRevision, khlMissingIdentityLabels, type KhlReadinessMatch } from "./khlProtocolReadiness";
 
 export const KHL_RESULTS_TIME_ZONE = "Europe/Moscow";
 export const KHL_RESULTS_CUTOFF_DATE_KEY = "2026-05-01";
@@ -10,13 +11,14 @@ export type KhlDatedResultMatch = {
   startsAt: string;
 };
 
-export type KhlProtocolResultMatch = {
-  activeRevision: { state: string; revisionNumber?: number } | null;
-  latestRevision?: { state: string; revisionNumber: number } | null;
+export type KhlProtocolResultMatch = KhlReadinessMatch & {
+  id?: string;
   protocol: KhlMatchProtocolView | null;
 };
 
 type KhlRevisionPresentationInput = {
+  khlGameId?: string;
+  protocol?: KhlMatchProtocolView | null;
   activeRevision: { state: string; revisionNumber: number } | null;
   latestRevision: {
     state: string;
@@ -27,12 +29,13 @@ type KhlRevisionPresentationInput = {
     state: string;
     revisionNumber: number;
     source: string;
+    validationIssues?: unknown;
   } | null;
 };
 
 export type KhlRevisionPresentation = {
   badgeLabel: string;
-  badgeTone: "validated" | "rejected" | "empty";
+  badgeTone: "validated" | "warning" | "rejected" | "empty";
   excludeFromDaily: boolean;
   warning: null | {
     title: string;
@@ -54,7 +57,10 @@ export type KhlTeamDaySummary = {
 };
 
 export type KhlPlayerDaySummary = {
-  khlPlayerId: string;
+  rowKey: string;
+  khlPlayerId: string | null;
+  apiPlayerId?: string;
+  sourceMatchId?: string;
   khlTeamId: string;
   name: string;
   matchCount: number;
@@ -65,6 +71,7 @@ export type KhlPlayerDaySummary = {
 
 export type KhlGameDayAggregation = {
   includedMatches: number;
+  warningMatches: number;
   skippedMatches: number;
   teams: KhlTeamDaySummary[];
   players: KhlPlayerDaySummary[];
@@ -137,31 +144,37 @@ export function aggregateKhlGameDay(
 ): KhlGameDayAggregation {
   const teamAccumulators = new Map<string, TeamAccumulator>();
   const playerAccumulators = new Map<string, KhlPlayerDaySummary>();
+  const seenMatches = new Set<string>();
   let includedMatches = 0;
+  let warningMatches = 0;
   let skippedMatches = 0;
 
   for (const match of matches) {
+    const matchKey = match.khlGameId || match.id;
+    if (matchKey && seenMatches.has(matchKey)) continue;
+    if (matchKey) seenMatches.add(matchKey);
     const protocol = match.protocol;
-    if (
-      match.activeRevision?.state !== "VALIDATED"
-      || !protocol?.validation.ok
-      || hasNewerRejectedRevision(match)
-      || protocol.players.some((player) => !player.khlPlayerId)
-    ) {
+    const readiness = getKhlMatchReadiness(match);
+    if (!protocol || readiness === "BLOCKED") {
       skippedMatches += 1;
       continue;
     }
 
     includedMatches += 1;
+    if (readiness === "IDENTITY_WARNING") warningMatches += 1;
     accumulateTeam(teamAccumulators, protocol, "home");
     accumulateTeam(teamAccumulators, protocol, "away");
 
     for (const player of protocol.players) {
-      // The whole-match guard above excludes diagnostic rosters from daily totals.
-      if (!player.khlPlayerId) throw new Error("Unresolved KHL player in validated day summary.");
-      const existing = playerAccumulators.get(player.khlPlayerId);
-      playerAccumulators.set(player.khlPlayerId, {
+      // This is a UI row key, never a fabricated KHL identity or an Admin mapping.
+      const rowKey = player.khlPlayerId === null
+        ? JSON.stringify(["source", match.khlGameId, player.teamSide, player.apiPlayerId])
+        : JSON.stringify(["khl", player.khlTeamId, player.khlPlayerId]);
+      const existing = playerAccumulators.get(rowKey);
+      playerAccumulators.set(rowKey, {
+        rowKey,
         khlPlayerId: player.khlPlayerId,
+        ...(player.khlPlayerId === null ? { apiPlayerId: player.apiPlayerId, sourceMatchId: match.khlGameId } : {}),
         khlTeamId: existing?.khlTeamId ?? player.khlTeamId,
         name: existing?.name ?? player.name,
         matchCount: (existing?.matchCount ?? 0) + 1,
@@ -174,6 +187,7 @@ export function aggregateKhlGameDay(
 
   return {
     includedMatches,
+    warningMatches,
     skippedMatches,
     teams: [...teamAccumulators.values()]
       .map(toTeamDaySummary)
@@ -185,6 +199,18 @@ export function aggregateKhlGameDay(
 export function getKhlRevisionPresentation(
   match: KhlRevisionPresentationInput
 ): KhlRevisionPresentation {
+  if (getKhlMatchReadiness(match) === "IDENTITY_WARNING") {
+    return {
+      badgeLabel: "Статистика доступна · нет ID КХЛ",
+      badgeTone: "warning",
+      excludeFromDaily: false,
+      warning: {
+        title: "КХЛ не передала ID некоторых игроков",
+        description: "Счёт и статистика учтены в итогах дня. Все игроки сохранены; игроки без ID не объединяются между матчами. Активация и staging заблокированы до подтверждения идентичности.",
+        issues: khlMissingIdentityLabels(match.protocol!),
+      },
+    };
+  }
   const latestRejected = hasNewerRejectedRevision(match);
   const issues = latestRejected
     ? validationIssueStrings(match.latestRevision?.validationIssues)
@@ -250,16 +276,6 @@ function parseInstant(value: Date | string) {
   return DateTime.fromISO(value, { setZone: true, zone: "UTC" });
 }
 
-function hasNewerRejectedRevision(match: {
-  activeRevision: { revisionNumber?: number } | null;
-  latestRevision?: { state: string; revisionNumber: number } | null;
-}) {
-  const latest = match.latestRevision;
-  if (latest?.state !== "REJECTED") return false;
-  if (!match.activeRevision) return true;
-  return latest.revisionNumber > (match.activeRevision.revisionNumber ?? latest.revisionNumber);
-}
-
 function validationIssueStrings(value: unknown) {
   return Array.isArray(value)
     ? value.filter((issue): issue is string => typeof issue === "string")
@@ -317,6 +333,6 @@ function comparePlayers(left: KhlPlayerDaySummary, right: KhlPlayerDaySummary) {
     right.goals - left.goals ||
     right.assists - left.assists ||
     left.name.localeCompare(right.name, "ru") ||
-    left.khlPlayerId.localeCompare(right.khlPlayerId)
+    left.rowKey.localeCompare(right.rowKey)
   );
 }

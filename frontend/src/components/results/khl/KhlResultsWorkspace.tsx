@@ -236,6 +236,9 @@ export function KhlResultMatchCard({ match, busyKey, onReingest }: {
                       : "Не входит в статистику дня / delivery"}
                   </span>
                 )}
+                {revision.badgeTone === "warning" && (
+                  <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-800">Учтён в статистике дня · staging заблокирован</span>
+                )}
               </div>
             </div>
             <div className="flex items-center gap-4">
@@ -259,7 +262,8 @@ export function KhlResultMatchCard({ match, busyKey, onReingest }: {
           {revision.warning && (
             <div
               data-testid="khl-revision-warning"
-              className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-xs text-red-950"
+              className={`mt-4 rounded-2xl border p-4 text-xs ${revision.badgeTone === "warning"
+                ? "border-amber-200 bg-amber-50 text-amber-950" : "border-red-200 bg-red-50 text-red-950"}`}
             >
               <div className="font-black">{revision.warning.title}</div>
               <p className="mt-1 font-semibold">{revision.warning.description}</p>
@@ -295,7 +299,7 @@ export function KhlResultMatchCard({ match, busyKey, onReingest }: {
   );
 }
 
-function revisionBadgeClass(tone: "validated" | "rejected" | "empty") {
+function revisionBadgeClass(tone: "validated" | "warning" | "rejected" | "empty") {
   if (tone === "validated") return "bg-emerald-50 text-emerald-800";
   if (tone === "rejected") return "bg-red-50 text-red-800";
   return "bg-amber-50 text-amber-800";
@@ -313,6 +317,7 @@ function DailyStatistics({ matches }: { matches: StoredMatch[] }) {
         </p>
         <div className="mt-4 flex flex-wrap gap-2 text-xs font-black">
           <span className="rounded-full bg-emerald-100 px-3 py-1 text-emerald-800">Учтено матчей: {summary.includedMatches}</span>
+          {summary.warningMatches > 0 && <span data-testid="khl-day-identity-warning" className="rounded-full bg-amber-100 px-3 py-1 text-amber-800">Учтено с предупреждением об ID: {summary.warningMatches}</span>}
           {summary.skippedMatches > 0 && <span className="rounded-full bg-amber-100 px-3 py-1 text-amber-800">Не агрегировано непроверенных: {summary.skippedMatches}</span>}
         </div>
       </section>
@@ -333,7 +338,7 @@ function DailyStatistics({ matches }: { matches: StoredMatch[] }) {
               {summary.teams.map((team) => {
                 const metrics = new Map(team.metrics.map((metric) => [metric.code, metric.regulationTotal]));
                 return (
-                  <tr key={team.khlTeamId}>
+                  <tr key={team.khlTeamId} data-testid="khl-day-team">
                     <td className="px-3 py-2"><div className="font-black text-slate-900">{team.name}</div><div className="text-[10px] text-slate-400">KHL {team.khlTeamId}</div></td>
                     <td className="px-3 py-2 text-center">{team.matchCount}</td>
                     <td className="bg-blue-50 px-3 py-2 text-center font-black text-blue-900">{team.regulationGoals}</td>
@@ -348,7 +353,7 @@ function DailyStatistics({ matches }: { matches: StoredMatch[] }) {
 
       <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <h3 className="font-black text-slate-950">Игроки</h3>
-        <p className="mt-1 text-xs text-slate-500">Показаны все заявленные игроки, включая нулевые значения.</p>
+        <p className="mt-1 text-xs text-slate-500">Показаны все заявленные игроки, включая нулевые значения. Игроки без ID КХЛ показаны отдельно по каждому матчу и не объединяются по имени.</p>
         <div className="mt-3 max-h-[36rem] overflow-auto rounded-2xl border border-slate-200">
           <table className="min-w-full text-left text-xs">
             <thead className="sticky top-0 bg-slate-100 text-slate-600">
@@ -356,8 +361,12 @@ function DailyStatistics({ matches }: { matches: StoredMatch[] }) {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {summary.players.map((player) => (
-                <tr key={player.khlPlayerId}>
-                  <td className="px-3 py-2"><div className="font-black text-slate-900">{player.name}</div><div className="text-[10px] text-slate-400">KHL {player.khlPlayerId} · team {player.khlTeamId}</div></td>
+                <tr key={player.rowKey} data-testid="khl-day-player" data-identity={player.khlPlayerId === null ? "unresolved" : "resolved"}>
+                  <td className="px-3 py-2"><div className="font-black text-slate-900">{player.name}</div>
+                    {player.khlPlayerId === null
+                      ? <div className="text-[10px] text-amber-800">ID КХЛ отсутствует · матч {player.sourceMatchId} · API {player.apiPlayerId}</div>
+                      : <div className="text-[10px] text-slate-400">KHL {player.khlPlayerId} · team {player.khlTeamId}</div>}
+                  </td>
                   <td className="px-3 py-2 text-center">{player.matchCount}</td>
                   <td className="px-3 py-2 text-center font-black">{player.goals}</td>
                   <td className="px-3 py-2 text-center font-black">{player.assists}</td>

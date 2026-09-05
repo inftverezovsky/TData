@@ -6,7 +6,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { buildKhlMatchProtocolView } from "../backend/src/results/khl/matchProtocol";
-import { assertKhlRosterIdentities, normalizeKhlEventDetail } from "../backend/src/sources/results/khl/normalize";
+import { requireResolvedKhlPlayers, normalizeKhlEventDetail } from "../backend/src/sources/results/khl/normalize";
 import { aggregateKhlGameDay, getKhlRevisionPresentation } from "../frontend/src/components/results/khl/khlResultsViewModel";
 import { KhlResultMatchCard } from "../frontend/src/components/results/khl/KhlResultsWorkspace";
 import { KhlMatchProtocol } from "../frontend/src/components/results/khl/KhlMatchProtocol";
@@ -63,7 +63,7 @@ test("901981 identity-only diagnostics enter daily totals with all 47 rows, pres
   assert.deepEqual(match, before);
   assert.equal(match.activeRevision, null);
   assert.equal(match.latestRevision?.state, "REJECTED");
-  assert.throws(() => assertKhlRosterIdentities(normalizeKhlEventDetail(raw)), /missing KHL player id/);
+  assert.throws(() => requireResolvedKhlPlayers(normalizeKhlEventDetail(raw).players), /missing KHL player id/);
 });
 
 test("identity warning is amber and human-readable without claiming active validation or hiding daily statistics", () => {

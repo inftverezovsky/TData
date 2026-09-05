@@ -158,6 +158,7 @@ test("daily aggregation sums validated regulation values, preserves zero players
   assert.deepEqual(
     summary.players.find((player) => player.khlPlayerId === "player-one"),
     {
+      rowKey: JSON.stringify(["khl", alpha.khlTeamId, "player-one"]),
       khlPlayerId: "player-one",
       khlTeamId: alpha.khlTeamId,
       name: "Первый",
@@ -170,6 +171,7 @@ test("daily aggregation sums validated regulation values, preserves zero players
   assert.deepEqual(
     summary.players.find((player) => player.khlPlayerId === "player-zero"),
     {
+      rowKey: JSON.stringify(["khl", alpha.khlTeamId, "player-zero"]),
       khlPlayerId: "player-zero",
       khlTeamId: alpha.khlTeamId,
       name: "Нулевой",

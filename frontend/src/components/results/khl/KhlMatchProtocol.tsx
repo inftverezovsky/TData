@@ -1,4 +1,5 @@
 import type { KhlMatchProtocolView } from "@backend/results/khl/matchProtocol";
+import { getKhlProtocolReadiness, khlMissingIdentityLabels } from "./khlProtocolReadiness";
 
 type Props = {
   protocol: KhlMatchProtocolView | null;
@@ -20,6 +21,7 @@ export function KhlMatchProtocol({ protocol, section = "all" }: Props) {
     );
   }
 
+  const identityWarning = getKhlProtocolReadiness(protocol) === "IDENTITY_WARNING";
   const body = (
     <div className="mt-4 space-y-5">
       {(section === "all" || section === "overview") && (
@@ -35,8 +37,8 @@ export function KhlMatchProtocol({ protocol, section = "all" }: Props) {
         <TeamMetrics protocol={protocol} />
       )}
       {!protocol.validation.ok && (
-        <ul className="rounded-xl bg-red-50 p-4 text-xs text-red-900">
-          {protocol.validation.issues.map((issue, index) => (
+        <ul className={`rounded-xl p-4 text-xs ${identityWarning ? "bg-amber-50 text-amber-900" : "bg-red-50 text-red-900"}`}>
+          {(identityWarning ? khlMissingIdentityLabels(protocol) : protocol.validation.issues).map((issue, index) => (
             <li key={`${issue}:${index}`}>• {issue}</li>
           ))}
         </ul>
@@ -84,6 +86,7 @@ function ProtocolHeader({
       : section === "statistics"
         ? "Командные показатели по периодам"
         : "Командная статистика, все игроки, голы и штрафы";
+  const readiness = getKhlProtocolReadiness(protocol);
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div>
@@ -92,10 +95,11 @@ function ProtocolHeader({
         </div>
         <div className="mt-1 text-sm font-black text-slate-950">{title}</div>
       </div>
-      <span className={`rounded-full px-3 py-1 text-xs font-bold ${protocol.validation.ok
+      <span className={`rounded-full px-3 py-1 text-xs font-bold ${readiness === "VALIDATED"
         ? "bg-emerald-100 text-emerald-800"
-        : "bg-red-100 text-red-800"}`}>
-        {protocol.validation.ok ? "Протокол проверен" : "Показан, но доставка заблокирована"}
+        : readiness === "IDENTITY_WARNING" ? "bg-amber-100 text-amber-800" : "bg-red-100 text-red-800"}`}>
+        {readiness === "VALIDATED" ? "Протокол проверен" : readiness === "IDENTITY_WARNING"
+          ? "Статистика доступна · нет ID КХЛ" : "Показан, но доставка заблокирована"}
       </span>
     </div>
   );
