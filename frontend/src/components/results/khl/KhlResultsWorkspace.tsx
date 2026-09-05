@@ -237,7 +237,7 @@ export function KhlResultMatchCard({ match, busyKey, onReingest }: {
                   </span>
                 )}
                 {revision.badgeTone === "warning" && (
-                  <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-800">Учтён в статистике дня · staging заблокирован</span>
+                  <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-800">Доступен для статистики дня · staging заблокирован</span>
                 )}
               </div>
             </div>

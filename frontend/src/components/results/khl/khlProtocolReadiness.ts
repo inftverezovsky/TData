@@ -84,13 +84,15 @@ function validPoints(points: { goals: number; assists: number; points: number })
 }
 
 function validRegulationNumbers(protocol: KhlMatchProtocolView) {
+  const metricCodes = ["shots_on_goal", "faceoffs_won", "power_play_goals", "penalty_minutes_2_4"] as const;
+  if (new Set(protocol.scores.segments.map((score) => score.segment)).size !== protocol.scores.segments.length) return false;
   for (const side of ["home", "away"] as const) {
     const scores = ["P1", "P2", "P3"].map((segment) => protocol.scores.segments.find((score) => score.segment === segment)?.[side]);
     if (!scores.every((score) => score !== undefined && nonnegativeInteger(score))
       || scores.reduce<number>((sum, score) => sum + score!, 0) !== protocol.scores.regulation[side]) return false;
     const metrics = protocol.teams[side].metrics;
     const codes = new Set(metrics.map((metric) => metric.code));
-    if (codes.size !== 4 || metrics.length !== 4) return false;
+    if (codes.size !== 4 || metrics.length !== 4 || metricCodes.some((code) => !codes.has(code))) return false;
     for (const metric of metrics) {
       const values = ["P1", "P2", "P3"].map((segment) => metric.segments[segment]);
       if (!values.every(nonnegativeInteger) || !nonnegativeInteger(metric.fullMatchTotal)
