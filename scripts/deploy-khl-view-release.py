@@ -11,13 +11,16 @@ _spec = importlib.util.spec_from_file_location('khl_view_shared_primitives', Pat
 shared = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(shared)
 GuardError = shared.GuardError
-BASELINE = 'sha256:51c6e42e9505693da76ee611e2d7347543dac8a5cbad619a22ed8e12a05c3e7d'
+BASELINE = 'sha256:15d2e8b81348209fe6d7c8f98a3dac17173b1f509f87284ff280397126aa46be'
 OVERLAY = '/root/tdata/backups/khl-20260905-verified-1930/khl-release.override.json'
+VIEW_OVERLAY = '/root/tdata/backups/khl-view-20260905-2058/khl-view-release.override.json'
 REVIEWED_COMPOSE = {**shared.REVIEWED_COMPOSE,
-                    OVERLAY: 'a80d5e7e98fd51296af15a8778dce63eb0fc1be8ca57baa1d8e2b8827bcdf2d3'}
+                    OVERLAY: 'a80d5e7e98fd51296af15a8778dce63eb0fc1be8ca57baa1d8e2b8827bcdf2d3',
+                    VIEW_OVERLAY: '6544e7d1b71d1b6449bc0cf1c9512682a1fbdd16eb6cdc5180eef00a7e315411'}
 WEB_PORTS = {'3010/tcp': [{'HostIp': '127.0.0.1', 'HostPort': '3010'}]}
 REVIEWED_DIAGNOSTIC_SCRIPTS = {
     'scripts/verify-khl-identity-browser.ts': '7f41bd70328c87371de3e14b6cbb115e0bc2b1e2ad8070401f1b77f95ca3ad45',
+    'scripts/verify-khl-midnight-browser.ts': 'aa36932b928ee81787251f2fd12086da80ade8a85cd7c7c534c3dce7dfd62e0f',
 }
 
 

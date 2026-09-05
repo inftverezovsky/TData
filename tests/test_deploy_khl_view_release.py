@@ -54,15 +54,15 @@ class ViewDeploymentTests(unittest.TestCase):
             view.validate_runtime('sha256:' + 'a' * 64)
 
     def test_only_exact_reviewed_diagnostic_script_is_allowed(self):
-        path = 'scripts/verify-khl-identity-browser.ts'
-        checksum = view.REVIEWED_DIAGNOSTIC_SCRIPTS[path]
-        before = {'backend/important.ts': 'same'}
-        with patch.object(view, 'runtime_manifest', side_effect=[before, {**before, path: checksum}]):
-            view.validate_runtime('sha256:' + 'a' * 64)
-        for extra in [{path: 'modified'}, {'scripts/verify-other-browser.ts': checksum}]:
-            with patch.object(view, 'runtime_manifest', side_effect=[before, {**before, **extra}]):
-                with self.assertRaises(view.GuardError):
-                    view.validate_runtime('sha256:' + 'a' * 64)
+        for path in ['scripts/verify-khl-identity-browser.ts', 'scripts/verify-khl-midnight-browser.ts']:
+            checksum = view.REVIEWED_DIAGNOSTIC_SCRIPTS[path]
+            before = {'backend/important.ts': 'same'}
+            with patch.object(view, 'runtime_manifest', side_effect=[before, {**before, path: checksum}]):
+                view.validate_runtime('sha256:' + 'a' * 64)
+            for extra in [{path: 'modified'}, {'scripts/verify-other-browser.ts': checksum}]:
+                with patch.object(view, 'runtime_manifest', side_effect=[before, {**before, **extra}]):
+                    with self.assertRaises(view.GuardError):
+                        view.validate_runtime('sha256:' + 'a' * 64)
 
     def test_compose_web_environment_or_ports_cannot_change(self):
         original = {'services': {'web': {'image': 'old', 'environment': {'PORT': '3010'}, 'ports': ['127.0.0.1:3010:3010']},
@@ -78,10 +78,13 @@ class ViewDeploymentTests(unittest.TestCase):
         with self.assertRaises(view.GuardError):
             view.validate_compose(original, changed)
 
-    def test_shared_backup_primitives_use_new_baseline_and_seven_file_chain(self):
+    def test_shared_backup_primitives_use_current_baseline_and_eight_file_chain(self):
         view.configure_shared()
+        self.assertEqual(view.BASELINE, 'sha256:15d2e8b81348209fe6d7c8f98a3dac17173b1f509f87284ff280397126aa46be')
         self.assertEqual(view.shared.BASELINE, view.BASELINE)
-        self.assertEqual(len(view.shared.REVIEWED_COMPOSE), 7)
+        self.assertEqual(len(view.shared.REVIEWED_COMPOSE), 8)
+        self.assertEqual(view.shared.REVIEWED_COMPOSE['/root/tdata/backups/khl-view-20260905-2058/khl-view-release.override.json'],
+                         '6544e7d1b71d1b6449bc0cf1c9512682a1fbdd16eb6cdc5180eef00a7e315411')
         self.assertIs(view.shared.protected, view.protected_snapshot)
         self.assertIs(view.shared.assert_protected, view.assert_protected)
 

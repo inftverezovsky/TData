@@ -17,6 +17,7 @@ import {
   getKhlRevisionPresentation,
 } from "@/components/results/khl/khlResultsViewModel";
 import type { StoredMatch } from "@/components/results/khl/types";
+import { useKhlResultsTime } from "@/components/results/khl/khlResultsClock";
 
 type Props = {
   matches: StoredMatch[];
@@ -43,7 +44,11 @@ export function KhlResultsWorkspace({
   onReingest,
 }: Props) {
   const [tab, setTab] = useState<KhlResultsTab>("today");
-  const partition = useMemo(() => partitionKhlResultsMatches(matches), [matches]);
+  const now = useKhlResultsTime();
+  const partition = useMemo(() => now === null
+    ? { today: [], archive: [] }
+    : partitionKhlResultsMatches(matches, new Date(now)), [matches, now]);
+  const dayLabel = now === null ? "Определяем московскую дату…" : formatMoscowDay(new Date(now));
   const daily = useMemo(() => aggregateKhlGameDay(partition.today), [partition.today]);
   const tabItems = KHL_RESULTS_TABS.map((item) => ({
     ...item,
@@ -76,14 +81,14 @@ export function KhlResultsWorkspace({
       {tab === "today" && (
         <MatchList
           title="Матчи сегодня"
-          description={`Московская дата: ${formatMoscowDay(new Date())}. Матчи отсортированы по времени начала.`}
+          description={now === null ? dayLabel : `Московская дата: ${dayLabel}. Матчи отсортированы по времени начала.`}
           matches={partition.today}
-          empty="Завершённых матчей КХЛ сегодня пока нет. Автопарсер добавит их после появления официального протокола."
+          empty={now === null ? "Загрузка результатов…" : "Завершённых матчей КХЛ сегодня пока нет. Автопарсер добавит их после появления официального протокола."}
           busyKey={busyKey}
           onReingest={onReingest}
         />
       )}
-      {tab === "daily" && <DailyStatistics matches={partition.today} />}
+      {tab === "daily" && <DailyStatistics matches={partition.today} dayLabel={dayLabel} />}
       {tab === "archive" && (
         <ArchiveMatches
           matches={partition.archive}
@@ -305,7 +310,7 @@ function revisionBadgeClass(tone: "validated" | "warning" | "rejected" | "empty"
   return "bg-amber-50 text-amber-800";
 }
 
-function DailyStatistics({ matches }: { matches: StoredMatch[] }) {
+function DailyStatistics({ matches, dayLabel }: { matches: StoredMatch[]; dayLabel: string }) {
   const summary = useMemo(() => aggregateKhlGameDay(matches), [matches]);
 
   return (
@@ -313,7 +318,7 @@ function DailyStatistics({ matches }: { matches: StoredMatch[] }) {
       <section className="rounded-3xl border border-slate-200 bg-slate-50/60 p-5 shadow-sm">
         <h2 className="text-lg font-black text-slate-950">Статистика игрового дня</h2>
         <p className="mt-1 text-sm text-slate-600">
-          Суммы P1–P3 за {formatMoscowDay(new Date())}. Овертаймы не увеличивают эти значения.
+          Суммы P1–P3 за {dayLabel}. Овертаймы не увеличивают эти значения.
         </p>
         <div className="mt-4 flex flex-wrap gap-2 text-xs font-black">
           <span className="rounded-full bg-emerald-100 px-3 py-1 text-emerald-800">Учтено матчей: {summary.includedMatches}</span>
