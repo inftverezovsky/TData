@@ -75,12 +75,37 @@ test("identity warning is amber and human-readable without claiming active valid
   assert.match(presentation.warning?.description || "", /staging.*заблокирован/);
   const card = renderToStaticMarkup(createElement(KhlResultMatchCard, { match }));
   assert.match(card, /Статистика доступна · нет ID КХЛ/);
-  assert.match(card, /Учтён в статистике дня/);
+  assert.match(card, /Доступен для статистики дня/);
   assert.match(card, /Belousov Maxim/);
   assert.doesNotMatch(card, /Не входит в статистику дня|missing KHL player id|Непроверенная ревизия/);
   const protocol = renderToStaticMarkup(createElement(KhlMatchProtocol, { protocol: match.protocol }));
   assert.match(protocol, /Статистика доступна · нет ID КХЛ/);
   assert.doesNotMatch(protocol, /missing KHL player id|Протокол проверен/);
+});
+
+test("archive identity warnings describe eligibility without claiming inclusion in today's totals", () => {
+  const match = { ...diagnostic(), startsAt: "2026-05-01T14:00:00.000Z" };
+  const card = renderToStaticMarkup(createElement(KhlResultMatchCard, { match }));
+  assert.match(card, /Доступен для статистики дня/);
+  assert.doesNotMatch(card, /Учтён в статистике дня|статистика учтены/);
+});
+
+test("identity-only exception rejects unknown metric codes and inconsistent regulation numbers", () => {
+  const match = diagnostic();
+  const protocol = match.protocol!;
+  const variants = [
+    { ...protocol, teams: { ...protocol.teams, home: { ...protocol.teams.home, metrics:
+      protocol.teams.home.metrics.map((metric, index) => index === 0 ? { ...metric, code: "unknown" as typeof metric.code } : metric) } } },
+    { ...protocol, scores: { ...protocol.scores, segments: protocol.scores.segments.filter((score) => score.segment !== "P2") } },
+    { ...protocol, teams: { ...protocol.teams, home: { ...protocol.teams.home, metrics:
+      protocol.teams.home.metrics.map((metric, index) => index === 0 ? { ...metric, regulationTotal: metric.regulationTotal + 1 } : metric) } } },
+    { ...protocol, scores: { ...protocol.scores, segments: [...protocol.scores.segments, protocol.scores.segments[0]] } },
+  ];
+  for (const value of variants) {
+    const changed = { ...match, protocol: value };
+    assert.equal(aggregateKhlGameDay([changed]).includedMatches, 0);
+    assert.equal(getKhlRevisionPresentation(changed).excludeFromDaily, true);
+  }
 });
 
 test("unresolved API IDs never merge across matches or sides and never become invented KHL IDs", () => {
