@@ -146,6 +146,7 @@ export function aggregateKhlGameDay(
       match.activeRevision?.state !== "VALIDATED"
       || !protocol?.validation.ok
       || hasNewerRejectedRevision(match)
+      || protocol.players.some((player) => !player.khlPlayerId)
     ) {
       skippedMatches += 1;
       continue;
@@ -156,6 +157,8 @@ export function aggregateKhlGameDay(
     accumulateTeam(teamAccumulators, protocol, "away");
 
     for (const player of protocol.players) {
+      // The whole-match guard above excludes diagnostic rosters from daily totals.
+      if (!player.khlPlayerId) throw new Error("Unresolved KHL player in validated day summary.");
       const existing = playerAccumulators.get(player.khlPlayerId);
       playerAccumulators.set(player.khlPlayerId, {
         khlPlayerId: player.khlPlayerId,
@@ -187,7 +190,8 @@ export function getKhlRevisionPresentation(
     ? validationIssueStrings(match.latestRevision?.validationIssues)
     : [];
 
-  if (!match.activeRevision && latestRejected && match.latestRevision) {
+  if (latestRejected && match.latestRevision
+    && (!match.activeRevision || match.displayRevision?.source === "LATEST_REJECTED")) {
     const revisionNumber = match.latestRevision.revisionNumber;
     return {
       badgeLabel: `Непроверенная ревизия #${revisionNumber}`,

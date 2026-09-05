@@ -31,6 +31,8 @@ User/
 /TData/
 hltv_debug_error.png
 *.tsbuildinfo
+__pycache__/
+*.pyc
 
 # IDE files
 .vscode/

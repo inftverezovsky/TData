@@ -75,7 +75,7 @@ export function KhlTargetBindingsForm({
     onChange(next);
   };
   const protocolPlayers = new Map(
-    (protocol?.players || []).map((player) => [player.khlPlayerId, player])
+    (protocol?.players || []).flatMap((player) => player.khlPlayerId ? [[player.khlPlayerId, player] as const] : [])
   );
 
   return (

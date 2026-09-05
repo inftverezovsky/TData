@@ -24,6 +24,7 @@ type Props = {
   busyKey: string | null;
   onRefresh: () => void;
   onLoadMore: () => void;
+  onReingest?: (match: StoredMatch) => void;
 };
 
 const METRIC_ORDER = [
@@ -39,6 +40,7 @@ export function KhlResultsWorkspace({
   busyKey,
   onRefresh,
   onLoadMore,
+  onReingest,
 }: Props) {
   const [tab, setTab] = useState<KhlResultsTab>("today");
   const partition = useMemo(() => partitionKhlResultsMatches(matches), [matches]);
@@ -64,9 +66,10 @@ export function KhlResultsWorkspace({
         <button
           type="button"
           onClick={onRefresh}
-          className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700"
+          disabled={busyKey === "sync:all"}
+          className="rounded-xl border border-blue-200 bg-blue-700 px-4 py-2 text-xs font-black text-white disabled:opacity-40"
         >
-          Обновить данные
+          {busyKey === "sync:all" ? "Постановка в очередь…" : "Собрать сейчас"}
         </button>
       </div>
 
@@ -76,6 +79,8 @@ export function KhlResultsWorkspace({
           description={`Московская дата: ${formatMoscowDay(new Date())}. Матчи отсортированы по времени начала.`}
           matches={partition.today}
           empty="Завершённых матчей КХЛ сегодня пока нет. Автопарсер добавит их после появления официального протокола."
+          busyKey={busyKey}
+          onReingest={onReingest}
         />
       )}
       {tab === "daily" && <DailyStatistics matches={partition.today} />}
@@ -85,6 +90,7 @@ export function KhlResultsWorkspace({
           hasMoreMatches={hasMoreMatches}
           busyKey={busyKey}
           onLoadMore={onLoadMore}
+          onReingest={onReingest}
         />
       )}
     </section>
@@ -96,11 +102,13 @@ function ArchiveMatches({
   hasMoreMatches,
   busyKey,
   onLoadMore,
+  onReingest,
 }: {
   matches: StoredMatch[];
   hasMoreMatches: boolean;
   busyKey: string | null;
   onLoadMore: () => void;
+  onReingest?: (match: StoredMatch) => void;
 }) {
   const [query, setQuery] = useState("");
   const [day, setDay] = useState("");
@@ -138,6 +146,8 @@ function ArchiveMatches({
         description={`Показано: ${filtered.length} из ${matches.length} загруженных.`}
         matches={filtered}
         empty="В архиве нет матчей по выбранному фильтру."
+        busyKey={busyKey}
+        onReingest={onReingest}
       />
       {hasMoreMatches && (
         <button
@@ -158,11 +168,15 @@ function MatchList({
   description,
   matches,
   empty,
+  busyKey,
+  onReingest,
 }: {
   title: string;
   description: string;
   matches: StoredMatch[];
   empty: string;
+  busyKey?: string | null;
+  onReingest?: (match: StoredMatch) => void;
 }) {
   return (
     <section className="space-y-4">
@@ -170,7 +184,7 @@ function MatchList({
         <h2 className="text-lg font-black text-slate-950">{title}</h2>
         <p className="text-sm text-slate-500">{description}</p>
       </div>
-      {matches.map((match) => <KhlResultMatchCard key={match.id} match={match} />)}
+      {matches.map((match) => <KhlResultMatchCard key={match.id} match={match} busyKey={busyKey} onReingest={onReingest} />)}
       {matches.length === 0 && (
         <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500">
           {empty}
@@ -180,7 +194,11 @@ function MatchList({
   );
 }
 
-export function KhlResultMatchCard({ match }: { match: StoredMatch }) {
+export function KhlResultMatchCard({ match, busyKey, onReingest }: {
+  match: StoredMatch;
+  busyKey?: string | null;
+  onReingest?: (match: StoredMatch) => void;
+}) {
   const [tab, setTab] = useState<KhlMatchTab>("overview");
   const playerCount = match.protocol?.players.length ?? match._count.participants;
   const revision = getKhlRevisionPresentation(match);
@@ -256,6 +274,13 @@ export function KhlResultMatchCard({ match }: { match: StoredMatch }) {
           )}
         </summary>
         <div className="space-y-4 border-t border-slate-200 p-5 sm:p-6">
+          {onReingest && (
+            <button type="button" onClick={() => onReingest(match)}
+              disabled={busyKey === `sync:${match.khlGameId}`}
+              className="rounded-xl border border-blue-200 px-4 py-2 text-xs font-black text-blue-700 disabled:opacity-40">
+              {busyKey === `sync:${match.khlGameId}` ? "Постановка в очередь…" : "Переполучить протокол"}
+            </button>
+          )}
           <KhlTabs
             items={KHL_MATCH_TABS}
             value={tab}

@@ -270,12 +270,14 @@ function PlayerTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
-          {players.map((player) => (
-            <tr key={player.khlPlayerId} data-testid="khl-protocol-player">
+          {players.map((player, index) => (
+            <tr key={`${player.teamSide}:${player.apiPlayerId}:${index}`} data-testid="khl-protocol-player">
               <td className="px-2 py-2 text-center font-bold tabular-nums">{player.shirtNumber}</td>
               <td className="whitespace-nowrap px-2 py-2">
                 <div className="font-bold text-slate-900">{player.name}</div>
-                <div className="text-[10px] text-slate-400">KHL {player.khlPlayerId}</div>
+                <div className="text-[10px] text-slate-400">
+                  {player.khlPlayerId ? `KHL ${player.khlPlayerId}` : "ID КХЛ пока отсутствует в источнике"}
+                </div>
               </td>
               <td className="whitespace-nowrap px-2 py-2 text-slate-500">{player.role || "—"}</td>
               {PLAYER_POINT_COLUMNS.map((column) => (

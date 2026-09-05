@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { requireResolvedKhlPlayers } from "@backend/sources/results/khl/normalize";
 
 import type {
   KhlMetric,
@@ -108,6 +109,12 @@ export class KhlAdminPayloadError extends Error {
 
 export function buildKhlAdminCanonicalPayload(input: BuildInput) {
   const issues = validateInput(input);
+  let players;
+  try {
+    players = requireResolvedKhlPlayers(input.match.players);
+  } catch (error) {
+    throw new KhlAdminPayloadError([...issues, error instanceof Error ? error.message : "Unresolved KHL player identities."]);
+  }
   if (issues.length > 0) throw new KhlAdminPayloadError(issues);
 
   const payload: KhlAdminCanonicalPayload = {
@@ -153,7 +160,7 @@ export function buildKhlAdminCanonicalPayload(input: BuildInput) {
       assists: cleanId(input.bindings.playerStatTypes.assists),
       points: cleanId(input.bindings.playerStatTypes.points),
     },
-    players: input.match.players
+    players: players
       .slice()
       .sort((a, b) =>
         a.teamSide.localeCompare(b.teamSide) ||
@@ -263,6 +270,10 @@ function validateInput(input: BuildInput) {
   }
 
   for (const player of input.match.players) {
+    if (!player.khlPlayerId) {
+      issues.push(`KHL API player ${player.apiPlayerId}: missing KHL player id.`);
+      continue;
+    }
     const binding = input.bindings.players[player.khlPlayerId];
     if (!binding) {
       issues.push(`Missing Admin participant binding for KHL player ${player.khlPlayerId}.`);

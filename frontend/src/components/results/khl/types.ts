@@ -1,4 +1,5 @@
 import type { KhlMatchProtocolView } from "@backend/results/khl/matchProtocol";
+import type { KhlSyncStatus } from "@backend/results/khl/syncQueue";
 
 export type ApiError = { error?: string; code?: string };
 
@@ -67,7 +68,7 @@ export type StoredMatch = {
   _count: { revisions: number; participants: number };
 };
 
-export type AutomationStatus = {
+export type AutomationStatus = Partial<KhlSyncStatus> & {
   configured: boolean;
   paused: boolean;
   enabled: boolean;

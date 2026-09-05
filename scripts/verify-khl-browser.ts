@@ -56,14 +56,13 @@ async function main() {
     process.env.DATABASE_URL,
     process.env.TEST_DATABASE_URL
   );
-  const adminPassword = requiredEnvironmentValue("ADMIN_PASSWORD");
   if (process.env.ALLOW_KHL_BROWSER_VERIFY !== "1") {
     throw new Error("Set ALLOW_KHL_BROWSER_VERIFY=1 for isolated browser verification.");
   }
 
   const prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
   const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext();
+  const context = await browser.newContext({ baseURL: baseUrl });
   const page = await context.newPage();
   const browserErrors: string[] = [];
   page.on("console", (message) => {
@@ -77,8 +76,8 @@ async function main() {
   try {
   await prisma.globalSettings.upsert({
     where: { key: KHL_RESULTS_AUTO_SYNC_PAUSED_KEY },
-    create: { key: KHL_RESULTS_AUTO_SYNC_PAUSED_KEY, value: "0" },
-    update: { value: "0" },
+    create: { key: KHL_RESULTS_AUTO_SYNC_PAUSED_KEY, value: "1" },
+    update: { value: "1" },
   });
   await prisma.adminTeam.create({
     data: {
@@ -93,22 +92,9 @@ async function main() {
   });
   await page.goto(`${baseUrl}/results`);
   await visible(page).toHaveURL(`${baseUrl}/results/khl`);
-  await visible(page.getByRole("heading", { name: "Доступ ограничен" })).toBeVisible();
-
-  const unauthenticated = await page.evaluate(async () => {
-    const stages = await fetch("/api/results/khl/stages");
-    const invalidIngest = await fetch("/api/results/khl/ingest", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: "{invalid",
-    });
-    return { stages: stages.status, invalidIngest: invalidIngest.status };
-  });
-  assert.deepEqual(unauthenticated, { stages: 401, invalidIngest: 401 });
-
-  await page.getByPlaceholder("Пароль...").fill(adminPassword);
-  await page.getByRole("button", { name: "Разблокировать" }).click();
-  await visible(page.getByRole("heading", { name: "Автоматическое обновление включено" })).toBeVisible();
+  // Production deliberately made KHL public; mutations retain same-origin JSON guards.
+  await expect(page.getByRole("heading", { name: "Доступ ограничен" })).toHaveCount(0);
+  await visible(page.getByRole("heading", { name: "Автопарсинг остановлен" })).toBeVisible();
   await visible(page.getByText(/Только завершённые матчи с 01\.05\.2026/)).toBeVisible();
   await expect(page.getByText("Admin sender отключён", { exact: true })).toHaveCount(0);
 
@@ -145,35 +131,12 @@ async function main() {
   await rootTabs.getByRole("tab", { name: "Результаты", exact: true }).click();
   await visible(page.getByTestId("khl-results-workspace")).toBeVisible();
 
-  const pauseResponsePromise = waitForApiResponse(page, "/api/results/khl/automation", "POST");
-  await page.getByRole("button", { name: "Остановить автообновление" }).click();
-  const pauseResponse = await pauseResponsePromise;
-  assert.equal(pauseResponse.status(), 200);
-  assert.deepEqual((await pauseResponse.json() as { automation: {
-    configured: boolean;
-    paused: boolean;
-    enabled: boolean;
-  } }).automation, { configured: true, paused: true, enabled: false });
-  await visible(page.getByRole("heading", { name: "Автоматическое обновление остановлено" })).toBeVisible();
   assert.equal((await prisma.globalSettings.findUnique({
     where: { key: KHL_RESULTS_AUTO_SYNC_PAUSED_KEY },
   }))?.value, "1");
 
   await page.reload();
-  await visible(page.getByRole("heading", { name: "Автоматическое обновление остановлено" })).toBeVisible();
-  const resumeResponsePromise = waitForApiResponse(page, "/api/results/khl/automation", "POST");
-  await page.getByRole("button", { name: "Запустить автообновление" }).click();
-  const resumeResponse = await resumeResponsePromise;
-  assert.equal(resumeResponse.status(), 200);
-  assert.deepEqual((await resumeResponse.json() as { automation: {
-    configured: boolean;
-    paused: boolean;
-    enabled: boolean;
-  } }).automation, { configured: true, paused: false, enabled: true });
-  await visible(page.getByRole("heading", { name: "Автоматическое обновление включено" })).toBeVisible();
-  assert.equal((await prisma.globalSettings.findUnique({
-    where: { key: KHL_RESULTS_AUTO_SYNC_PAUSED_KEY },
-  }))?.value, "0");
+  await visible(page.getByRole("heading", { name: "Автопарсинг остановлен" })).toBeVisible();
 
   await selectRootTab(page, "settings");
   await selectSettingsTab(page, "matches");
@@ -208,23 +171,21 @@ async function main() {
   const ingestResponsePromise = waitForApiResponse(page, "/api/results/khl/ingest", "POST");
   await scheduleRow.getByRole("button", { name: "Ingest / обновить" }).click();
   const ingestResponse = await ingestResponsePromise;
-  assert.equal(ingestResponse.status(), 200);
-  const ingestBody = await ingestResponse.json() as {
-    match: { khlGameId: string };
-    idempotency: { reusedSnapshot: boolean; reusedRevision: boolean; activated: boolean };
-  };
-  assert.equal(ingestBody.match.khlGameId, KHL_GAME_ID);
+  assert.equal(ingestResponse.status(), 202);
+  const ingestBody = await ingestResponse.json() as { run: { id: string } };
+  const initialRun = await waitForSyncRun(page, ingestBody.run.id);
+  assert.equal(initialRun.status, "SUCCEEDED");
+  const initialRevision = (await prisma.khlMatch.findUniqueOrThrow({ where: { khlGameId: KHL_GAME_ID } })).activeRevisionId;
 
   const repeatedIngestResponsePromise = waitForApiResponse(page, "/api/results/khl/ingest", "POST");
   await scheduleRow.getByRole("button", { name: "Ingest / обновить" }).click();
   const repeatedIngestResponse = await repeatedIngestResponsePromise;
-  assert.equal(repeatedIngestResponse.status(), 200);
-  const repeatedIngestBody = await repeatedIngestResponse.json() as {
-    idempotency: { reusedSnapshot: boolean; reusedRevision: boolean; activated: boolean };
-  };
-  assert.equal(typeof repeatedIngestBody.idempotency.reusedSnapshot, "boolean");
-  assert.equal(repeatedIngestBody.idempotency.reusedRevision, true);
-  assert.equal(repeatedIngestBody.idempotency.activated, false);
+  assert.equal(repeatedIngestResponse.status(), 202);
+  const repeatedIngestBody = await repeatedIngestResponse.json() as { run: { id: string } };
+  assert.equal((await waitForSyncRun(page, repeatedIngestBody.run.id)).status, "SUCCEEDED");
+  assert.equal((await prisma.khlMatch.findUniqueOrThrow({ where: { khlGameId: KHL_GAME_ID } })).activeRevisionId, initialRevision);
+  await page.reload();
+  await selectRootTab(page, "settings");
 
   await selectSettingsTab(page, "teams-players");
   const playerTeamGroups = settingsWorkspace(page).getByTestId("khl-team-player-group");
@@ -426,7 +387,7 @@ async function main() {
   await visible(matchCard.locator("pre")).toContainText("e2e-admin-match-901973");
 
   await page.reload();
-  await visible(page.getByRole("heading", { name: "Автоматическое обновление включено" })).toBeVisible();
+  await visible(page.getByRole("heading", { name: "Автопарсинг остановлен" })).toBeVisible();
   await selectRootTab(page, "settings");
   await selectSettingsTab(page, "teams-players");
   await assertTeamStatisticsPrefill(
@@ -516,9 +477,56 @@ async function main() {
   assert.equal(attempts, 0);
   assert.ok(match?.activeRevisionId);
   assert.equal(deliveries[0].payloadHash, readyPreview.payloadHash);
-  const unexpectedBrowserErrors = browserErrors.filter((message) => (
-    !/Failed to load resource: the server responded with a status of 401 \(Unauthorized\)/.test(message)
-  ));
+  // The real buttons must enqueue source work, not only reload stored rows.
+  await selectRootTab(page, "results");
+  const manualRunResponse = waitForApiResponse(page, "/api/results/khl/sync", "POST");
+  await page.getByRole("button", { name: "Собрать сейчас", exact: true }).click();
+  const manualResponse = await manualRunResponse;
+  assert.equal(manualResponse.status(), 202);
+  const manualRunId = (await manualResponse.json()).run.id as string;
+  assert.ok(["SUCCEEDED", "PARTIAL"].includes((await waitForSyncRun(page, manualRunId)).status));
+  await page.reload();
+  await selectResultsTab(page, "archive");
+  const refreshedArticle = resultMatchArticle(page);
+  await refreshedArticle.getByTestId("khl-match-summary").click();
+  const forcedResponse = waitForApiResponse(page, "/api/results/khl/sync", "POST");
+  await refreshedArticle.getByRole("button", { name: "Переполучить протокол" }).click();
+  assert.equal((await forcedResponse).status(), 202);
+  const forcedRunId = (await (await forcedResponse).json()).run.id as string;
+  assert.equal((await waitForSyncRun(page, forcedRunId)).status, "SUCCEEDED");
+
+  const resumeResponsePromise = waitForApiResponse(page, "/api/results/khl/automation", "POST");
+  await page.getByRole("button", { name: "Включить автопарсинг" }).click();
+  const resumeResponse = await resumeResponsePromise;
+  assert.equal(resumeResponse.status(), 200);
+  const resumed = await resumeResponse.json() as { run: { id: string } };
+  assert.ok(resumed.run.id, "Enabling automation must enqueue an immediate run.");
+  await page.close();
+  const continuation = await context.newPage();
+  continuation.on("console", (message) => {
+    if (message.type() === "error") browserErrors.push(message.text());
+  });
+  continuation.on("pageerror", (error) => browserErrors.push(error.message));
+  const automaticRun = await waitForSyncRun(continuation, resumed.run.id);
+  assert.ok(["SUCCEEDED", "PARTIAL"].includes(automaticRun.status));
+  assert.ok(automaticRun.summary.events.checked > 0, "Automatic collection must refetch recently stored protocols.");
+  assert.equal(automaticRun.summary.events.skippedRecentlyFetched, 0);
+  assert.equal(automaticRun.summary.events.newlyChanged + automaticRun.summary.events.reusedRevisions,
+    automaticRun.summary.events.ingested, "Changed and unchanged normalized protocols must not overlap.");
+  await continuation.goto(`${baseUrl}/results/khl`);
+  await visible(continuation.getByText("Последняя проверка источника", { exact: true })).toBeVisible();
+  await visible(continuation.getByText("Последнее изменение данных", { exact: true })).toBeVisible();
+  const pauseResponsePromise = waitForApiResponse(continuation, "/api/results/khl/automation", "POST");
+  await continuation.getByRole("button", { name: "Остановить автопарсинг" }).click();
+  assert.equal((await pauseResponsePromise).status(), 200);
+  await continuation.reload();
+  await visible(continuation.getByRole("heading", { name: "Автопарсинг остановлен" })).toBeVisible();
+  assert.equal((await prisma.globalSettings.findUnique({ where: { key: KHL_RESULTS_AUTO_SYNC_PAUSED_KEY } }))?.value, "1");
+  assert.equal((await prisma.khlPlayer.findUniqueOrThrow({ where: { khlPlayerId: firstPlayer.khlPlayerId } })).adminPlayerId, DIRECTORY_PLAYER_ID);
+  assert.equal(await prisma.khlDeliveryAttempt.count(), 0);
+  await continuation.screenshot({ path: "test-results/khl-sync-browser.png", fullPage: true });
+  await continuation.close();
+  const unexpectedBrowserErrors = browserErrors;
   assert.deepEqual(unexpectedBrowserErrors, []);
 
   process.stdout.write(`${JSON.stringify({
@@ -530,15 +538,15 @@ async function main() {
     deliveryAttemptCount: attempts,
     transportExecuted: false,
     finalDiff: "UNCHANGED",
-    automationControl: "PAUSE_PERSISTED_THEN_RESUMED",
+    automationControl: "MANUAL_FORCED_AUTOMATIC_PAGE_CLOSED_PAUSE_PERSISTED",
     playerTeamGroups: 2,
     browserConsoleErrors: unexpectedBrowserErrors.length,
   }, null, 2)}\n`);
   } finally {
     await prisma.globalSettings.upsert({
       where: { key: KHL_RESULTS_AUTO_SYNC_PAUSED_KEY },
-      create: { key: KHL_RESULTS_AUTO_SYNC_PAUSED_KEY, value: "0" },
-      update: { value: "0" },
+      create: { key: KHL_RESULTS_AUTO_SYNC_PAUSED_KEY, value: "1" },
+      update: { value: "1" },
     }).catch(() => undefined);
     await page.close().catch(() => undefined);
     await context.close().catch(() => undefined);
@@ -796,10 +804,19 @@ function waitForApiResponse(page: Page, pathname: string, method: string): Promi
   ), { timeout: 45_000 });
 }
 
-function requiredEnvironmentValue(name: string) {
-  const value = process.env[name]?.trim();
-  if (!value) throw new Error(`${name} is required.`);
-  return value;
+async function waitForSyncRun(page: Page, id: string) {
+  let run: { status: string; error: string | null; summary: {
+    events: { checked: number; skippedRecentlyFetched: number; newlyChanged: number; reusedRevisions: number; ingested: number };
+  } } = { status: "QUEUED", error: null, summary: {
+    events: { checked: 0, skippedRecentlyFetched: 0, newlyChanged: 0, reusedRevisions: 0, ingested: 0 },
+  } };
+  await expect.poll(async () => {
+    const response = await page.request.get(`/api/results/khl/sync/${encodeURIComponent(id)}`);
+    assert.equal(response.status(), 200);
+    run = (await response.json()).run;
+    return run.status !== "QUEUED" && run.status !== "RUNNING";
+  }, { timeout: 300_000, intervals: [500, 1_000, 2_000] }).toBe(true);
+  return run;
 }
 
 function requireLoopbackUrl(value: string | undefined) {

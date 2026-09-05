@@ -4,8 +4,22 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { KhlResultMatchCard } from "../frontend/src/components/results/khl/KhlResultsWorkspace";
+import { KhlResultMatchCard, KhlResultsWorkspace } from "../frontend/src/components/results/khl/KhlResultsWorkspace";
 import type { StoredMatch } from "../frontend/src/components/results/khl/types";
+
+test("results offer actual collection and an explicit per-match protocol refresh", () => {
+  const html = renderToStaticMarkup(createElement(KhlResultsWorkspace, {
+    matches: [], hasMoreMatches: false, busyKey: null,
+    onRefresh: () => {}, onLoadMore: () => {}, onReingest: () => {},
+  }));
+  assert.match(html, /Собрать сейчас/);
+  assert.doesNotMatch(html, /Обновить данные/);
+  const card = renderToStaticMarkup(createElement(KhlResultMatchCard, {
+    match: storedMatch({ activeRevision: null, latestRevision: null, displayRevision: null }),
+    onReingest: () => {}, busyKey: null,
+  }));
+  assert.match(card, /Переполучить протокол/);
+});
 
 test("collapsed match warns about a rejected-first diagnostic revision", () => {
   const html = renderToStaticMarkup(createElement(KhlResultMatchCard, {

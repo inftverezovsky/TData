@@ -29,6 +29,7 @@
     "repair:hltv-event": "tsx scripts/repair-hltv-event.ts",
     "repair:dltv-identities": "tsx scripts/repair-dltv-identities.ts",
     "sync:khl-results": "tsx scripts/sync-khl-results.ts",
+    "worker:khl-results": "tsx scripts/khl-results-worker.ts",
     "worker:tline": "tsx scripts/tline-worker.ts",
     "tline:bootstrap-pilot": "tsx scripts/tline-bootstrap-pilot.ts",
     "tline:check-sources": "tsx scripts/tline-source-check.ts",

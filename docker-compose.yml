@@ -93,6 +93,19 @@ services:
       retries: 3
       start_period: 60s
 
+  khl-worker:
+    image: ${TDATA_IMAGE:-tdata-local}
+    container_name: tdata-khl-worker
+    restart: unless-stopped
+    command: ["npm", "run", "worker:khl-results"]
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-tdata}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-tdata}?schema=public
+      KHL_RESULTS_AUTO_SYNC_ENABLED: ${KHL_RESULTS_AUTO_SYNC_ENABLED:-1}
+      KHL_RESULTS_AUTO_SYNC_INTERVAL_MINUTES: ${KHL_RESULTS_AUTO_SYNC_INTERVAL_MINUTES:-10}
+    depends_on:
+      web:
+        condition: service_healthy
+
   tline-worker:
     image: ${TDATA_IMAGE:-tdata-local}
     container_name: tdata-tline-worker

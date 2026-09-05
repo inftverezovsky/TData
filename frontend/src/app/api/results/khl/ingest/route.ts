@@ -2,10 +2,8 @@ import { NextResponse } from "next/server";
 
 import { requireSameOriginJsonMutation } from "@backend/auth/adminAuth";
 import { prisma } from "@backend/db/db";
-import { KHL_RESULTS_CUTOFF } from "@backend/results/khl/autoSync";
-import { KhlRepositoryError, ingestKhlEventDetail } from "@backend/results/khl/repository";
-import { KhlApiClient, KhlApiError } from "@backend/sources/results/khl/client";
-import { KhlSchemaError, normalizeKhlEventDetail } from "@backend/sources/results/khl/normalize";
+import { enqueueKhlSync, khlSyncRunView, KhlSyncRequestError } from "@backend/results/khl/syncQueue";
+import { readKhlSyncRequest } from "@backend/results/khl/syncRequest";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -14,12 +12,8 @@ export async function POST(request: Request) {
   const unsafeRequest = requireSameOriginJsonMutation(request);
   if (unsafeRequest) return unsafeRequest;
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Request body must be valid JSON." }, { status: 400 });
-  }
+  const body = await readKhlSyncRequest(request);
+  if (body instanceof Response) return body;
   const apiEventId = readPositiveDecimalId(body, "apiEventId");
   const stageId = readPositiveDecimalId(body, "stageId");
   if (!apiEventId || !stageId) {
@@ -30,51 +24,14 @@ export async function POST(request: Request) {
   }
 
   try {
-    const envelope = await new KhlApiClient().getEventDetailEnvelope({ apiEventId, stageId });
-    const normalized = normalizeKhlEventDetail(envelope.event);
-    if (new Date(normalized.startsAt) < KHL_RESULTS_CUTOFF) {
-      return NextResponse.json(
-        { error: "KHL results before 2026-05-01 are outside the configured scope." },
-        { status: 422 }
-      );
-    }
-    const result = await ingestKhlEventDetail(prisma, {
-      rawBody: envelope.rawBody,
-      sourceUrl: envelope.sourceUrl,
-      fetchedAt: envelope.fetchedAt,
-      contentType: envelope.contentType || undefined,
-    });
-    return NextResponse.json({
-      match: {
-        id: result.match.id,
-        khlGameId: result.match.khlGameId,
-        status: result.match.status,
-        activeRevisionId: result.match.activeRevisionId,
-        adminBindingStatus: result.match.adminBindingStatus,
-      },
-      revision: {
-        id: result.revision.id,
-        revisionNumber: result.revision.revisionNumber,
-        state: result.revision.state,
-        normalizedHash: result.revision.normalizedHash,
-      },
-      idempotency: {
-        reusedSnapshot: result.reusedSnapshot,
-        reusedRevision: result.reusedRevision,
-        activated: result.activated,
-      },
-      validation: result.normalized.validation,
-    });
+    const result = await enqueueKhlSync(prisma, { apiEventId, stageId });
+    return NextResponse.json({ run: khlSyncRunView(result.run), reused: result.reused }, { status: 202 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    console.error("[KHL ingest]", message);
-    if (error instanceof KhlRepositoryError || error instanceof KhlSchemaError) {
-      return NextResponse.json({ error: message }, { status: 422 });
+    if (error instanceof KhlSyncRequestError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
     }
-    if (error instanceof KhlApiError) {
-      return NextResponse.json({ error: message }, { status: 502 });
-    }
-    return NextResponse.json({ error: "KHL ingestion failed." }, { status: 500 });
+    console.error("[KHL ingest enqueue]", error instanceof Error ? error.name : "Unknown error");
+    return NextResponse.json({ error: "Failed to queue KHL ingestion." }, { status: 500 });
   }
 }
 

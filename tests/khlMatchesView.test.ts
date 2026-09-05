@@ -34,7 +34,7 @@ test("matches view exposes a rejected-first revision as diagnostic protocol meta
   assert.deepEqual(result.protocol?.validation.issues, [SOURCE_SEGMENT_MISMATCH]);
 });
 
-test("matches view keeps last-known-good protocol while exposing a newer rejected revision", () => {
+test("matches view displays the newer rejected protocol while retaining active metadata", () => {
   const valid = validNormalized();
   const rejected = rejectedNormalized();
   rejected.scores.regulation.home = valid.scores.regulation.home + 20;
@@ -61,12 +61,31 @@ test("matches view keeps last-known-good protocol while exposing a newer rejecte
   assert.deepEqual(result.activeRevision, revisionMetadata(activeRevision));
   assert.deepEqual(result.latestRevision, revisionMetadata(latestRevision));
   assert.deepEqual(result.displayRevision, {
-    ...revisionMetadata(activeRevision),
-    source: "ACTIVE_VALIDATED",
+    ...revisionMetadata(latestRevision),
+    source: "LATEST_REJECTED",
   });
-  assert.equal(result.protocol?.validation.ok, true);
-  assert.deepEqual(result.protocol?.scores.regulation, valid.scores.regulation);
-  assert.notDeepEqual(result.protocol?.scores.regulation, rejected.scores.regulation);
+  assert.equal(result.protocol?.validation.ok, false);
+  assert.deepEqual(result.protocol?.scores.regulation, rejected.scores.regulation);
+  assert.notDeepEqual(result.protocol?.scores.regulation, valid.scores.regulation);
+});
+
+test("a newer 901981 diagnostic exposes all 47 roster slots including five absent KHL IDs", () => {
+  const raw = JSON.parse(readFileSync(
+    join(process.cwd(), "tests", "fixtures", "khl", "missing-player-ids-901981.json"), "utf8"
+  ));
+  const diagnostic = normalizeKhlEventDetail(raw.event || raw);
+  // Model an earlier accepted projection; the new official diagnostic must not be hidden by it.
+  const previous = structuredClone(diagnostic);
+  previous.players = previous.players.filter((player) => player.khlPlayerId !== null);
+  previous.validation = { ok: true, issues: [] };
+  const activeRevision = revision({ id: "accepted-before-source-correction", revisionNumber: 1, state: "VALIDATED", normalizedJson: previous });
+  const latestRevision = revision({ id: "current-source-diagnostic", revisionNumber: 2, state: "REJECTED", normalizedJson: diagnostic });
+  const result = buildKhlMatchResponseItem({ khlGameId: "901981", activeRevision, revisions: [latestRevision] });
+  assert.equal(result.displayRevision?.source, "LATEST_REJECTED");
+  assert.equal(result.protocol?.players.length, 47);
+  assert.equal(result.protocol?.players.filter((player) => player.khlPlayerId === null).length, 5);
+  assert.equal(result.activeRevision?.id, activeRevision.id);
+  assert.equal(result.protocol?.validation.ok, false);
 });
 
 function validNormalized() {

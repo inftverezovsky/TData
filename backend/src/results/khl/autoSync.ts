@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 import { DateTime } from "luxon";
 
 import {
@@ -8,11 +8,9 @@ import {
   type KhlStage,
   type ListEventsOptions,
 } from "@backend/sources/results/khl/client";
-import {
-  normalizeKhlEventDetail,
-  type KhlMatchStatus,
-} from "@backend/sources/results/khl/normalize";
+import type { KhlMatchStatus } from "@backend/sources/results/khl/normalize";
 import { ingestKhlEventDetail } from "./repository";
+import { safeKhlSyncError } from "./syncErrors";
 
 export const KHL_RESULTS_CUTOFF_DAY = "2026-05-01";
 export const KHL_RESULTS_TIME_ZONE = "Europe/Moscow";
@@ -58,6 +56,7 @@ type SyncFailure = {
   khlGameId: string | null;
   apiEventId: string | null;
   message: string;
+  persistedDiagnostic?: boolean;
 };
 
 export type KhlResultsSyncSummary = {
@@ -73,6 +72,8 @@ export type KhlResultsSyncSummary = {
     reusedSnapshots: number;
     reusedRevisions: number;
     rejectedRevisions: number;
+    checked: number;
+    newlyChanged: number;
     skippedBeforeCutoff: number;
     skippedAfterRange: number;
     skippedNotFinished: number;
@@ -80,6 +81,17 @@ export type KhlResultsSyncSummary = {
     skippedRecentlyFetched: number;
   };
   failures: SyncFailure[];
+  stopped: boolean;
+  retryRequired?: boolean;
+};
+
+export type KhlSyncCheckpoint = {
+  stages: KhlStage[];
+  windows: Array<{ stageId: string; from: string; to: string }>;
+  windowIndex: number;
+  candidates: KhlScheduleEvent[];
+  eventIndex: number;
+  summary: KhlResultsSyncSummary;
 };
 
 type IngestResult = {
@@ -88,13 +100,18 @@ type IngestResult = {
   revision?: { state: string };
 };
 
-type SyncOptions = {
+export type SyncOptions = {
   prisma: PrismaClient;
   from: Date;
   to: Date;
   now?: Date;
   client?: KhlResultsSyncClient;
   refreshExistingAfterMs?: number;
+  checkpoint?: KhlSyncCheckpoint;
+  candidates?: KhlScheduleEvent[];
+  shouldStop?: () => Promise<boolean>;
+  onCheckpoint?: (checkpoint: KhlSyncCheckpoint) => Promise<void>;
+  assertCanWrite?: (tx: Prisma.TransactionClient) => Promise<void>;
   inspectDetail?: (event: Record<string, unknown>) => {
     khlGameId: string;
     stageId: string;
@@ -105,9 +122,14 @@ type SyncOptions = {
     prisma: PrismaClient,
     input: {
       rawBody: string;
+      rawBytes?: Uint8Array;
       sourceUrl: string;
       fetchedAt: Date;
       contentType?: string;
+      expectedIdentity: { khlGameId: string; apiEventId: string; stageId: string };
+      allowedDateRange: { from: Date; to: Date };
+      requireFinished: boolean;
+      assertCanWrite?: (tx: Prisma.TransactionClient) => Promise<void>;
     }
   ) => Promise<IngestResult>;
 };
@@ -123,43 +145,64 @@ export async function syncKhlResults(options: SyncOptions): Promise<KhlResultsSy
 
   const client = options.client || new KhlApiClient();
   const ingest = options.ingest || ingestKhlEventDetail;
-  const inspectDetail = options.inspectDetail || inspectNormalizedDetail;
+  const inspectDetail = options.inspectDetail;
   const refreshExistingAfterMs = options.refreshExistingAfterMs
     ?? KHL_RESULTS_REFRESH_HOURS * 60 * 60 * 1000;
   if (!Number.isFinite(refreshExistingAfterMs) || refreshExistingAfterMs < 0) {
     throw new Error("KHL automatic sync refresh interval must be a non-negative number.");
   }
 
-  const stages = await client.listStages();
+  const stages = options.checkpoint?.stages || (options.candidates ? [] : await retryKhlRead(() => client.listStages()));
   const selectedStages = stages.filter((stage) => seasonOverlapsRange(stage.season, from, to));
-  const windows = buildScheduleWindows(from, to);
-  const failures: SyncFailure[] = [];
-  const candidates: KhlScheduleEvent[] = [];
-  const seenGames = new Set<string>();
-  const eventCounters = {
+  const windows = options.checkpoint?.windows || selectedStages.flatMap((stage) =>
+    buildScheduleWindows(from, to).map((window) => ({
+      stageId: stage.stageId, from: window.from.toISOString(), to: window.to.toISOString(),
+    }))
+  );
+  const failures: SyncFailure[] = options.checkpoint?.summary.failures || [];
+  const candidates: KhlScheduleEvent[] = options.checkpoint?.candidates || options.candidates || [];
+  const seenGames = new Set(candidates.map((event) => event.khlGameId));
+  const eventCounters = options.checkpoint?.summary.events || {
     discovered: 0,
     eligible: 0,
     ingested: 0,
     reusedSnapshots: 0,
     reusedRevisions: 0,
     rejectedRevisions: 0,
+    checked: 0,
+    newlyChanged: 0,
     skippedBeforeCutoff: 0,
     skippedAfterRange: 0,
     skippedNotFinished: 0,
     skippedDuplicate: 0,
     skippedRecentlyFetched: 0,
   };
-  let scannedWindows = 0;
+  let scannedWindows = options.checkpoint?.summary.stages.scannedWindows || 0;
+  let windowIndex = options.checkpoint?.windowIndex || 0;
+  let eventIndex = options.checkpoint?.eventIndex || 0;
+  let stopped = false;
+  const summarize = (): KhlResultsSyncSummary => ({
+    startedAt: options.checkpoint?.summary.startedAt || startedAt.toISOString(),
+    completedAt: new Date().toISOString(), durationMs: Math.max(0, Date.now() - startedAt.getTime()),
+    range: { from: from.toISOString(), to: to.toISOString() },
+    stages: { available: stages.length, selected: selectedStages.length, scannedWindows },
+    events: { ...eventCounters }, failures: failures.slice(0, 200), stopped,
+    retryRequired: !!options.checkpoint?.summary.retryRequired || failures.some((failure) => !failure.persistedDiagnostic),
+  });
+  const save = () => options.onCheckpoint?.({
+    stages, windows, windowIndex, candidates, eventIndex, summary: summarize(),
+  });
 
-  for (const stage of selectedStages) {
-    for (const window of windows) {
+  for (; windowIndex < windows.length; windowIndex += 1) {
+      if (await options.shouldStop?.()) { stopped = true; break; }
+      const window = windows[windowIndex];
       try {
-        const events = await client.listEvents({
-          stageId: stage.stageId,
-          from: window.from,
-          to: window.to,
+        const events = await retryKhlRead(() => client.listEvents({
+          stageId: window.stageId,
+          from: new Date(window.from),
+          to: new Date(window.to),
           orderDirection: "asc",
-        });
+        }));
         scannedWindows += 1;
         eventCounters.discovered += events.length;
         for (const event of events) {
@@ -190,13 +233,16 @@ export async function syncKhlResults(options: SyncOptions): Promise<KhlResultsSy
       } catch (cause) {
         failures.push({
           scope: "schedule",
-          stageId: stage.stageId,
+          stageId: window.stageId,
           khlGameId: null,
           apiEventId: null,
           message: errorMessage(cause),
         });
       }
-    }
+      // Save the next index, not the completed window, so lease recovery resumes exactly.
+      windowIndex += 1;
+      await save();
+      windowIndex -= 1;
   }
 
   eventCounters.eligible = candidates.length;
@@ -206,62 +252,63 @@ export async function syncKhlResults(options: SyncOptions): Promise<KhlResultsSy
     new Date(startedAt.getTime() - refreshExistingAfterMs)
   );
 
-  for (const event of candidates) {
+  for (; !stopped && eventIndex < candidates.length; eventIndex += 1) {
+    if (await options.shouldStop?.()) { stopped = true; break; }
+    const event = candidates[eventIndex];
     if (refreshExistingAfterMs > 0 && recentlyFetched.has(event.khlGameId)) {
       eventCounters.skippedRecentlyFetched += 1;
+      eventIndex += 1; await save(); eventIndex -= 1;
       continue;
     }
     try {
-      const detail = await client.getEventDetailEnvelope({
+      eventCounters.checked += 1;
+      const detail = await retryKhlRead(() => client.getEventDetailEnvelope({
         apiEventId: event.apiEventId,
         stageId: event.stageId,
-      });
-      const inspected = inspectDetail(detail.event);
-      if (
+      }));
+      // Legacy test seam only. Production validation lives in the raw-preserving repository.
+      const inspected = inspectDetail && detail.event ? inspectDetail(detail.event) : null;
+      if (inspected && (
         inspected.khlGameId !== event.khlGameId
         || inspected.stageId !== event.stageId
         || inspected.startsAt < KHL_RESULTS_CUTOFF
         || inspected.startsAt < from
         || inspected.startsAt > to
         || inspected.status !== "finished"
-      ) {
+      )) {
         throw new Error("KHL detail identity, date or finished status does not match the selected result.");
       }
       const result = await ingest(options.prisma, {
         rawBody: detail.rawBody,
+        rawBytes: detail.rawBytes,
         sourceUrl: detail.sourceUrl,
         fetchedAt: detail.fetchedAt,
         contentType: detail.contentType || "application/json",
+        expectedIdentity: { khlGameId: event.khlGameId, apiEventId: event.apiEventId, stageId: event.stageId },
+        allowedDateRange: { from, to },
+        requireFinished: true,
+        assertCanWrite: options.assertCanWrite,
       });
       eventCounters.ingested += 1;
       if (result.reusedSnapshot) eventCounters.reusedSnapshots += 1;
       if (result.reusedRevision) eventCounters.reusedRevisions += 1;
+      if (!result.reusedRevision) eventCounters.newlyChanged += 1;
       if (result.revision && result.revision.state !== "VALIDATED") {
         eventCounters.rejectedRevisions += 1;
         failures.push(eventFailure(
           event,
-          `KHL normalized revision was stored as ${result.revision.state} and was not activated.`
+          `KHL normalized revision was stored as ${result.revision.state} and was not activated.`,
+          true
         ));
       }
     } catch (cause) {
       failures.push(eventFailure(event, errorMessage(cause)));
     }
+    eventIndex += 1; await save(); eventIndex -= 1;
   }
-
-  const completedAt = new Date();
-  return {
-    startedAt: startedAt.toISOString(),
-    completedAt: completedAt.toISOString(),
-    durationMs: Math.max(0, completedAt.getTime() - startedAt.getTime()),
-    range: { from: from.toISOString(), to: to.toISOString() },
-    stages: {
-      available: stages.length,
-      selected: selectedStages.length,
-      scannedWindows,
-    },
-    events: eventCounters,
-    failures,
-  };
+  stopped = stopped || !!(await options.shouldStop?.());
+  await save();
+  return summarize();
 }
 
 export function defaultKhlSyncFrom(now: Date) {
@@ -317,13 +364,14 @@ async function recentlyFetchedGameIds(
   return result;
 }
 
-function eventFailure(event: KhlScheduleEvent, message: string): SyncFailure {
+function eventFailure(event: KhlScheduleEvent, message: string, persistedDiagnostic = false): SyncFailure {
   return {
     scope: "event",
     stageId: event.stageId,
     khlGameId: event.khlGameId,
     apiEventId: event.apiEventId,
-    message,
+    message: safeKhlSyncError(new Error(message)),
+    persistedDiagnostic,
   };
 }
 
@@ -335,15 +383,16 @@ function validDate(value: Date, label: string) {
 }
 
 function errorMessage(value: unknown) {
-  return value instanceof Error ? value.message : "Unknown KHL sync error.";
+  return safeKhlSyncError(value);
 }
 
-function inspectNormalizedDetail(event: Record<string, unknown>) {
-  const normalized = normalizeKhlEventDetail(event);
-  return {
-    khlGameId: normalized.identity.khlGameId,
-    stageId: normalized.identity.stageId,
-    startsAt: new Date(normalized.startsAt),
-    status: normalized.status,
-  };
+export async function retryKhlRead<T>(read: () => Promise<T>, sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))): Promise<T> {
+  for (let attempt = 0; ; attempt += 1) {
+    try { return await read(); }
+    catch (cause) {
+      const message = errorMessage(cause);
+      if (attempt >= 2 || !/request failed|timed out|HTTP (429|5\d\d)/i.test(message)) throw cause;
+      await sleep(250 * 2 ** attempt);
+    }
+  }
 }

@@ -42,7 +42,8 @@ export type KhlMatchProtocolView = {
     }>;
   }>;
   players: Array<{
-    khlPlayerId: string;
+    khlPlayerId: string | null;
+    apiPlayerId: string;
     khlTeamId: string;
     teamSide: KhlTeamSide;
     shirtNumber: number;
@@ -100,6 +101,7 @@ export function buildKhlMatchProtocolView(
       .sort(comparePlayers)
       .map((player) => ({
         khlPlayerId: player.khlPlayerId,
+        apiPlayerId: player.apiPlayerId,
         khlTeamId: player.khlTeamId,
         teamSide: player.teamSide,
         shirtNumber: player.shirtNumber,

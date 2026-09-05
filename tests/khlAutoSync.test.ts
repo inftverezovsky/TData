@@ -8,6 +8,7 @@ import {
   KHL_RESULTS_CUTOFF_DAY,
   KHL_RESULTS_TIME_ZONE,
   syncKhlResults,
+  retryKhlRead,
   type KhlResultsSyncClient,
 } from "@backend/results/khl/autoSync";
 import type { KhlScheduleEvent, KhlStage } from "@backend/sources/results/khl/client";
@@ -178,6 +179,76 @@ test("automatic KHL sync reports a stored rejected revision as a failed result",
   assert.equal(summary.events.rejectedRevisions, 1);
   assert.equal(summary.failures.length, 1);
   assert.match(summary.failures[0]?.message || "", /stored as REJECTED/);
+});
+
+test("automatic sync passes raw directly to guarded ingest before full parsing", async () => {
+  const scheduled = event("901981", "3000063", "407", MAY_10, "finished");
+  let inputSeen: Record<string, unknown> | undefined;
+  const summary = await syncKhlResults({
+    prisma: emptyPrisma(), client: clientWithEvents([scheduled]),
+    from: KHL_RESULTS_CUTOFF, to: new Date("2026-05-31T23:59:59Z"),
+    ingest: async (_prisma, input) => {
+      inputSeen = input;
+      return { reusedSnapshot: false, reusedRevision: false, revision: { state: "REJECTED" } };
+    },
+  });
+  assert.ok(inputSeen, "raw must reach the persistence boundary even with incomplete roster data");
+  assert.deepEqual(inputSeen.expectedIdentity, { khlGameId: "901981", apiEventId: "3000063", stageId: "407" });
+  assert.equal(inputSeen.requireFinished, true);
+  assert.equal(summary.events.rejectedRevisions, 1);
+});
+
+test("automatic sync persists progress and stops safely between matches", async () => {
+  const scheduled = [event("1", "11", "407", MAY_10, "finished"), event("2", "22", "407", MAY_10, "finished")];
+  let ingested = 0;
+  let saved: unknown;
+  const options = {
+    prisma: emptyPrisma(), client: clientWithEvents(scheduled),
+    from: KHL_RESULTS_CUTOFF, to: new Date("2026-05-31T23:59:59Z"),
+    ingest: async () => { ingested++; return { reusedSnapshot: false, reusedRevision: false }; },
+    shouldStop: async () => ingested === 1,
+    onCheckpoint: async (checkpoint: unknown) => { saved = checkpoint; },
+  };
+  const partial = await syncKhlResults(options);
+  assert.equal(ingested, 1);
+  assert.equal(partial.stopped, true);
+  assert.ok(saved);
+  const resumed = await syncKhlResults({ ...options, checkpoint: saved as never, shouldStop: async () => false });
+  assert.equal(ingested, 2, "the first completed match must not be ingested again on recovery");
+  assert.equal(resumed.events.ingested, 2);
+  assert.equal(resumed.stopped, false);
+});
+
+test("network retries are bounded to three and permanent errors are not retried", async () => {
+  let calls = 0;
+  await assert.rejects(retryKhlRead(async () => { calls++; throw new Error("KHL API returned HTTP 503."); }, async () => {}), /503/);
+  assert.equal(calls, 3);
+  calls = 0;
+  await assert.rejects(retryKhlRead(async () => { calls++; throw new Error("KHL API returned HTTP 403."); }, async () => {}), /403/);
+  assert.equal(calls, 1);
+});
+
+test("public sync failures redact database credentials and URL query data", async () => {
+  const scheduled = event("1", "11", "407", MAY_10, "finished");
+  const summary = await syncKhlResults({
+    prisma: emptyPrisma(), client: clientWithEvents([scheduled]),
+    from: KHL_RESULTS_CUTOFF, to: new Date("2026-05-31T23:59:59Z"),
+    ingest: async () => { throw new Error("Prisma connection postgres://private-host/not-a-secret-test"); },
+  });
+  assert.equal(summary.retryRequired, true);
+  assert.doesNotMatch(JSON.stringify(summary.failures), /private-host|postgres:|not-a-secret-test/);
+});
+
+test("changed raw metadata with the same normalized revision is reported as unchanged data", async () => {
+  const summary = await syncKhlResults({
+    prisma: emptyPrisma(), client: clientWithEvents([event("1", "11", "407", MAY_10, "finished")]),
+    from: KHL_RESULTS_CUTOFF, to: new Date("2026-05-31T23:59:59Z"),
+    ingest: async () => ({ reusedSnapshot: false, reusedRevision: true }),
+  });
+  assert.equal(summary.events.checked, 1);
+  assert.equal(summary.events.reusedRevisions, 1);
+  assert.equal(summary.events.reusedSnapshots, 0);
+  assert.equal(summary.events.newlyChanged, 0);
 });
 
 function stage(stageId: string, season: string): KhlStage {
