@@ -105,4 +105,16 @@ The full staging browser was repeated again on the exact follow-up production bu
 
 That test worker's automatic 14-day pass fetched six protocols after the page closed, reused all six revisions and changed none. Its partial status reflected the persisted 901981 diagnostic identity warning (`retryRequired: false`), not a stopped collector. The broader first test pass also retained 901956's genuine upstream numerical conflict; this release intentionally does not waive conflicting statistics.
 
-The exact follow-up code/image identity and final public acceptance are recorded after cutover.
+## Final public acceptance
+
+Final code commit: `ccaf876e0f54c6a83093fcb56039fb27b83010ca`. The exact Git export contained 674 files and zero extras; all blob hashes/modes matched before building. Core archive SHA-256: `7cd341f321adc524a66419b362bd16e8edfeb3c3073894d36152192e83d798c1`.
+
+Deployed image: `sha256:ee6a6ed743303c67b99ce08f88e9463e410597c142da11a7a234592fb32a12d3`, tag `tdata-khl-view:ccaf876e0f54c6a83093fcb56039fb27b83010ca`, Node `24.15.0`. Protected runtime files and image configuration were verified equal to the preceding web image. The final scoped helper exited 0 and returned `{"mode":"deploy","ok":true,"backupDirectory":"/root/tdata/backups/khl-view-20260905-2106","webOnly":true}`. No production migration ran.
+
+All three public-browser checks then passed sequentially against **https://www.tdata.info** (combined exit 0):
+
+1. `scripts/verify-khl-identity-browser.ts --live`: actual live protocol, 47 roster rows, five missing source IDs, exact daily statistics for 47 players and both teams; 36 GET requests, zero non-GET attempts, zero browser errors. The browser clock was explicitly controlled to 5 September for day-specific assertions; source/API responses were not mocked.
+2. `scripts/verify-khl-midnight-browser.ts --live`: initial next-day hydration and same-page midnight transition both passed. One initial matches response, two deliberately held later reads, zero post-freeze KHL responses; the view changed within 15 seconds without replacing the matches data. Zero browser errors and non-GET attempts. These are explicitly controlled-clock regression scenarios.
+3. A separate GET-only public browser with **no clock override** reported actual time `2026-09-05T21:25:36.406Z` (6 September in Moscow), an initially date-neutral server HTML and hydrated label `6 сентября 2026 г.`. `errors: []`, `nonGetAttempts: []`. This confirms the real hydration failure is gone, independently of controlled-clock tests.
+
+The final image's source remains `ccaf876`; this acceptance record is a subsequent documentation-only commit. Final rollback uses `/root/tdata/deployments/builds/khl-ccaf876e0f54c6a83093fcb56039fb27b83010ca/scripts/deploy-khl-view-release.py rollback --apply --backup-dir /root/tdata/backups/khl-view-20260905-2106`. That procedure restores the previous web image only. Earlier rollback packages and helpers are retained; no production-data restoration is needed for a web rollback.
