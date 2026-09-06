@@ -190,6 +190,7 @@ function player(
     adminPlayerId: adminBindingStatus === "CONFIRMED" ? `admin-${khlPlayerId}` : null,
     adminBindingStatus,
     matchCount: 1,
+    extraBindings: [],
     recentAppearance: khlTeamId && teamName ? {
       khlGameId: "901973",
       startsAt: "2026-05-21T16:30:00.000Z",

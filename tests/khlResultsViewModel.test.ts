@@ -292,6 +292,7 @@ function makeProtocol(options: ProtocolOptions): KhlMatchProtocolView {
       away: makeTeam(options.away, options.awayShots, options.awayPim),
     },
     players: options.players,
+    playerExtras: { version: "khl-player-extras-v1", available: true, issues: [] },
     goals: [],
     penalties: [],
     validation: {
@@ -347,5 +348,6 @@ function makePlayer(
     role: "forward",
     regulation: { goals, assists, points },
     fullMatch: { goals: goals + 1, assists: assists + 1, points: points + 2 },
+    extras: [],
   };
 }

@@ -7,6 +7,10 @@ import {
 import { KHL_TEAM_STAT_CODES } from "@backend/results/khl/adminPayload";
 import { KHL_RESULTS_CUTOFF } from "@backend/results/khl/autoSync";
 import { KHL_PLAYER_STAT_CODES } from "@backend/results/khl/targetBindings";
+import {
+  formatKhlPlayerExtraLabel,
+  KHL_PLAYER_EXTRA_DEFINITIONS,
+} from "@backend/results/khl/playerExtras";
 
 export const KHL_SETTINGS_CUTOFF = KHL_RESULTS_CUTOFF;
 
@@ -62,6 +66,16 @@ export async function getKhlSettingsDirectory(prisma: PrismaClient) {
         adminBindingStatus: true,
         adminConfirmedAt: true,
         adminConfirmedBy: true,
+        extraBindings: {
+          select: {
+            extraCode: true,
+            adminExtraId: true,
+            adminExtraName: true,
+            adminBindingStatus: true,
+            adminConfirmedAt: true,
+            adminConfirmedBy: true,
+          },
+        },
         _count: {
           select: {
             participants: {
@@ -142,12 +156,24 @@ export async function getKhlSettingsDirectory(prisma: PrismaClient) {
         };
       }),
     })),
-    players: players.map(({ _count, participants, ...player }) => {
+    players: players.map(({ _count, participants, extraBindings, ...player }) => {
       const participant = participants[0];
       return {
         ...player,
         adminConfirmedAt: isoDate(player.adminConfirmedAt),
         matchCount: _count.participants,
+        extraBindings: KHL_PLAYER_EXTRA_DEFINITIONS.map((definition) => {
+          const stored = extraBindings.find((binding) => binding.extraCode === definition.code);
+          return {
+            extraCode: definition.code,
+            label: formatKhlPlayerExtraLabel(player.name, definition.code),
+            adminExtraId: stored?.adminExtraId ?? null,
+            adminExtraName: stored?.adminExtraName ?? null,
+            adminBindingStatus: stored?.adminBindingStatus ?? KhlBindingStatus.UNMAPPED,
+            adminConfirmedAt: isoDate(stored?.adminConfirmedAt ?? null),
+            adminConfirmedBy: stored?.adminConfirmedBy ?? null,
+          };
+        }),
         recentAppearance: participant ? {
           khlGameId: participant.match.khlGameId,
           startsAt: participant.match.startsAt.toISOString(),

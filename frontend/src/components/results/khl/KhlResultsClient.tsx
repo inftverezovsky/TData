@@ -57,6 +57,7 @@ export function KhlResultsClient() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [bindingValues, setBindingValues] = useState<Record<string, string>>({});
+  const [extraBindingNames, setExtraBindingNames] = useState<Record<string, string>>({});
   const [previews, setPreviews] = useState<Record<string, PreviewState>>({});
   const [diffs, setDiffs] = useState<Record<string, DiffState>>({});
   const [targetJson, setTargetJson] = useState<Record<string, string>>({});
@@ -251,6 +252,34 @@ export function KhlResultsClient() {
       }));
       setMessage(`Игрок ${player.name} привязан постоянно к Admin ID ${adminPlayerId}.`);
       await refreshData();
+    });
+  };
+
+  const savePlayerExtraBinding = async (
+    player: SettingsPlayer,
+    binding: SettingsPlayer["extraBindings"][number]
+  ) => {
+    const key = `player-extra:${player.khlPlayerId}:${binding.extraCode}`;
+    const adminExtraId = (bindingValues[key] ?? binding.adminExtraId ?? "").trim();
+    const adminExtraName = (
+      extraBindingNames[key]
+      ?? binding.adminExtraName
+      ?? binding.label
+    ).trim() || null;
+    await runBusy(key, async () => {
+      const result = await requestJson<{ result: { reused: boolean } }>(
+        "/api/results/khl/bindings/player-extra",
+        jsonPost({
+          khlPlayerId: player.khlPlayerId,
+          extraCode: binding.extraCode,
+          adminExtraId,
+          adminExtraName,
+        })
+      );
+      setMessage(result.result.reused
+        ? `Доп «${binding.label}» уже был сохранён.`
+        : `Доп «${binding.label}» сохранён постоянно.`);
+      await loadSettingsDirectory();
     });
   };
 
@@ -473,6 +502,10 @@ export function KhlResultsClient() {
             ...current,
             [key]: value,
           }))}
+          onExtraBindingNameChange={(key, value) => setExtraBindingNames((current) => ({
+            ...current,
+            [key]: value,
+          }))}
           onMatchCandidateChange={(id, value) => setMatchCandidateJson((current) => ({
             ...current,
             [id]: value,
@@ -484,6 +517,7 @@ export function KhlResultsClient() {
           onSaveTeam={saveTeamBinding}
           onSaveTeamStats={saveTeamStatBindings}
           onSavePlayer={saveDirectoryPlayer}
+          onSavePlayerExtra={savePlayerExtraBinding}
           onSaveMatch={saveMatchBinding}
           onLoadTargetTemplate={loadTargetTemplate}
           onSaveTargetBindings={saveTargetBindings}

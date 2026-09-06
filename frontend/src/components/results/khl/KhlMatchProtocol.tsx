@@ -282,6 +282,36 @@ function PlayerTable({
                 <div className="text-[10px] text-slate-400">
                   {player.khlPlayerId ? `KHL ${player.khlPlayerId}` : "ID КХЛ пока отсутствует в источнике"}
                 </div>
+                <details
+                  data-testid="khl-player-extras"
+                  className="mt-2 whitespace-normal rounded-lg border border-indigo-100 bg-indigo-50/60"
+                >
+                  <summary className="cursor-pointer list-none px-2 py-1 text-[10px] font-black text-indigo-800 [&::-webkit-details-marker]:hidden">
+                    Допы
+                  </summary>
+                  <div className="min-w-64 space-y-1 border-t border-indigo-100 p-2">
+                    {!protocol.playerExtras.available && (
+                      <div className="rounded-md bg-amber-100 p-2 text-[10px] font-bold text-amber-900">
+                        <div>Нет данных</div>
+                        {protocol.playerExtras.issues.map((issue) => (
+                          <div key={issue} className="mt-1 font-normal">{issue}</div>
+                        ))}
+                      </div>
+                    )}
+                    {player.extras.map((extra) => (
+                      <div key={extra.code} className="flex items-start justify-between gap-3 text-[10px]">
+                        <span className="text-slate-700">{extra.label}</span>
+                        <span className={`shrink-0 rounded-full px-2 py-0.5 font-black ${extra.value === true
+                          ? "bg-emerald-100 text-emerald-800"
+                          : extra.value === false
+                            ? "bg-slate-200 text-slate-700"
+                            : "bg-amber-100 text-amber-900"}`}>
+                          {extra.value === true ? "Да" : extra.value === false ? "Нет" : "Нет данных"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
               </td>
               <td className="whitespace-nowrap px-2 py-2 text-slate-500">{player.role || "—"}</td>
               {PLAYER_POINT_COLUMNS.map((column) => (

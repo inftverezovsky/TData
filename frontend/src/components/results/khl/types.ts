@@ -129,6 +129,15 @@ export type SettingsPlayer = {
   adminPlayerId: string | null;
   adminBindingStatus: string;
   matchCount: number;
+  extraBindings: Array<{
+    extraCode: string;
+    label: string;
+    adminExtraId: string | null;
+    adminExtraName: string | null;
+    adminBindingStatus: string;
+    adminConfirmedAt: string | null;
+    adminConfirmedBy: string | null;
+  }>;
   recentAppearance: null | {
     khlGameId: string;
     startsAt: string;

@@ -31,6 +31,10 @@ test("retains all 47 real 901981 roster slots when five official KHL player IDs 
   const html = renderToStaticMarkup(createElement(KhlMatchProtocol, { protocol, section: "players" }));
   assert.equal((html.match(/data-testid="khl-protocol-player"/g) || []).length, 47);
   assert.equal((html.match(/ID КХЛ пока отсутствует в источнике/g) || []).length, 5);
+  assert.equal((html.match(/data-testid="khl-player-extras"/g) || []).length, 47);
+  assert.match(html, /Допы/);
+  assert.match(html, /Да/);
+  assert.match(html, /Нет/);
   const complete = renderToStaticMarkup(createElement(KhlMatchProtocol, { protocol }));
   assert.equal((complete.match(/data-testid="khl-protocol-player"/g) || []).length, 47);
   assert.match(complete, /Командная статистика/);

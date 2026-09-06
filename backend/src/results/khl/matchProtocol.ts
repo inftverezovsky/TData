@@ -6,6 +6,10 @@ import type {
   KhlTeamSide,
   NormalizedKhlMatch,
 } from "@backend/sources/results/khl/normalize";
+import {
+  projectKhlPlayerExtras,
+  type KhlPlayerExtraValue,
+} from "@backend/results/khl/playerExtras";
 
 const METRIC_DEFINITIONS = [
   { source: "shotsOnGoal", code: "shots_on_goal", label: "Броски в створ" },
@@ -51,7 +55,13 @@ export type KhlMatchProtocolView = {
     role: string;
     regulation: KhlPlayerPoints;
     fullMatch: KhlPlayerPoints;
+    extras: KhlPlayerExtraValue[];
   }>;
+  playerExtras: {
+    version: "khl-player-extras-v1";
+    available: boolean;
+    issues: string[];
+  };
   goals: Array<{
     elapsedSeconds: number;
     segment: string;
@@ -79,6 +89,11 @@ export function buildKhlMatchProtocolView(
   match: NormalizedKhlMatch
 ): KhlMatchProtocolView {
   const segments = collectSegments(match);
+  const playerExtras = projectKhlPlayerExtras(match);
+  const extrasByParticipant = new Map(playerExtras.players.map((player) => [
+    `${player.teamSide}:${player.apiPlayerId}`,
+    player.extras,
+  ]));
 
   return {
     status: match.status,
@@ -109,7 +124,13 @@ export function buildKhlMatchProtocolView(
         role: player.role,
         regulation: { ...player.regulation },
         fullMatch: { ...player.fullMatch },
+        extras: extrasByParticipant.get(`${player.teamSide}:${player.apiPlayerId}`) || [],
       })),
+    playerExtras: {
+      version: playerExtras.version,
+      available: playerExtras.available,
+      issues: [...playerExtras.issues],
+    },
     goals: match.goals.map((goal) => ({
       elapsedSeconds: goal.elapsedSeconds,
       segment: goal.segment,
