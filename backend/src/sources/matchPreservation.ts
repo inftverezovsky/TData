@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { acquireTransactionLock } from "@backend/db/advisoryLock";
 
 const PRESERVED_MATCH_FIELDS = new Set([
   "id",
@@ -40,10 +41,7 @@ export async function refreshTournamentMatchesPreservingState(params: {
   // update branch after the ownership read and silently modify a foreign row.
   const ownershipLockIds = Array.from(new Set(incomingMatchIds)).sort();
   for (const matchId of ownershipLockIds) {
-    await params.tx.$queryRaw`
-      SELECT 1 AS "lockAcquired"
-      FROM pg_advisory_xact_lock(hashtext(${`tournament-match:${matchId}`}))
-    `;
+    await acquireTransactionLock(params.tx, `tournament-match:${matchId}`);
   }
 
   const existingMatches = await params.tx.tournamentMatch.findMany({

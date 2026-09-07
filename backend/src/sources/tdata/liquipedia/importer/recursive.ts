@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@backend/db/db";
+import { acquireTransactionLock } from "@backend/db/advisoryLock";
 import {
   finalizeDota2Diagnostics,
   finalizeEsportsParsingDiagnostics,
@@ -232,7 +233,7 @@ export async function importTournamentRecursive(params: {
     importStartedAt: importRecord.startedAt,
   };
   const commitResult = await prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`liquipedia-import:${mainTournamentKey}`}))`;
+      await acquireTransactionLock(tx, `liquipedia-import:${mainTournamentKey}`);
       const normalized = mainResult.normalized;
       let existingTournament = await findLiquipediaTournamentForCommit({
         client: tx,
@@ -847,7 +848,7 @@ async function persistMergedDiagnostics(params: {
 }) {
   try {
     return await prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`liquipedia-import:${params.stableKey}`}))`;
+      await acquireTransactionLock(tx, `liquipedia-import:${params.stableKey}`);
       const latestTournament = await tx.tournament.findUnique({
         where: { id: params.tournamentId },
         select: { normalization: true },

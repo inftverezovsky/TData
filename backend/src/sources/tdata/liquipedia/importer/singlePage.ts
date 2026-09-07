@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@backend/db/db";
+import { acquireTransactionLock } from "@backend/db/advisoryLock";
 import { logApiError } from "@backend/http/apiResponse";
 import { finalizeDota2Diagnostics, finalizeEsportsParsingDiagnostics } from "@backend/matches/parsingDiagnostics";
 import {
@@ -57,7 +58,7 @@ export async function publishLiquipediaSourceFetchSuccess(publication: Liquipedi
     try {
       return await prisma.$transaction(async (tx) => {
         const key = normalizeSourceFetchCacheKey(publication.input);
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${buildSourceFetchCacheKey(publication.input)}))`;
+        await acquireTransactionLock(tx, buildSourceFetchCacheKey(publication.input));
         const current = await (tx as any).sourceFetchCache.findUnique({
           where: { source_disciplineSlug_resourceType_resourceKey_mode: key },
         });

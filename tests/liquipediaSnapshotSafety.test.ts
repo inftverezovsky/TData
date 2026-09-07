@@ -305,7 +305,7 @@ test("Liquipedia recursive commit serializes by stable key before reading the cu
     "backend/src/sources/tdata/liquipedia/importer/recursive.ts",
   ), "utf8");
   const transactionAt = recursive.indexOf("const commitResult = await prisma.$transaction");
-  const lockAt = recursive.indexOf("pg_advisory_xact_lock", transactionAt);
+  const lockAt = recursive.indexOf("await acquireTransactionLock(", transactionAt);
   const lookupAt = recursive.indexOf("findLiquipediaTournamentForCommit", lockAt);
   assert.ok(transactionAt >= 0 && lockAt > transactionAt && lookupAt > lockAt);
   assert.match(recursive, /liquipediaImportFreshness/);
@@ -386,7 +386,7 @@ test("Liquipedia re-runs the match quality gate after acquiring the commit lock"
     "backend/src/sources/tdata/liquipedia/importer/recursive.ts",
   ), "utf8");
   const transactionAt = recursive.indexOf("const commitResult = await prisma.$transaction");
-  const lockAt = recursive.indexOf("pg_advisory_xact_lock", transactionAt);
+  const lockAt = recursive.indexOf("await acquireTransactionLock(", transactionAt);
   const currentMatchesAt = recursive.indexOf("lockedCurrentMatches", lockAt);
   const tournamentMutationAt = recursive.indexOf("const tournament = existingTournament", lockAt);
   assert.ok(lockAt > transactionAt && currentMatchesAt > lockAt && tournamentMutationAt > currentMatchesAt);
@@ -398,11 +398,11 @@ test("Liquipedia diagnostics and warning writes share the business advisory lock
     "backend/src/sources/tdata/liquipedia/importer/recursive.ts",
   ), "utf8");
   const diagnosticsAt = recursive.indexOf("async function persistMergedDiagnostics");
-  const diagnosticsLockAt = recursive.indexOf("pg_advisory_xact_lock", diagnosticsAt);
+  const diagnosticsLockAt = recursive.indexOf("await acquireTransactionLock(", diagnosticsAt);
   const diagnosticsReadAt = recursive.indexOf("latestTournament", diagnosticsAt);
   const warningAt = recursive.indexOf("appendTournamentWarning", recursive.indexOf("const commitResult"));
   assert.ok(diagnosticsAt >= 0 && diagnosticsLockAt > diagnosticsAt && diagnosticsReadAt > diagnosticsLockAt);
-  assert.ok(warningAt > recursive.indexOf("pg_advisory_xact_lock", recursive.indexOf("const commitResult")));
+  assert.ok(warningAt > recursive.indexOf("await acquireTransactionLock(", recursive.indexOf("const commitResult")));
 });
 
 test("Liquipedia business revision IDs are final when both are valid", () => {
