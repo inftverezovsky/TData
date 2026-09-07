@@ -1,0 +1,2 @@
+ALTER TABLE "KhlSyncRun" ADD COLUMN "apiEventId" TEXT;
+ALTER TABLE "KhlSyncRun" ADD COLUMN "stageId" TEXT;

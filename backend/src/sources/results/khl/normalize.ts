@@ -28,7 +28,7 @@ export type KhlPlayerActor = {
 };
 
 export type NormalizedKhlPlayer = {
-  khlPlayerId: string;
+  khlPlayerId: string | null;
   apiPlayerId: string;
   khlTeamId: string;
   teamSide: KhlTeamSide;
@@ -126,6 +126,7 @@ export function normalizeKhlEventDetail(
   options: NormalizeOptions = {}
 ): NormalizedKhlMatch {
   const raw = asObject(input, "KHL event detail");
+  const header = inspectKhlEventHeader(raw);
   const homeRaw = asObject(raw.team_a, "KHL home team");
   const awayRaw = asObject(raw.team_b, "KHL away team");
   const rawScores = asObject(raw.scores, "KHL scores");
@@ -137,9 +138,10 @@ export function normalizeKhlEventDetail(
   };
 
   const players = [
-    ...parseRoster(homeRaw, teams.home, "home"),
-    ...parseRoster(awayRaw, teams.away, "away"),
+    ...parseRoster(homeRaw, teams.home, "home", issues),
+    ...parseRoster(awayRaw, teams.away, "away", issues),
   ];
+  validateRosterIdentities(players, issues);
   const playerIndex = buildPlayerIndex(players);
 
   const goals = parseGoals(raw.goals, teams, playerIndex, issues);
@@ -184,17 +186,10 @@ export function normalizeKhlEventDetail(
   }
 
   return {
-    identity: {
-      apiEventId: requiredExternalId(raw.id, "KHL event id"),
-      khlGameId: requiredExternalId(raw.khl_id, "KHL game id"),
-      matchId: requiredString(raw.match_id, "KHL match id"),
-      stageId: requiredExternalId(raw.stage_id, "KHL stage id"),
-      khlStageId: requiredExternalId(raw.outer_stage_id, "KHL outer stage id"),
-      season: requiredString(raw.season, "KHL season"),
-    },
+    identity: header.identity,
     sourceUrl: optionalString(raw.outer_url) || "",
-    status: normalizeStatus(optionalString(raw.game_state_key)),
-    startsAt: new Date(requiredNumber(raw.start_at, "KHL start_at")).toISOString(),
+    status: header.status,
+    startsAt: header.startsAt,
     teams,
     scores: {
       segments: scoreSegments,
@@ -212,6 +207,52 @@ export function normalizeKhlEventDetail(
   };
 }
 
+export function inspectKhlEventHeader(input: unknown): Pick<NormalizedKhlMatch, "identity" | "status" | "startsAt"> {
+  const raw = asObject(input, "KHL event detail");
+  const startsAt = new Date(requiredNumber(raw.start_at, "KHL start_at"));
+  if (!Number.isFinite(startsAt.getTime())) throw new KhlSchemaError("KHL start_at is invalid.");
+  return {
+    identity: {
+      apiEventId: requiredExternalId(raw.id, "KHL event id"),
+      khlGameId: requiredExternalId(raw.khl_id, "KHL game id"),
+      matchId: requiredString(raw.match_id, "KHL match id"),
+      stageId: requiredExternalId(raw.stage_id, "KHL stage id"),
+      khlStageId: requiredExternalId(raw.outer_stage_id, "KHL outer stage id"),
+      season: requiredString(raw.season, "KHL season"),
+    },
+    status: normalizeStatus(optionalString(raw.game_state_key)),
+    startsAt: startsAt.toISOString(),
+  };
+}
+
+/** Diagnostic revisions may contain unresolved identities; persistence and payloads may not. */
+export function requireResolvedKhlPlayers(players: NormalizedKhlPlayer[]) {
+  const issues: string[] = [];
+  validateRosterIdentities(players, issues);
+  const resolved = players.map((player) => {
+    if (!player.khlPlayerId || !/^[1-9]\d*$/.test(player.khlPlayerId)) {
+      throw new KhlSchemaError(`KHL ${player.teamSide} API player ${player.apiPlayerId}: missing KHL player id.`);
+    }
+    return { ...player, khlPlayerId: player.khlPlayerId };
+  });
+  if (issues.length > 0) throw new KhlSchemaError(issues.join("; "));
+  return resolved;
+}
+
+function validateRosterIdentities(players: NormalizedKhlPlayer[], issues: string[]) {
+  const apiIds = new Set<string>();
+  const khlIds = new Set<string>();
+  for (const player of players) {
+    const key = participantKey(player.teamSide, player.apiPlayerId);
+    if (apiIds.has(key)) issues.push(`Duplicate KHL API player identity ${key}.`);
+    apiIds.add(key);
+    if (player.khlPlayerId) {
+      if (khlIds.has(player.khlPlayerId)) issues.push(`Duplicate KHL player id ${player.khlPlayerId}.`);
+      khlIds.add(player.khlPlayerId);
+    }
+  }
+}
+
 function parseTeam(raw: RawObject, side: KhlTeamSide): KhlTeamIdentity {
   return {
     apiTeamId: requiredExternalId(raw.id, `KHL ${side} API team id`),
@@ -224,14 +265,22 @@ function parseTeam(raw: RawObject, side: KhlTeamSide): KhlTeamIdentity {
 function parseRoster(
   rawTeam: RawObject,
   team: KhlTeamIdentity,
-  side: KhlTeamSide
+  side: KhlTeamSide,
+  issues: string[]
 ): NormalizedKhlPlayer[] {
   const roster = asArray(rawTeam.players, `KHL ${side} roster`);
   return roster.map((value, index) => {
     const raw = asObject(value, `KHL ${side} roster player ${index}`);
+    const apiPlayerId = requiredExternalId(raw.id, `KHL ${side} player id`);
+    const khlPlayerId = raw.khl_id === 0 || raw.khl_id === "0"
+      ? null
+      : requiredExternalId(raw.khl_id, `KHL ${side} player khl_id`);
+    if (khlPlayerId === null) {
+      issues.push(`KHL ${side} API player ${apiPlayerId}: missing KHL player id.`);
+    }
     return {
-      khlPlayerId: requiredExternalId(raw.khl_id, `KHL ${side} player khl_id`),
-      apiPlayerId: requiredExternalId(raw.id, `KHL ${side} player id`),
+      khlPlayerId,
+      apiPlayerId,
       khlTeamId: team.khlTeamId,
       teamSide: side,
       shirtNumber: requiredNumber(raw.shirt_number, `KHL ${side} player shirt number`),
@@ -370,17 +419,21 @@ function resolveActor(
 }
 
 function applyPlayerPoints(players: NormalizedKhlPlayer[], goals: NormalizedKhlGoal[]) {
-  const byKhlId = new Map(players.map((player) => [player.khlPlayerId, player]));
+  const byParticipant = new Map<string, NormalizedKhlPlayer[]>();
+  for (const player of players) {
+    const key = participantKey(player.teamSide, player.apiPlayerId);
+    byParticipant.set(key, [...(byParticipant.get(key) || []), player]);
+  }
   for (const goal of goals) {
     if (goal.segment === "SO") continue;
-    incrementPlayer(byKhlId, goal.scorer.khlPlayerId, "goals", false);
+    incrementPlayer(byParticipant, goal.teamSide, goal.scorer.apiPlayerId, "goals", false);
     if (goal.period !== null && goal.period <= 3) {
-      incrementPlayer(byKhlId, goal.scorer.khlPlayerId, "goals", true);
+      incrementPlayer(byParticipant, goal.teamSide, goal.scorer.apiPlayerId, "goals", true);
     }
     for (const assistant of goal.assistants) {
-      incrementPlayer(byKhlId, assistant.khlPlayerId, "assists", false);
+      incrementPlayer(byParticipant, goal.teamSide, assistant.apiPlayerId, "assists", false);
       if (goal.period !== null && goal.period <= 3) {
-        incrementPlayer(byKhlId, assistant.khlPlayerId, "assists", true);
+        incrementPlayer(byParticipant, goal.teamSide, assistant.apiPlayerId, "assists", true);
       }
     }
   }
@@ -392,16 +445,22 @@ function applyPlayerPoints(players: NormalizedKhlPlayer[], goals: NormalizedKhlG
 }
 
 function incrementPlayer(
-  players: Map<string, NormalizedKhlPlayer>,
-  khlPlayerId: string | null,
+  players: Map<string, NormalizedKhlPlayer[]>,
+  side: KhlTeamSide,
+  apiPlayerId: string | null,
   field: "goals" | "assists",
   regulation: boolean
 ) {
-  if (!khlPlayerId) return;
-  const player = players.get(khlPlayerId);
-  if (!player) return;
+  if (!apiPlayerId) return;
+  const candidates = players.get(participantKey(side, apiPlayerId)) || [];
+  if (candidates.length !== 1) return;
+  const player = candidates[0];
   const target = regulation ? player.regulation : player.fullMatch;
   target[field] += 1;
+}
+
+function participantKey(side: KhlTeamSide, apiPlayerId: string) {
+  return `${side}:${apiPlayerId}`;
 }
 
 function parsePeriodStats(input: unknown): PeriodStats {

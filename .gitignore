@@ -32,6 +32,8 @@ User/
 hltv_debug_error.png
 *.tsbuildinfo
 .tesseract-cache/
+__pycache__/
+*.pyc
 
 # IDE files
 .vscode/
@@ -57,3 +59,6 @@ certs/*
 .deploy-backups/
 .deploy.lock
 .deploy-image.env
+
+# Server deployment state is local to the production host.
+.deploy/

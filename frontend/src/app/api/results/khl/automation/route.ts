@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
+import { apiErrorResponse, logApiError } from "@backend/http/apiResponse";
 
 import { requireSameOriginJsonMutation } from "@backend/auth/adminAuth";
 import { prisma } from "@backend/db/db";
-import { setKhlResultsAutoSyncPaused } from "@backend/results/khl/automation";
+import { setKhlSyncPaused } from "@backend/results/khl/syncQueue";
+import { readKhlSyncRequest } from "@backend/results/khl/syncRequest";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -11,22 +13,23 @@ export async function POST(request: Request) {
   const invalidMutation = requireSameOriginJsonMutation(request);
   if (invalidMutation) return invalidMutation;
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Request body must be valid JSON." }, { status: 400 });
-  }
+  const body = await readKhlSyncRequest(request);
+  if (body instanceof Response) return body;
   if (!isPauseRequest(body)) {
     return NextResponse.json({ error: "paused must be a boolean." }, { status: 400 });
   }
 
-  const automation = await setKhlResultsAutoSyncPaused(
-    prisma,
-    body.paused,
-    process.env.KHL_RESULTS_AUTO_SYNC_ENABLED === "1"
-  );
-  return NextResponse.json({ automation });
+  try {
+    const result = await setKhlSyncPaused(
+      prisma,
+      body.paused,
+      process.env.KHL_RESULTS_AUTO_SYNC_ENABLED === "1"
+    );
+    return NextResponse.json(result);
+  } catch (error) {
+    logApiError("api:khl/automation", error);
+    return apiErrorResponse(error, "Unable to update KHL automation.");
+  }
 }
 
 function isPauseRequest(value: unknown): value is { paused: boolean } {

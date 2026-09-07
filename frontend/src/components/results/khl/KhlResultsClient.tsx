@@ -8,6 +8,8 @@ import {
   type KhlTargetBindingsTemplate,
 } from "@/components/results/khl/KhlTargetBindingsForm";
 import { KhlResultsWorkspace } from "@/components/results/khl/KhlResultsWorkspace";
+import { KhlAutomationPanel } from "@/components/results/khl/KhlAutomationPanel";
+import type { KhlSyncRunView } from "@backend/results/khl/syncQueue";
 import { KhlSettingsWorkspace } from "@/components/results/khl/KhlSettingsWorkspace";
 import { KhlTabs } from "@/components/results/khl/KhlTabs";
 import { KHL_ROOT_TABS, type KhlRootTab } from "@/components/results/khl/khlNavigation";
@@ -48,12 +50,14 @@ export function KhlResultsClient() {
   const [storedMatches, setStoredMatches] = useState<StoredMatch[]>([]);
   const [settingsDirectory, setSettingsDirectory] = useState<SettingsDirectory | null>(null);
   const [automation, setAutomation] = useState<AutomationStatus | null>(null);
+  const [trackedRunId, setTrackedRunId] = useState<string | null>(null);
   const [hasMoreMatches, setHasMoreMatches] = useState(false);
   const [loading, setLoading] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [bindingValues, setBindingValues] = useState<Record<string, string>>({});
+  const [extraBindingNames, setExtraBindingNames] = useState<Record<string, string>>({});
   const [previews, setPreviews] = useState<Record<string, PreviewState>>({});
   const [diffs, setDiffs] = useState<Record<string, DiffState>>({});
   const [targetJson, setTargetJson] = useState<Record<string, string>>({});
@@ -121,10 +125,50 @@ export function KhlResultsClient() {
 
   useEffect(() => {
     const timer = window.setInterval(() => {
-      refreshData().catch((cause) => setError(messageOf(cause)));
-    }, 60_000);
+      loadStoredMatches().catch((cause) => setError(messageOf(cause)));
+    }, automation?.activeRun || trackedRunId ? 5_000 : 15_000);
     return () => window.clearInterval(timer);
-  }, [refreshData]);
+  }, [loadStoredMatches, automation?.activeRun, trackedRunId]);
+
+  useEffect(() => {
+    if (!trackedRunId) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const { run } = await requestJson<{ run: KhlSyncRunView }>(
+          `/api/results/khl/sync/${encodeURIComponent(trackedRunId)}`
+        );
+        if (cancelled) return;
+        if (run.status !== "QUEUED" && run.status !== "RUNNING") {
+          setTrackedRunId(null);
+          setPreviews({});
+          setDiffs({});
+          setMessage(run.status === "SUCCEEDED" ? "Получение из КХЛ завершено."
+            : run.status === "PARTIAL" ? "Получение завершено. Есть замечания к отдельным протоколам."
+            : run.status === "CANCELLED" ? "Сбор остановлен. Уже полученные данные сохранены."
+            : "Не удалось завершить сбор. Причина указана в статусе.");
+          await refreshData();
+        }
+      } catch (cause) {
+        if (!cancelled) setError(messageOf(cause));
+      }
+    };
+    const timer = window.setInterval(() => { void poll(); }, 2_000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [trackedRunId, refreshData]);
+
+  const collect = async (match?: StoredMatch) => runBusy(
+    `sync:${match?.khlGameId || "all"}`,
+    async () => {
+      const result = await requestJson<{ run: KhlSyncRunView; reused: boolean }>(
+        "/api/results/khl/sync", jsonPost(match ? { khlGameId: match.khlGameId } : {})
+      );
+      setTrackedRunId(result.run.id);
+      setMessage(result.reused ? "Такой сбор уже в очереди или выполняется."
+        : "Сбор поставлен в очередь. Страницу можно закрыть — получение продолжится на сервере.");
+      await loadStoredMatches();
+    }
+  );
 
   const loadSchedule = async () => runWithLoading(async () => {
     if (!stageId) return;
@@ -144,16 +188,14 @@ export function KhlResultsClient() {
   const ingest = async (event: ScheduleEvent) => runBusy(
     `ingest:${event.apiEventId}`,
     async () => {
-      const result = await requestJson<{
-        revision: { revisionNumber: number; state: string };
-        idempotency: { reusedRevision: boolean; activated: boolean };
-      }>("/api/results/khl/ingest", jsonPost({
+      const result = await requestJson<{ run: KhlSyncRunView; reused: boolean }>("/api/results/khl/ingest", jsonPost({
         apiEventId: event.apiEventId,
         stageId: event.stageId,
       }));
-      setMessage(result.idempotency.reusedRevision
-        ? `Матч ${event.khlGameId}: ревизия не изменилась.`
-        : `Матч ${event.khlGameId}: сохранена ревизия ${result.revision.revisionNumber}.`);
+      setTrackedRunId(result.run.id);
+      setMessage(result.reused
+        ? `Матч ${event.khlGameId}: сбор уже в очереди или выполняется.`
+        : `Матч ${event.khlGameId}: получение протокола поставлено в очередь.`);
       setPreviews((current) => withoutKey(current, event.khlGameId));
       setDiffs((current) => withoutKey(current, event.khlGameId));
       await refreshData();
@@ -168,14 +210,16 @@ export function KhlResultsClient() {
     if (!automation?.configured) return;
     const nextPaused = !automation.paused;
     await runBusy("automation:toggle", async () => {
-      const result = await requestJson<{ automation: AutomationStatus }>(
+      const result = await requestJson<{ automation: AutomationStatus; run?: KhlSyncRunView | null }>(
         "/api/results/khl/automation",
         jsonPost({ paused: nextPaused })
       );
       setAutomation((current) => current ? { ...current, ...result.automation } : current);
+      if (result.run) setTrackedRunId(result.run.id);
       setMessage(nextPaused
-        ? "Автоматическое обновление КХЛ остановлено."
-        : "Автоматическое обновление КХЛ запущено.");
+        ? "Автопарсинг остановлен. Текущая операция завершится безопасно; ручной сбор доступен."
+        : "Автопарсинг включён, ближайший сбор поставлен в очередь.");
+      await loadStoredMatches();
     });
   };
 
@@ -208,6 +252,34 @@ export function KhlResultsClient() {
       }));
       setMessage(`Игрок ${player.name} привязан постоянно к Admin ID ${adminPlayerId}.`);
       await refreshData();
+    });
+  };
+
+  const savePlayerExtraBinding = async (
+    player: SettingsPlayer,
+    binding: SettingsPlayer["extraBindings"][number]
+  ) => {
+    const key = `player-extra:${player.khlPlayerId}:${binding.extraCode}`;
+    const adminExtraId = (bindingValues[key] ?? binding.adminExtraId ?? "").trim();
+    const adminExtraName = (
+      extraBindingNames[key]
+      ?? binding.adminExtraName
+      ?? binding.label
+    ).trim() || null;
+    await runBusy(key, async () => {
+      const result = await requestJson<{ result: { reused: boolean } }>(
+        "/api/results/khl/bindings/player-extra",
+        jsonPost({
+          khlPlayerId: player.khlPlayerId,
+          extraCode: binding.extraCode,
+          adminExtraId,
+          adminExtraName,
+        })
+      );
+      setMessage(result.result.reused
+        ? `Доп «${binding.label}» уже был сохранён.`
+        : `Доп «${binding.label}» сохранён постоянно.`);
+      await loadSettingsDirectory();
     });
   };
 
@@ -377,7 +449,7 @@ export function KhlResultsClient() {
 
   return (
     <main className="mx-auto max-w-7xl space-y-6 py-8">
-      <AutomationPanel automation={automation} busyKey={busyKey} onToggle={toggleAutomation} />
+      <KhlAutomationPanel automation={automation} busyKey={busyKey} onToggle={toggleAutomation} />
 
       {(error || message) && (
         <div className={`rounded-2xl border px-5 py-4 text-sm font-semibold ${error
@@ -400,7 +472,8 @@ export function KhlResultsClient() {
           matches={storedMatches}
           hasMoreMatches={hasMoreMatches}
           busyKey={busyKey}
-          onRefresh={() => refreshData().catch((cause) => setError(messageOf(cause)))}
+          onRefresh={() => collect()}
+          onReingest={collect}
           onLoadMore={loadMoreMatches}
         />
       ) : (
@@ -429,6 +502,10 @@ export function KhlResultsClient() {
             ...current,
             [key]: value,
           }))}
+          onExtraBindingNameChange={(key, value) => setExtraBindingNames((current) => ({
+            ...current,
+            [key]: value,
+          }))}
           onMatchCandidateChange={(id, value) => setMatchCandidateJson((current) => ({
             ...current,
             [id]: value,
@@ -440,6 +517,7 @@ export function KhlResultsClient() {
           onSaveTeam={saveTeamBinding}
           onSaveTeamStats={saveTeamStatBindings}
           onSavePlayer={saveDirectoryPlayer}
+          onSavePlayerExtra={savePlayerExtraBinding}
           onSaveMatch={saveMatchBinding}
           onLoadTargetTemplate={loadTargetTemplate}
           onSaveTargetBindings={saveTargetBindings}
@@ -450,54 +528,6 @@ export function KhlResultsClient() {
         />
       )}
     </main>
-  );
-}
-
-function AutomationPanel({
-  automation,
-  busyKey,
-  onToggle,
-}: {
-  automation: AutomationStatus | null;
-  busyKey: string | null;
-  onToggle: () => void;
-}) {
-  const tone = automation?.enabled ? "emerald" : automation?.paused ? "red" : "amber";
-  return (
-    <section className={`rounded-3xl border p-5 shadow-sm ${tone === "emerald"
-      ? "border-emerald-200 bg-emerald-50"
-      : tone === "red"
-        ? "border-red-200 bg-red-50"
-        : "border-amber-200 bg-amber-50"}`}>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-black text-slate-950">
-            {automation?.enabled
-              ? "Автоматическое обновление включено"
-              : automation?.paused
-                ? "Автоматическое обновление остановлено"
-                : "Автоматическое обновление не настроено"}
-          </h2>
-          <p className="mt-1 text-xs text-slate-700">
-            Только завершённые матчи с 01.05.2026 · каждые {automation?.intervalMinutes || 10} минут · последнее получение: {automation?.lastFetchedAt ? formatMoscowDateTime(automation.lastFetchedAt) : "ещё не выполнялось"}
-          </p>
-        </div>
-        {automation?.configured && (
-          <button
-            type="button"
-            onClick={onToggle}
-            disabled={busyKey === "automation:toggle"}
-            className={`rounded-xl px-4 py-2 text-xs font-black text-white disabled:opacity-40 ${automation.paused ? "bg-emerald-700" : "bg-red-700"}`}
-          >
-            {busyKey === "automation:toggle"
-              ? "Сохранение…"
-              : automation.paused
-                ? "Запустить автообновление"
-                : "Остановить автообновление"}
-          </button>
-        )}
-      </div>
-    </section>
   );
 }
 
@@ -530,12 +560,4 @@ function shiftDateKey(value: string, days: number) {
   const date = new Date(`${value}T12:00:00.000Z`);
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
-}
-
-function formatMoscowDateTime(value: string) {
-  return new Intl.DateTimeFormat("ru-RU", {
-    timeZone: "Europe/Moscow",
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(new Date(value));
 }

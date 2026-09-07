@@ -61,6 +61,18 @@ function bindingsFor(match: ReturnType<typeof normalizeKhlEventDetail>): KhlAdmi
   };
 }
 
+test("missing KHL player identities block payloads even if validation metadata claims success", () => {
+  const match = normalizeKhlEventDetail(fixture("regulation-901973.json"));
+  const bindings = bindingsFor(match);
+  match.players[0].khlPlayerId = null;
+  bindings.players.null = bindings.players[Object.keys(bindings.players)[0]];
+  assert.throws(() => buildKhlAdminCanonicalPayload({
+    match, bindings, revisionId: "test-revision", sourceContentHash: "a".repeat(64),
+    parserVersion: "test-parser", rulesVersion: "test-rules",
+  }), (error: unknown) => error instanceof KhlAdminPayloadError
+    && error.issues.some((issue) => /missing KHL player id/.test(issue)));
+});
+
 test("builds deterministic regulation-only canonical Admin payload", () => {
   const match = normalizeKhlEventDetail(fixture("overtime-901952.json"));
   const result = buildKhlAdminCanonicalPayload({
@@ -131,7 +143,9 @@ test("builds deterministic regulation-only canonical Admin payload", () => {
 test("blocks the entire payload when one participant binding is missing", () => {
   const match = normalizeKhlEventDetail(fixture("regulation-901973.json"));
   const bindings = bindingsFor(match);
-  delete bindings.players[match.players[0].khlPlayerId];
+  const missingPlayerId = match.players[0].khlPlayerId;
+  assert.ok(missingPlayerId);
+  delete bindings.players[missingPlayerId];
 
   assert.throws(
     () => buildKhlAdminCanonicalPayload({
@@ -144,7 +158,7 @@ test("blocks the entire payload when one participant binding is missing", () => 
     }),
     (error: unknown) =>
       error instanceof KhlAdminPayloadError &&
-      error.issues.some((issue) => issue.includes(match.players[0].khlPlayerId))
+      error.issues.some((issue) => issue.includes(missingPlayerId))
   );
 });
 

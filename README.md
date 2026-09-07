@@ -156,7 +156,10 @@ Seed создаёт или обновляет базовые киберспор�
 
 ```bash
 docker compose config -q
-docker compose up -d --build --wait
+docker compose up -d --wait postgres
+docker compose build web
+docker compose run --rm --no-deps web npm run db:migrate:deploy
+docker compose up -d --no-build --wait
 docker compose exec web npm run db:seed
 docker compose ps
 ```
@@ -214,4 +217,6 @@ npm run build
 | [Развёртывание](docs/DEPLOYMENT_PORTAINER.md)                 | Подготовить конфигурацию сервера и порядок выкладки.                           |
 | [Отчёт аудита](docs/AUDIT_2026-09-07.md)                      | Посмотреть исправления, проверенные сценарии и эксплуатационные ограничения.   |
 
-GitHub Actions настроен на проверку качества и сборку Docker-артефакта. Фактические запуски доступны во вкладке [Actions](https://github.com/inftverezovsky/TData/actions); публикация кода в GitHub сама по себе не обновляет сервер.
+После push в `main` GitHub Actions запускает проверки и сборку, затем сервер пересобирает точный коммит и обновляет приложение. Перед изменением схемы создаётся проверенная резервная копия БД; при сбое обновления возвращаются предыдущие образы приложения. Настройки сервера, данные и другие проекты сохраняются.
+
+[Как устроена автоматическая выкладка](docs/AUTO_DEPLOY.md) · [Запуски GitHub Actions](https://github.com/inftverezovsky/TData/actions)

@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@backend/db/db";
 import { KHL_RESULTS_CUTOFF } from "@backend/results/khl/autoSync";
 import { getKhlResultsAutomationStatus } from "@backend/results/khl/automation";
+import { getKhlSyncStatus } from "@backend/results/khl/syncQueue";
 import { buildKhlMatchProtocolView } from "@backend/results/khl/matchProtocol";
 import type { NormalizedKhlMatch } from "@backend/sources/results/khl/normalize";
 
@@ -24,7 +25,7 @@ export async function GET(request: Request) {
       startsAt: { gte: KHL_RESULTS_CUTOFF },
       ...(stageId ? { stageId } : {}),
     };
-    const [matches, latestSnapshot, total, automation] = await Promise.all([
+    const [matches, latestSnapshot, total, automation, syncStatus] = await Promise.all([
       prisma.khlMatch.findMany({
         where,
         orderBy: [{ startsAt: "desc" }, { khlGameId: "desc" }],
@@ -70,10 +71,12 @@ export async function GET(request: Request) {
         prisma,
         process.env.KHL_RESULTS_AUTO_SYNC_ENABLED === "1"
       ),
+      getKhlSyncStatus(prisma),
     ]);
     return NextResponse.json({
       automation: {
         ...automation,
+        ...syncStatus,
         cutoff: KHL_RESULTS_CUTOFF.toISOString(),
         intervalMinutes: automaticSyncIntervalMinutes(),
         lastFetchedAt: latestSnapshot?.lastFetchedAt || null,
@@ -87,7 +90,7 @@ export async function GET(request: Request) {
       matches: matches.map(buildKhlMatchResponseItem),
     });
   } catch (error) {
-    logApiError("api:results/khl/matches/route.ts", error);
+    logApiError("api:khl/matches", error);
     return apiErrorResponse(error);
   }
 }
@@ -111,10 +114,12 @@ export function buildKhlMatchResponseItem(match: MatchViewInput) {
   const { revisions, ...storedMatch } = match;
   const activeRevision = match.activeRevision;
   const latestRevision = revisions[0] || activeRevision || null;
-  const protocolRevision = activeRevision || latestRevision;
+  const latestIsRejected = latestRevision?.state === "REJECTED"
+    && (!activeRevision || latestRevision.revisionNumber > activeRevision.revisionNumber);
+  const protocolRevision = latestIsRejected ? latestRevision : activeRevision || latestRevision;
   const source = !protocolRevision
     ? null
-    : activeRevision?.state === "VALIDATED"
+    : protocolRevision.id === activeRevision?.id && activeRevision.state === "VALIDATED"
       ? "ACTIVE_VALIDATED"
       : protocolRevision.state === "REJECTED"
         ? "LATEST_REJECTED"

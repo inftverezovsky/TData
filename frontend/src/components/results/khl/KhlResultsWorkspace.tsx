@@ -17,6 +17,7 @@ import {
   getKhlRevisionPresentation,
 } from "@/components/results/khl/khlResultsViewModel";
 import type { StoredMatch } from "@/components/results/khl/types";
+import { useKhlResultsTime } from "@/components/results/khl/khlResultsClock";
 
 type Props = {
   matches: StoredMatch[];
@@ -24,6 +25,7 @@ type Props = {
   busyKey: string | null;
   onRefresh: () => void;
   onLoadMore: () => void;
+  onReingest?: (match: StoredMatch) => void;
 };
 
 const METRIC_ORDER = [
@@ -39,9 +41,14 @@ export function KhlResultsWorkspace({
   busyKey,
   onRefresh,
   onLoadMore,
+  onReingest,
 }: Props) {
   const [tab, setTab] = useState<KhlResultsTab>("today");
-  const partition = useMemo(() => partitionKhlResultsMatches(matches), [matches]);
+  const now = useKhlResultsTime();
+  const partition = useMemo(() => now === null
+    ? { today: [], archive: [] }
+    : partitionKhlResultsMatches(matches, new Date(now)), [matches, now]);
+  const dayLabel = now === null ? "Определяем московскую дату…" : formatMoscowDay(new Date(now));
   const daily = useMemo(() => aggregateKhlGameDay(partition.today), [partition.today]);
   const tabItems = KHL_RESULTS_TABS.map((item) => ({
     ...item,
@@ -64,27 +71,31 @@ export function KhlResultsWorkspace({
         <button
           type="button"
           onClick={onRefresh}
-          className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-black text-slate-700"
+          disabled={busyKey === "sync:all"}
+          className="rounded-xl border border-blue-200 bg-blue-700 px-4 py-2 text-xs font-black text-white disabled:opacity-40"
         >
-          Обновить данные
+          {busyKey === "sync:all" ? "Постановка в очередь…" : "Собрать сейчас"}
         </button>
       </div>
 
       {tab === "today" && (
         <MatchList
           title="Матчи сегодня"
-          description={`Московская дата: ${formatMoscowDay(new Date())}. Матчи отсортированы по времени начала.`}
+          description={now === null ? dayLabel : `Московская дата: ${dayLabel}. Матчи отсортированы по времени начала.`}
           matches={partition.today}
-          empty="Завершённых матчей КХЛ сегодня пока нет. Автопарсер добавит их после появления официального протокола."
+          empty={now === null ? "Загрузка результатов…" : "Завершённых матчей КХЛ сегодня пока нет. Автопарсер добавит их после появления официального протокола."}
+          busyKey={busyKey}
+          onReingest={onReingest}
         />
       )}
-      {tab === "daily" && <DailyStatistics matches={partition.today} />}
+      {tab === "daily" && <DailyStatistics matches={partition.today} dayLabel={dayLabel} />}
       {tab === "archive" && (
         <ArchiveMatches
           matches={partition.archive}
           hasMoreMatches={hasMoreMatches}
           busyKey={busyKey}
           onLoadMore={onLoadMore}
+          onReingest={onReingest}
         />
       )}
     </section>
@@ -96,11 +107,13 @@ function ArchiveMatches({
   hasMoreMatches,
   busyKey,
   onLoadMore,
+  onReingest,
 }: {
   matches: StoredMatch[];
   hasMoreMatches: boolean;
   busyKey: string | null;
   onLoadMore: () => void;
+  onReingest?: (match: StoredMatch) => void;
 }) {
   const [query, setQuery] = useState("");
   const [day, setDay] = useState("");
@@ -138,6 +151,8 @@ function ArchiveMatches({
         description={`Показано: ${filtered.length} из ${matches.length} загруженных.`}
         matches={filtered}
         empty="В архиве нет матчей по выбранному фильтру."
+        busyKey={busyKey}
+        onReingest={onReingest}
       />
       {hasMoreMatches && (
         <button
@@ -158,11 +173,15 @@ function MatchList({
   description,
   matches,
   empty,
+  busyKey,
+  onReingest,
 }: {
   title: string;
   description: string;
   matches: StoredMatch[];
   empty: string;
+  busyKey?: string | null;
+  onReingest?: (match: StoredMatch) => void;
 }) {
   return (
     <section className="space-y-4">
@@ -170,7 +189,7 @@ function MatchList({
         <h2 className="text-lg font-black text-slate-950">{title}</h2>
         <p className="text-sm text-slate-500">{description}</p>
       </div>
-      {matches.map((match) => <KhlResultMatchCard key={match.id} match={match} />)}
+      {matches.map((match) => <KhlResultMatchCard key={match.id} match={match} busyKey={busyKey} onReingest={onReingest} />)}
       {matches.length === 0 && (
         <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500">
           {empty}
@@ -180,7 +199,11 @@ function MatchList({
   );
 }
 
-export function KhlResultMatchCard({ match }: { match: StoredMatch }) {
+export function KhlResultMatchCard({ match, busyKey, onReingest }: {
+  match: StoredMatch;
+  busyKey?: string | null;
+  onReingest?: (match: StoredMatch) => void;
+}) {
   const [tab, setTab] = useState<KhlMatchTab>("overview");
   const playerCount = match.protocol?.players.length ?? match._count.participants;
   const revision = getKhlRevisionPresentation(match);
@@ -218,6 +241,9 @@ export function KhlResultMatchCard({ match }: { match: StoredMatch }) {
                       : "Не входит в статистику дня / delivery"}
                   </span>
                 )}
+                {revision.badgeTone === "warning" && (
+                  <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-800">Доступен для статистики дня · staging заблокирован</span>
+                )}
               </div>
             </div>
             <div className="flex items-center gap-4">
@@ -241,7 +267,8 @@ export function KhlResultMatchCard({ match }: { match: StoredMatch }) {
           {revision.warning && (
             <div
               data-testid="khl-revision-warning"
-              className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-xs text-red-950"
+              className={`mt-4 rounded-2xl border p-4 text-xs ${revision.badgeTone === "warning"
+                ? "border-amber-200 bg-amber-50 text-amber-950" : "border-red-200 bg-red-50 text-red-950"}`}
             >
               <div className="font-black">{revision.warning.title}</div>
               <p className="mt-1 font-semibold">{revision.warning.description}</p>
@@ -256,6 +283,13 @@ export function KhlResultMatchCard({ match }: { match: StoredMatch }) {
           )}
         </summary>
         <div className="space-y-4 border-t border-slate-200 p-5 sm:p-6">
+          {onReingest && (
+            <button type="button" onClick={() => onReingest(match)}
+              disabled={busyKey === `sync:${match.khlGameId}`}
+              className="rounded-xl border border-blue-200 px-4 py-2 text-xs font-black text-blue-700 disabled:opacity-40">
+              {busyKey === `sync:${match.khlGameId}` ? "Постановка в очередь…" : "Переполучить протокол"}
+            </button>
+          )}
           <KhlTabs
             items={KHL_MATCH_TABS}
             value={tab}
@@ -270,13 +304,13 @@ export function KhlResultMatchCard({ match }: { match: StoredMatch }) {
   );
 }
 
-function revisionBadgeClass(tone: "validated" | "rejected" | "empty") {
+function revisionBadgeClass(tone: "validated" | "warning" | "rejected" | "empty") {
   if (tone === "validated") return "bg-emerald-50 text-emerald-800";
   if (tone === "rejected") return "bg-red-50 text-red-800";
   return "bg-amber-50 text-amber-800";
 }
 
-function DailyStatistics({ matches }: { matches: StoredMatch[] }) {
+function DailyStatistics({ matches, dayLabel }: { matches: StoredMatch[]; dayLabel: string }) {
   const summary = useMemo(() => aggregateKhlGameDay(matches), [matches]);
 
   return (
@@ -284,10 +318,11 @@ function DailyStatistics({ matches }: { matches: StoredMatch[] }) {
       <section className="rounded-3xl border border-slate-200 bg-slate-50/60 p-5 shadow-sm">
         <h2 className="text-lg font-black text-slate-950">Статистика игрового дня</h2>
         <p className="mt-1 text-sm text-slate-600">
-          Суммы P1–P3 за {formatMoscowDay(new Date())}. Овертаймы не увеличивают эти значения.
+          Суммы P1–P3 за {dayLabel}. Овертаймы не увеличивают эти значения.
         </p>
         <div className="mt-4 flex flex-wrap gap-2 text-xs font-black">
           <span className="rounded-full bg-emerald-100 px-3 py-1 text-emerald-800">Учтено матчей: {summary.includedMatches}</span>
+          {summary.warningMatches > 0 && <span data-testid="khl-day-identity-warning" className="rounded-full bg-amber-100 px-3 py-1 text-amber-800">Учтено с предупреждением об ID: {summary.warningMatches}</span>}
           {summary.skippedMatches > 0 && <span className="rounded-full bg-amber-100 px-3 py-1 text-amber-800">Не агрегировано непроверенных: {summary.skippedMatches}</span>}
         </div>
       </section>
@@ -308,7 +343,7 @@ function DailyStatistics({ matches }: { matches: StoredMatch[] }) {
               {summary.teams.map((team) => {
                 const metrics = new Map(team.metrics.map((metric) => [metric.code, metric.regulationTotal]));
                 return (
-                  <tr key={team.khlTeamId}>
+                  <tr key={team.khlTeamId} data-testid="khl-day-team">
                     <td className="px-3 py-2"><div className="font-black text-slate-900">{team.name}</div><div className="text-[10px] text-slate-400">KHL {team.khlTeamId}</div></td>
                     <td className="px-3 py-2 text-center">{team.matchCount}</td>
                     <td className="bg-blue-50 px-3 py-2 text-center font-black text-blue-900">{team.regulationGoals}</td>
@@ -323,7 +358,7 @@ function DailyStatistics({ matches }: { matches: StoredMatch[] }) {
 
       <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <h3 className="font-black text-slate-950">Игроки</h3>
-        <p className="mt-1 text-xs text-slate-500">Показаны все заявленные игроки, включая нулевые значения.</p>
+        <p className="mt-1 text-xs text-slate-500">Показаны все заявленные игроки, включая нулевые значения. Игроки без ID КХЛ показаны отдельно по каждому матчу и не объединяются по имени.</p>
         <div className="mt-3 max-h-[36rem] overflow-auto rounded-2xl border border-slate-200">
           <table className="min-w-full text-left text-xs">
             <thead className="sticky top-0 bg-slate-100 text-slate-600">
@@ -331,8 +366,12 @@ function DailyStatistics({ matches }: { matches: StoredMatch[] }) {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {summary.players.map((player) => (
-                <tr key={player.khlPlayerId}>
-                  <td className="px-3 py-2"><div className="font-black text-slate-900">{player.name}</div><div className="text-[10px] text-slate-400">KHL {player.khlPlayerId} · team {player.khlTeamId}</div></td>
+                <tr key={player.rowKey} data-testid="khl-day-player" data-identity={player.khlPlayerId === null ? "unresolved" : "resolved"}>
+                  <td className="px-3 py-2"><div className="font-black text-slate-900">{player.name}</div>
+                    {player.khlPlayerId === null
+                      ? <div className="text-[10px] text-amber-800">ID КХЛ отсутствует · матч {player.sourceMatchId} · API {player.apiPlayerId}</div>
+                      : <div className="text-[10px] text-slate-400">KHL {player.khlPlayerId} · team {player.khlTeamId}</div>}
+                  </td>
                   <td className="px-3 py-2 text-center">{player.matchCount}</td>
                   <td className="px-3 py-2 text-center font-black">{player.goals}</td>
                   <td className="px-3 py-2 text-center font-black">{player.assists}</td>

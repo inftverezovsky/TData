@@ -1,4 +1,5 @@
 import type { KhlMatchProtocolView } from "@backend/results/khl/matchProtocol";
+import { getKhlProtocolReadiness, khlMissingIdentityLabels } from "./khlProtocolReadiness";
 
 type Props = {
   protocol: KhlMatchProtocolView | null;
@@ -20,6 +21,7 @@ export function KhlMatchProtocol({ protocol, section = "all" }: Props) {
     );
   }
 
+  const identityWarning = getKhlProtocolReadiness(protocol) === "IDENTITY_WARNING";
   const body = (
     <div className="mt-4 space-y-5">
       {(section === "all" || section === "overview") && (
@@ -35,8 +37,8 @@ export function KhlMatchProtocol({ protocol, section = "all" }: Props) {
         <TeamMetrics protocol={protocol} />
       )}
       {!protocol.validation.ok && (
-        <ul className="rounded-xl bg-red-50 p-4 text-xs text-red-900">
-          {protocol.validation.issues.map((issue, index) => (
+        <ul className={`rounded-xl p-4 text-xs ${identityWarning ? "bg-amber-50 text-amber-900" : "bg-red-50 text-red-900"}`}>
+          {(identityWarning ? khlMissingIdentityLabels(protocol) : protocol.validation.issues).map((issue, index) => (
             <li key={`${issue}:${index}`}>• {issue}</li>
           ))}
         </ul>
@@ -84,6 +86,7 @@ function ProtocolHeader({
       : section === "statistics"
         ? "Командные показатели по периодам"
         : "Командная статистика, все игроки, голы и штрафы";
+  const readiness = getKhlProtocolReadiness(protocol);
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div>
@@ -92,10 +95,11 @@ function ProtocolHeader({
         </div>
         <div className="mt-1 text-sm font-black text-slate-950">{title}</div>
       </div>
-      <span className={`rounded-full px-3 py-1 text-xs font-bold ${protocol.validation.ok
+      <span className={`rounded-full px-3 py-1 text-xs font-bold ${readiness === "VALIDATED"
         ? "bg-emerald-100 text-emerald-800"
-        : "bg-red-100 text-red-800"}`}>
-        {protocol.validation.ok ? "Протокол проверен" : "Показан, но доставка заблокирована"}
+        : readiness === "IDENTITY_WARNING" ? "bg-amber-100 text-amber-800" : "bg-red-100 text-red-800"}`}>
+        {readiness === "VALIDATED" ? "Протокол проверен" : readiness === "IDENTITY_WARNING"
+          ? "Статистика доступна · нет ID КХЛ" : "Показан, но доставка заблокирована"}
       </span>
     </div>
   );
@@ -270,12 +274,44 @@ function PlayerTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
-          {players.map((player) => (
-            <tr key={player.khlPlayerId} data-testid="khl-protocol-player">
+          {players.map((player, index) => (
+            <tr key={`${player.teamSide}:${player.apiPlayerId}:${index}`} data-testid="khl-protocol-player">
               <td className="px-2 py-2 text-center font-bold tabular-nums">{player.shirtNumber}</td>
               <td className="whitespace-nowrap px-2 py-2">
                 <div className="font-bold text-slate-900">{player.name}</div>
-                <div className="text-[10px] text-slate-400">KHL {player.khlPlayerId}</div>
+                <div className="text-[10px] text-slate-400">
+                  {player.khlPlayerId ? `KHL ${player.khlPlayerId}` : "ID КХЛ пока отсутствует в источнике"}
+                </div>
+                <details
+                  data-testid="khl-player-extras"
+                  className="mt-2 whitespace-normal rounded-lg border border-indigo-100 bg-indigo-50/60"
+                >
+                  <summary className="cursor-pointer list-none px-2 py-1 text-[10px] font-black text-indigo-800 [&::-webkit-details-marker]:hidden">
+                    Допы
+                  </summary>
+                  <div className="min-w-64 space-y-1 border-t border-indigo-100 p-2">
+                    {!protocol.playerExtras.available && (
+                      <div className="rounded-md bg-amber-100 p-2 text-[10px] font-bold text-amber-900">
+                        <div>Нет данных</div>
+                        {protocol.playerExtras.issues.map((issue) => (
+                          <div key={issue} className="mt-1 font-normal">{issue}</div>
+                        ))}
+                      </div>
+                    )}
+                    {player.extras.map((extra) => (
+                      <div key={extra.code} className="flex items-start justify-between gap-3 text-[10px]">
+                        <span className="text-slate-700">{extra.label}</span>
+                        <span className={`shrink-0 rounded-full px-2 py-0.5 font-black ${extra.value === true
+                          ? "bg-emerald-100 text-emerald-800"
+                          : extra.value === false
+                            ? "bg-slate-200 text-slate-700"
+                            : "bg-amber-100 text-amber-900"}`}>
+                          {extra.value === true ? "Да" : extra.value === false ? "Нет" : "Нет данных"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
               </td>
               <td className="whitespace-nowrap px-2 py-2 text-slate-500">{player.role || "—"}</td>
               {PLAYER_POINT_COLUMNS.map((column) => (

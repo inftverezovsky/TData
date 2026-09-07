@@ -18,6 +18,10 @@ import {
   getKhlSettingsDirectory,
 } from "../../backend/src/results/khl/settingsDirectory";
 import { KHL_TEAM_STAT_CODES } from "../../backend/src/results/khl/adminPayload";
+import {
+  formatKhlPlayerExtraLabel,
+  KHL_PLAYER_EXTRA_DEFINITIONS,
+} from "../../backend/src/results/khl/playerExtras";
 import { acquireKhlDatabaseSuiteLock } from "../helpers/khlDatabaseSuiteLock";
 
 const databaseUrl = requireTestDatabaseUrl(process.env.TEST_DATABASE_URL);
@@ -216,6 +220,15 @@ test("settings directory returns only post-cutoff global teams/players and all s
     adminConfirmedAt: "2026-05-20T10:05:00.000Z",
     adminConfirmedBy: "settings-test-admin",
     matchCount: 1,
+    extraBindings: KHL_PLAYER_EXTRA_DEFINITIONS.map((definition) => ({
+      extraCode: definition.code,
+      label: formatKhlPlayerExtraLabel("Current Player", definition.code),
+      adminExtraId: null,
+      adminExtraName: null,
+      adminBindingStatus: KhlBindingStatus.UNMAPPED,
+      adminConfirmedAt: null,
+      adminConfirmedBy: null,
+    })),
     recentAppearance: {
       khlGameId: "settings-current-game",
       startsAt: "2026-05-21T16:30:00.000Z",

@@ -10,12 +10,14 @@ import {
 } from "@prisma/client";
 
 import {
+  inspectKhlEventHeader,
   normalizeKhlEventDetail,
+  requireResolvedKhlPlayers,
   type KhlMatchStatus,
   type NormalizedKhlMatch,
 } from "@backend/sources/results/khl/normalize";
 
-export const KHL_PARSER_VERSION = "khl-mobile-event-v1";
+export const KHL_PARSER_VERSION = "khl-mobile-event-v2";
 export const KHL_RULES_VERSION = "khl-admin-regulation-v1";
 
 const MAX_RAW_BODY_BYTES = 5 * 1024 * 1024;
@@ -25,14 +27,21 @@ const APPROVED_SOURCE_HOSTS = new Set([
   "api-video.khl.ru",
 ]);
 
-type IngestInput = {
+export type KhlIngestInput = {
   rawBody: string;
+  rawBytes?: Uint8Array;
   sourceUrl: string;
   fetchedAt?: Date;
   contentType?: string;
   parserVersion?: string;
   rulesVersion?: string;
+  expectedIdentity?: { khlGameId?: string; apiEventId: string; stageId: string };
+  allowedDateRange?: { from: Date; to?: Date };
+  requireFinished?: boolean;
+  assertCanWrite?: (tx: Prisma.TransactionClient) => Promise<void>;
 };
+
+type IngestInput = KhlIngestInput;
 
 type IngestResult = {
   match: Awaited<ReturnType<Prisma.TransactionClient["khlMatch"]["findUniqueOrThrow"]>>;
@@ -68,18 +77,37 @@ export async function ingestKhlEventDetail(
     throw new KhlRepositoryError("KHL fetchedAt must be a valid date.");
   }
 
-  let parsed: unknown;
+  let detail: unknown;
+  let normalized: NormalizedKhlMatch;
+  let verifiedGameId: string | undefined;
   try {
-    parsed = JSON.parse(input.rawBody) as unknown;
-  } catch {
-    throw new KhlRepositoryError("KHL raw event body is not valid JSON.");
+    if (input.rawBytes) {
+      try {
+        new TextDecoder("utf-8", { fatal: true }).decode(input.rawBytes);
+      } catch {
+        throw new KhlRepositoryError("KHL raw response is not valid UTF-8.");
+      }
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(input.rawBody) as unknown;
+    } catch {
+      throw new KhlRepositoryError("KHL raw event body is not valid JSON.");
+    }
+    detail = unwrapEvent(parsed);
+    const header = inspectKhlEventHeader(detail);
+    assertExpectedIdentity(input, header);
+    verifiedGameId = header.identity.khlGameId;
+    assertResultScope(input, header);
+    normalized = normalizeKhlEventDetail(detail);
+  } catch (error) {
+    await persistFailedEvidence(prisma, input, fetchedAt, verifiedGameId);
+    throw error;
   }
-  const detail = unwrapEvent(parsed);
-  const normalized = normalizeKhlEventDetail(detail);
   const rawRecord = detail as Record<string, unknown>;
   const parserVersion = input.parserVersion || KHL_PARSER_VERSION;
   const rulesVersion = input.rulesVersion || KHL_RULES_VERSION;
-  const contentHash = sha256(input.rawBody);
+  const contentHash = sha256(input.rawBytes || input.rawBody);
   const normalizedJson = toJsonValue(normalized);
   const normalizedHash = sha256(canonicalStringify(normalizedJson));
 
@@ -124,6 +152,7 @@ async function ingestTransaction(
     rulesVersion: string;
   }
 ): Promise<IngestResult> {
+  await context.input.assertCanWrite?.(tx);
   const {
     input,
     fetchedAt,
@@ -211,7 +240,7 @@ async function ingestTransaction(
           ...snapshotKey,
           sourceUrl: input.sourceUrl,
           contentType: input.contentType || "application/json",
-          rawBody: Buffer.from(input.rawBody, "utf8"),
+          rawBody: rawBytesFor(input),
           firstFetchedAt: fetchedAt,
           lastFetchedAt: fetchedAt,
         },
@@ -394,12 +423,13 @@ async function activateRoster(
   revisionNumber: number,
   fetchedAt: Date
 ) {
+  const players = requireResolvedKhlPlayers(normalized.players);
   await tx.khlMatchParticipant.updateMany({
     where: { matchId },
     data: { isListed: false },
   });
 
-  for (const player of normalized.players) {
+  for (const player of players) {
     const storedPlayer = await tx.khlPlayer.upsert({
       where: { khlPlayerId: player.khlPlayerId },
       create: {
@@ -446,10 +476,14 @@ async function activateRoster(
 }
 
 function validateInput(input: IngestInput) {
-  if (typeof input.rawBody !== "string" || !input.rawBody.trim()) {
+  if (typeof input.rawBody !== "string" || (!input.rawBody.trim() && input.rawBytes === undefined)) {
     throw new KhlRepositoryError("KHL raw event body is required.");
   }
-  if (Buffer.byteLength(input.rawBody, "utf8") > MAX_RAW_BODY_BYTES) {
+  if (input.rawBytes !== undefined && (!(input.rawBytes instanceof Uint8Array)
+    || Buffer.from(input.rawBytes).toString("utf8") !== input.rawBody)) {
+    throw new KhlRepositoryError("KHL raw text and bytes do not match.");
+  }
+  if ((input.rawBytes?.byteLength ?? Buffer.byteLength(input.rawBody, "utf8")) > MAX_RAW_BODY_BYTES) {
     throw new KhlRepositoryError("KHL raw event body exceeds the size limit.");
   }
   let sourceUrl: URL;
@@ -465,6 +499,77 @@ function validateInput(input: IngestInput) {
     !APPROVED_SOURCE_HOSTS.has(sourceUrl.hostname.toLowerCase())
   ) {
     throw new KhlRepositoryError("KHL source URL is not approved.");
+  }
+  if (input.expectedIdentity) {
+    const expected = input.expectedIdentity;
+    for (const id of [expected.apiEventId, expected.stageId, ...(expected.khlGameId === undefined ? [] : [expected.khlGameId])]) {
+      if (typeof id !== "string" || !/^[1-9]\d{0,127}$/.test(id)) {
+        throw new KhlRepositoryError("KHL expected identity must contain positive decimal strings.");
+      }
+    }
+    if (sourceUrl.searchParams.get("id") !== expected.apiEventId
+      || sourceUrl.searchParams.get("stage_id") !== expected.stageId) {
+      throw new KhlRepositoryError("KHL source URL does not match the requested identity.");
+    }
+  }
+  if (input.allowedDateRange) {
+    const { from, to } = input.allowedDateRange;
+    if (!(from instanceof Date) || !Number.isFinite(from.getTime())
+      || (to !== undefined && (!(to instanceof Date) || !Number.isFinite(to.getTime()) || to <= from))) {
+      throw new KhlRepositoryError("KHL allowed date range is invalid.");
+    }
+  }
+}
+
+function assertExpectedIdentity(input: IngestInput, header: ReturnType<typeof inspectKhlEventHeader>) {
+  const expected = input.expectedIdentity;
+  if (expected && (header.identity.apiEventId !== expected.apiEventId
+    || header.identity.stageId !== expected.stageId
+    || (expected.khlGameId !== undefined && header.identity.khlGameId !== expected.khlGameId))) {
+    throw new KhlRepositoryError("KHL detail identity does not match the requested result.");
+  }
+}
+
+function assertResultScope(input: IngestInput, header: ReturnType<typeof inspectKhlEventHeader>) {
+  if (input.requireFinished && header.status !== "finished") {
+    throw new KhlRepositoryError("KHL match must be finished before result ingestion.");
+  }
+  const range = input.allowedDateRange;
+  const startsAt = new Date(header.startsAt);
+  if (range && (startsAt < range.from || (range.to && startsAt >= range.to))) {
+    throw new KhlRepositoryError("KHL detail date is outside the requested result range.");
+  }
+}
+
+async function persistFailedEvidence(
+  prisma: PrismaClient,
+  input: IngestInput,
+  fetchedAt: Date,
+  verifiedGameId?: string
+) {
+  const contentHash = sha256(input.rawBytes || input.rawBody);
+  const requestedEventId = input.expectedIdentity?.apiEventId || new URL(input.sourceUrl).searchParams.get("id");
+  // Unverified response identities must never attach an error snapshot to a match.
+  const externalKey = verifiedGameId || (requestedEventId && /^[1-9]\d*$/.test(requestedEventId)
+    ? `api-event:${requestedEventId}` : `unidentified-response:${contentHash}`);
+  const key = { resourceType: KhlSnapshotResource.EVENT_DETAIL, externalKey, contentHash };
+  for (let attempt = 1; attempt <= MAX_TRANSACTION_ATTEMPTS; attempt += 1) {
+    try {
+      await prisma.$transaction(async (tx) => {
+        await input.assertCanWrite?.(tx);
+        await tx.khlRawSnapshot.upsert({
+          where: { resourceType_externalKey_contentHash: key },
+          create: {
+            ...key, sourceUrl: input.sourceUrl, contentType: input.contentType || "application/json",
+            rawBody: rawBytesFor(input), firstFetchedAt: fetchedAt, lastFetchedAt: fetchedAt,
+          },
+          update: { lastFetchedAt: fetchedAt, fetchCount: { increment: 1 } },
+        });
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      return;
+    } catch (error) {
+      if (attempt >= MAX_TRANSACTION_ATTEMPTS || !isRetryableWriteConflict(error)) throw error;
+    }
   }
 }
 
@@ -505,7 +610,11 @@ function sortRecursively(value: unknown): unknown {
   );
 }
 
-function sha256(value: string) {
+function rawBytesFor(input: IngestInput) {
+  return input.rawBytes ? Buffer.from(input.rawBytes) : Buffer.from(input.rawBody, "utf8");
+}
+
+function sha256(value: string | Uint8Array) {
   return createHash("sha256").update(value).digest("hex");
 }
 

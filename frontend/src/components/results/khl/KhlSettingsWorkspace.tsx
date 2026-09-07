@@ -53,11 +53,16 @@ type Props = {
   onLoadSchedule: () => void;
   onIngest: (event: ScheduleEvent) => void;
   onBindingValueChange: (key: string, value: string) => void;
+  onExtraBindingNameChange: (key: string, value: string) => void;
   onMatchCandidateChange: (khlGameId: string, value: string) => void;
   onTargetJsonChange: (khlGameId: string, value: string) => void;
   onSaveTeam: (team: SettingsTeam) => void;
   onSaveTeamStats: (team: SettingsTeam) => void;
   onSavePlayer: (player: SettingsPlayer) => void;
+  onSavePlayerExtra: (
+    player: SettingsPlayer,
+    binding: SettingsPlayer["extraBindings"][number]
+  ) => void;
   onSaveMatch: (match: StoredMatch) => void;
   onLoadTargetTemplate: (match: StoredMatch) => void;
   onSaveTargetBindings: (match: StoredMatch) => void;
@@ -94,9 +99,11 @@ function TeamsPlayersSettings(props: Props) {
     busyKey,
     bindingValues,
     onBindingValueChange,
+    onExtraBindingNameChange,
     onSaveTeam,
     onSaveTeamStats,
     onSavePlayer,
+    onSavePlayerExtra,
   } = props;
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("ALL");
@@ -212,7 +219,9 @@ function TeamsPlayersSettings(props: Props) {
                         busyKey={busyKey}
                         bindingValues={bindingValues}
                         onBindingValueChange={onBindingValueChange}
+                        onExtraBindingNameChange={onExtraBindingNameChange}
                         onSavePlayer={onSavePlayer}
+                        onSavePlayerExtra={onSavePlayerExtra}
                       />
                     ))}
                     {group.players.length === 0 && (
@@ -322,8 +331,17 @@ function PlayerBindingCard({
   busyKey,
   bindingValues,
   onBindingValueChange,
+  onExtraBindingNameChange,
   onSavePlayer,
-}: Pick<Props, "busyKey" | "bindingValues" | "onBindingValueChange" | "onSavePlayer"> & {
+  onSavePlayerExtra,
+}: Pick<Props,
+  | "busyKey"
+  | "bindingValues"
+  | "onBindingValueChange"
+  | "onExtraBindingNameChange"
+  | "onSavePlayer"
+  | "onSavePlayerExtra"
+> & {
   player: SettingsPlayer;
 }) {
   const key = `player-global:${player.khlPlayerId}`;
@@ -369,7 +387,92 @@ function PlayerBindingCard({
           {confirmed ? "Сохранено" : busyKey === key ? "Сохранение…" : "Подтвердить игрока"}
         </button>
       </div>
+      <PlayerExtraBindings
+        player={player}
+        busyKey={busyKey}
+        bindingValues={bindingValues}
+        onBindingValueChange={onBindingValueChange}
+        onExtraBindingNameChange={onExtraBindingNameChange}
+        onSavePlayerExtra={onSavePlayerExtra}
+      />
     </article>
+  );
+}
+
+function PlayerExtraBindings({
+  player,
+  busyKey,
+  bindingValues,
+  onBindingValueChange,
+  onExtraBindingNameChange,
+  onSavePlayerExtra,
+}: Pick<Props,
+  | "busyKey"
+  | "bindingValues"
+  | "onBindingValueChange"
+  | "onExtraBindingNameChange"
+  | "onSavePlayerExtra"
+> & { player: SettingsPlayer }) {
+  const confirmedCount = player.extraBindings.filter(
+    (binding) => binding.adminBindingStatus === "CONFIRMED"
+  ).length;
+
+  return (
+    <details data-testid="khl-player-extra-bindings" className="mt-4 rounded-xl border border-indigo-100 bg-indigo-50/40">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-xs font-black text-indigo-900 [&::-webkit-details-marker]:hidden">
+        <span>Допы игрока</span>
+        <span className="flex items-center gap-2">
+          <span className="rounded-full bg-indigo-100 px-2 py-1 text-[10px]">
+            Привязано: {confirmedCount} из {player.extraBindings.length}
+          </span>
+        </span>
+      </summary>
+      <div className="space-y-3 border-t border-indigo-100 p-3">
+        {player.extraBindings.map((binding) => {
+          const key = `player-extra:${player.khlPlayerId}:${binding.extraCode}`;
+          const confirmed = binding.adminBindingStatus === "CONFIRMED";
+          const id = bindingValues[key] ?? binding.adminExtraId ?? "";
+          return (
+            <div key={binding.extraCode} className="rounded-xl border border-slate-200 bg-white p-3">
+              <div className="text-xs font-black text-slate-900">{binding.label}</div>
+              {confirmed && (
+                <div className="mt-1 text-[10px] font-bold text-emerald-700">
+                  Постоянная привязка сохранена{binding.adminExtraName ? ` · ${binding.adminExtraName}` : ""}
+                </div>
+              )}
+              <div className="mt-2">
+                <KhlAdminDirectoryPicker
+                  defaultQuery={binding.adminExtraName || binding.label}
+                  disabled={confirmed}
+                  placeholder="Название допа или Admin ID"
+                  onSelect={(suggestion) => {
+                    onBindingValueChange(key, suggestion.platformId);
+                    onExtraBindingNameChange(key, suggestion.platformName);
+                  }}
+                />
+              </div>
+              <div className="mt-2 flex gap-2">
+                <input
+                  value={id}
+                  disabled={confirmed}
+                  onChange={(event) => onBindingValueChange(key, event.target.value)}
+                  placeholder="Admin ID допа"
+                  className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs disabled:bg-emerald-50"
+                />
+                <button
+                  type="button"
+                  onClick={() => onSavePlayerExtra(player, binding)}
+                  disabled={confirmed || !id.trim() || busyKey === key}
+                  className="rounded-xl bg-indigo-700 px-3 py-2 text-xs font-black text-white disabled:opacity-40"
+                >
+                  {confirmed ? "Сохранено" : busyKey === key ? "Сохранение…" : "Подтвердить"}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </details>
   );
 }
 

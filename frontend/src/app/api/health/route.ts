@@ -2,6 +2,8 @@ import { apiErrorResponse, logApiError } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 import { APP_BUILD_INFO } from "@backend/config/buildInfo";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     return NextResponse.json({

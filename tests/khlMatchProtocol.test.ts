@@ -39,6 +39,9 @@ test("builds an operator protocol with team and every listed player stat before 
   assert.deepEqual(player?.fullMatch, { goals: 2, assists: 0, points: 2 });
   assert.ok(protocol.goals.length > 0);
   assert.ok(protocol.penalties.length > 0);
+  assert.equal(protocol.playerExtras.version, "khl-player-extras-v1");
+  assert.equal(protocol.playerExtras.available, true);
+  assert.equal(protocol.players.every((candidate) => candidate.extras.length === 9), true);
 });
 
 test("keeps overtime visible while separating P1-P3 values intended for Admin", () => {

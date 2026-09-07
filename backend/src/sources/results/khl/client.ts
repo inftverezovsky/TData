@@ -58,8 +58,9 @@ export type ListEventsOptions = {
 };
 
 export type KhlEventDetailEnvelope = {
-  event: Record<string, unknown>;
+  event: Record<string, unknown> | null;
   rawBody: string;
+  rawBytes?: Uint8Array;
   sourceUrl: string;
   contentType: string | null;
   fetchedAt: Date;
@@ -134,7 +135,9 @@ export class KhlApiClient {
   }
 
   async getEventDetail(input: { apiEventId: string; stageId: string }): Promise<unknown> {
-    return (await this.getEventDetailEnvelope(input)).event;
+    const detail = await this.getEventDetailEnvelope(input);
+    if (!detail.event) throw new KhlApiError("KHL detail JSON or event wrapper is invalid.");
+    return detail.event;
   }
 
   async getEventDetailEnvelope(
@@ -147,11 +150,20 @@ export class KhlApiClient {
       stage_id: stageId,
       locale: "ru",
     });
-    const fetched = await this.fetchJsonEnvelope(url);
-    const response = asObject(fetched.json, "KHL detail response");
+    const fetched = await this.fetchRawEnvelope(url);
+    let event: Record<string, unknown> | null = null;
+    try {
+      // Ingestion retains malformed successful responses as raw evidence.
+      new TextDecoder("utf-8", { fatal: true }).decode(fetched.rawBytes);
+      const response = asObject(JSON.parse(fetched.rawBody), "KHL detail response");
+      event = asObject(response.event, "KHL detail event wrapper");
+    } catch {
+      event = null;
+    }
     return {
-      event: asObject(response.event, "KHL detail event wrapper"),
+      event,
       rawBody: fetched.rawBody,
+      rawBytes: fetched.rawBytes,
       sourceUrl: url.toString(),
       contentType: fetched.contentType,
       fetchedAt: fetched.fetchedAt,
@@ -168,12 +180,17 @@ export class KhlApiClient {
   }
 
   private async fetchJson(url: URL): Promise<unknown> {
-    return (await this.fetchJsonEnvelope(url)).json;
+    const fetched = await this.fetchRawEnvelope(url);
+    try {
+      return JSON.parse(fetched.rawBody) as unknown;
+    } catch {
+      throw new KhlApiError("KHL API response is not valid JSON.");
+    }
   }
 
-  private async fetchJsonEnvelope(url: URL): Promise<{
-    json: unknown;
+  private async fetchRawEnvelope(url: URL): Promise<{
     rawBody: string;
+    rawBytes: Uint8Array;
     contentType: string | null;
     fetchedAt: Date;
   }> {
@@ -199,20 +216,16 @@ export class KhlApiClient {
         await response.body?.cancel().catch(() => undefined);
         throw new KhlApiError("KHL API response exceeds the configured size limit.");
       }
-      const text = await readBoundedResponseText(response, this.maxResponseBytes);
+      const rawBytes = await readBoundedResponseBytes(response, this.maxResponseBytes);
       if (!response.ok) {
         throw new KhlApiError(`KHL API returned HTTP ${response.status}.`);
       }
-      try {
-        return {
-          json: JSON.parse(text) as unknown,
-          rawBody: text,
-          contentType: response.headers.get("content-type"),
-          fetchedAt: new Date(),
-        };
-      } catch {
-        throw new KhlApiError("KHL API response is not valid JSON.");
-      }
+      return {
+        rawBody: rawBytes.toString("utf8"),
+        rawBytes,
+        contentType: response.headers.get("content-type"),
+        fetchedAt: new Date(),
+      };
     } catch (error) {
       if (error instanceof KhlApiError) throw error;
       if (error instanceof Error && error.name === "AbortError") {
@@ -409,8 +422,8 @@ function positiveDecimalId(value: unknown, label: string) {
   return value.trim();
 }
 
-async function readBoundedResponseText(response: Response, maxBytes: number) {
-  if (!response.body) return "";
+async function readBoundedResponseBytes(response: Response, maxBytes: number) {
+  if (!response.body) return Buffer.alloc(0);
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let totalBytes = 0;
@@ -429,5 +442,5 @@ async function readBoundedResponseText(response: Response, maxBytes: number) {
   } finally {
     reader.releaseLock();
   }
-  return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString("utf8");
+  return Buffer.concat(chunks.map((chunk) => Buffer.from(chunk)));
 }

@@ -6,6 +6,7 @@ import test from "node:test";
 import { POST as postAutomation } from "../frontend/src/app/api/results/khl/automation/route";
 import { POST as postStatTypeBinding } from "../frontend/src/app/api/results/khl/bindings/stat-types/route";
 import { POST as postTeamStatBinding } from "../frontend/src/app/api/results/khl/bindings/team-stats/route";
+import { POST as postPlayerExtraBinding } from "../frontend/src/app/api/results/khl/bindings/player-extra/route";
 import { POST as postIngest } from "../frontend/src/app/api/results/khl/ingest/route";
 
 const routesRoot = join(process.cwd(), "frontend", "src", "app", "api", "results", "khl");
@@ -60,6 +61,16 @@ test("public KHL mutations reject cross-origin and non-JSON requests", async () 
     }
   ));
   assert.equal(crossOriginTeamStats.status, 403);
+
+  const crossOriginPlayerExtra = await postPlayerExtraBinding(new Request(
+    "http://localhost/api/results/khl/bindings/player-extra",
+    {
+      method: "POST",
+      headers: { origin: "https://attacker.example", "content-type": "application/json" },
+      body: "{}",
+    }
+  ));
+  assert.equal(crossOriginPlayerExtra.status, 403);
 });
 
 test("same-origin KHL mutations continue to validate payloads and limits", async () => {
@@ -72,6 +83,26 @@ test("same-origin KHL mutations continue to validate payloads and limits", async
     }
   ));
   assert.equal(oversizedStatTypes.status, 413);
+
+  const oversizedPlayerExtra = await postPlayerExtraBinding(new Request(
+    "http://localhost/api/results/khl/bindings/player-extra",
+    {
+      method: "POST",
+      headers: { origin: "http://localhost", "content-type": "application/json" },
+      body: JSON.stringify({ padding: "x".repeat(20_000) }),
+    }
+  ));
+  assert.equal(oversizedPlayerExtra.status, 413);
+
+  const unknownPlayerExtraField = await postPlayerExtraBinding(new Request(
+    "http://localhost/api/results/khl/bindings/player-extra",
+    {
+      method: "POST",
+      headers: { origin: "http://localhost", "content-type": "application/json" },
+      body: JSON.stringify({ unexpected: true }),
+    }
+  ));
+  assert.equal(unknownPlayerExtraField.status, 400);
 
   const sameOriginJson = await postIngest(new Request("http://localhost/api/results/khl/ingest", {
     method: "POST",

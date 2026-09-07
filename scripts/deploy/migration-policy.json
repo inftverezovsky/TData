@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "backward_compatible": {
+    "20260907190000_admin_login_rate_limit": "d9b2f361548ba4563888f431dff9a8a5002df0518a492d93182d9bad3cf07925"
+  }
+}

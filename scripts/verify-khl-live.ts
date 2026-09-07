@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 
 import { PrismaClient } from "@prisma/client";
 
@@ -38,12 +39,14 @@ async function main() {
   assert.ok(envelope.rawBody.includes('"event"'));
   const first = await ingestKhlEventDetail(prisma, {
     rawBody: envelope.rawBody,
+    rawBytes: envelope.rawBytes,
     sourceUrl: envelope.sourceUrl,
     fetchedAt: envelope.fetchedAt,
     contentType: envelope.contentType || undefined,
   });
   const repeated = await ingestKhlEventDetail(prisma, {
     rawBody: envelope.rawBody,
+    rawBytes: envelope.rawBytes,
     sourceUrl: envelope.sourceUrl,
     fetchedAt: new Date(envelope.fetchedAt.getTime() + 1_000),
     contentType: envelope.contentType || undefined,
@@ -55,6 +58,12 @@ async function main() {
   assert.equal(repeated.reusedSnapshot, true);
   assert.equal(repeated.reusedRevision, true);
   assert.equal(repeated.activated, false);
+  assert.equal(first.normalizedHash, repeated.normalizedHash);
+  const exactBytes = envelope.rawBytes ?? Buffer.from(envelope.rawBody, "utf8");
+  const rawHash = createHash("sha256").update(exactBytes).digest("hex");
+  const snapshot = await prisma.khlRawSnapshot.findUniqueOrThrow({ where: { id: first.snapshot.id } });
+  assert.equal(snapshot.contentHash, rawHash);
+  assert.deepEqual(snapshot.rawBody, exactBytes);
 
   console.log(JSON.stringify({
     ok: true,
@@ -66,6 +75,8 @@ async function main() {
     regulationScore: first.normalized.scores.regulation,
     players: first.normalized.players.length,
     normalizedHash: first.normalizedHash,
+    rawHash,
+    exactRawBytes: exactBytes.length,
     repeated: {
       reusedSnapshot: repeated.reusedSnapshot,
       reusedRevision: repeated.reusedRevision,

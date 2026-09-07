@@ -158,6 +158,7 @@ test("daily aggregation sums validated regulation values, preserves zero players
   assert.deepEqual(
     summary.players.find((player) => player.khlPlayerId === "player-one"),
     {
+      rowKey: JSON.stringify(["khl", alpha.khlTeamId, "player-one"]),
       khlPlayerId: "player-one",
       khlTeamId: alpha.khlTeamId,
       name: "Первый",
@@ -170,6 +171,7 @@ test("daily aggregation sums validated regulation values, preserves zero players
   assert.deepEqual(
     summary.players.find((player) => player.khlPlayerId === "player-zero"),
     {
+      rowKey: JSON.stringify(["khl", alpha.khlTeamId, "player-zero"]),
       khlPlayerId: "player-zero",
       khlTeamId: alpha.khlTeamId,
       name: "Нулевой",
@@ -249,6 +251,19 @@ test("daily aggregation excludes last-known-good data when a newer revision is r
   assert.deepEqual(summary.players, []);
 });
 
+test("latest diagnostic presentation does not label its displayed protocol as active validated", () => {
+  const presentation = getKhlRevisionPresentation({
+    activeRevision: { revisionNumber: 1, state: "VALIDATED" },
+    latestRevision: { revisionNumber: 2, state: "REJECTED", validationIssues: ["missing KHL ID"] },
+    displayRevision: { revisionNumber: 2, state: "REJECTED", source: "LATEST_REJECTED" },
+  });
+  assert.equal(presentation.badgeLabel, "Непроверенная ревизия #2");
+  assert.equal(presentation.badgeTone, "rejected");
+  assert.equal(presentation.excludeFromDaily, true);
+  assert.match(presentation.warning?.description || "", /Показан диагностический/);
+  assert.doesNotMatch(presentation.warning?.description || "", /Показан последний проверенный/);
+});
+
 type ProtocolOptions = {
   home: { khlTeamId: string; name: string };
   away: { khlTeamId: string; name: string };
@@ -277,6 +292,7 @@ function makeProtocol(options: ProtocolOptions): KhlMatchProtocolView {
       away: makeTeam(options.away, options.awayShots, options.awayPim),
     },
     players: options.players,
+    playerExtras: { version: "khl-player-extras-v1", available: true, issues: [] },
     goals: [],
     penalties: [],
     validation: {
@@ -324,6 +340,7 @@ function makePlayer(
 ): KhlMatchProtocolView["players"][number] {
   return {
     khlPlayerId,
+    apiPlayerId: `test-api-${khlPlayerId}`,
     khlTeamId,
     teamSide,
     shirtNumber: 1,
@@ -331,5 +348,6 @@ function makePlayer(
     role: "forward",
     regulation: { goals, assists, points },
     fullMatch: { goals: goals + 1, assists: assists + 1, points: points + 2 },
+    extras: [],
   };
 }

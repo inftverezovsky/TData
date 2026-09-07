@@ -1,4 +1,4 @@
-name: Build production image
+name: Build and deploy production
 
 on:
   push:
@@ -35,6 +35,7 @@ jobs:
           file: ./Dockerfile
           push: false
           tags: inftverezovsky/tdata-web:tline-${{ github.sha }}
+          build-args: TDATA_GIT_SHA=${{ github.sha }}
           outputs: type=docker,dest=${{ runner.temp }}/tdata-image.tar
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -53,3 +54,73 @@ jobs:
           compression-level: 0
           retention-days: 1
           if-no-files-found: error
+
+  deploy:
+    name: Deploy TData
+    needs: [quality, build]
+    if: github.repository == 'inftverezovsky/TData' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    permissions:
+      contents: read
+    concurrency:
+      group: tdata-production-deploy
+      cancel-in-progress: false
+    steps:
+      - name: Check that this commit is still main
+        id: revision
+        env:
+          RELEASE_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          current=$(git ls-remote https://github.com/inftverezovsky/TData.git refs/heads/main | cut -f1)
+          if [[ "$current" == "$RELEASE_SHA" ]]; then
+            echo 'current=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'current=false' >> "$GITHUB_OUTPUT"
+            echo 'A newer main commit exists; its workflow will deploy the latest code.'
+          fi
+
+      - name: Rebuild and deploy the exact commit on the server
+        if: steps.revision.outputs.current == 'true'
+        env:
+          RELEASE_SHA: ${{ github.sha }}
+          DEPLOY_SSH_KEY: ${{ secrets.TDATA_DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.TDATA_DEPLOY_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +x
+          umask 077
+          [[ "$RELEASE_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ -n "$DEPLOY_SSH_KEY" && -n "$DEPLOY_KNOWN_HOSTS" ]] || {
+            echo 'Configure the TData deployment secrets in the production environment.' >&2
+            exit 1
+          }
+          eval "$(ssh-agent -s)" >/dev/null
+          known_hosts=''
+          trap 'ssh-agent -k >/dev/null 2>&1 || true; [[ -z "$known_hosts" ]] || rm -f -- "$known_hosts"' EXIT
+          known_hosts=$(mktemp)
+          # Ключ попадает только в память ssh-agent; файл содержит публичные host keys.
+          printf '%s\n' "$DEPLOY_SSH_KEY" | ssh-add - >/dev/null 2>&1
+          unset DEPLOY_SSH_KEY
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$known_hosts"
+          unset DEPLOY_KNOWN_HOSTS
+          ssh -T -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$known_hosts" -o ConnectTimeout=15 \
+            -o ServerAliveInterval=30 -o ServerAliveCountMax=10 \
+            root@82.147.67.231 "deploy $RELEASE_SHA"
+
+      - name: Verify the public deployment revision
+        if: steps.revision.outputs.current == 'true'
+        env:
+          RELEASE_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --retry 3 --max-time 20 \
+            'https://www.tdata.info/api/health' |
+            jq -e --arg sha "$RELEASE_SHA" '.ok == true and .build.sourceRevision == $sha' >/dev/null
+          echo "TData is healthy at revision $RELEASE_SHA."

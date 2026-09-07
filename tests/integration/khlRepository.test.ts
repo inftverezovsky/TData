@@ -180,3 +180,85 @@ test("new validated source facts create and atomically activate a revision", asy
   assert.equal(result.match.activeRevisionId, result.revision.id);
   assert.equal(await prisma.khlMatchRevision.count(), 3);
 });
+
+test("real missing-player IDs retain raw and a complete rejected diagnostic revision without activating players", async () => {
+  const rawBody = readFileSync(join(process.cwd(), "tests/fixtures/khl/missing-player-ids-901981.json"), "utf8");
+  const input = {
+    rawBody,
+    sourceUrl: "https://khl.api.webcaster.pro/api/khl_mobile/event_v2.json?id=3000063&stage_id=407",
+    expectedIdentity: { khlGameId: "901981", apiEventId: "3000063", stageId: "407" },
+    requireFinished: true,
+  };
+  const playersBefore = await prisma.khlPlayer.count();
+  const first = await ingestKhlEventDetail(prisma, input);
+  assert.equal(first.revision.state, "REJECTED");
+  assert.equal(first.match.activeRevisionId, null);
+  assert.equal(first.normalized.players.length, 47);
+  assert.equal(first.normalized.players.filter((player) => player.khlPlayerId === null).length, 5);
+  assert.deepEqual(first.snapshot.rawBody, Buffer.from(rawBody));
+  assert.equal(await prisma.khlPlayer.count(), playersBefore);
+  assert.equal(await prisma.khlMatchParticipant.count({ where: { matchId: first.match.id } }), 0);
+  const second = await ingestKhlEventDetail(prisma, input);
+  assert.equal(second.revision.id, first.revision.id);
+  assert.equal(second.snapshot.id, first.snapshot.id);
+  assert.equal(second.reusedRevision, true);
+  assert.equal(second.activated, false);
+});
+
+test("a corrected source ID activates the whole roster without replacing existing confirmed player mappings", async () => {
+  const raw = JSON.parse(rawFixture());
+  // A distinct test-only match; player IDs come unchanged from the real regulation fixture.
+  raw.khl_id = 999000001;
+  raw.id = 999000003;
+  raw.match_id = "test-corrected-roster";
+  const expected = raw.team_a.players[0].khl_id;
+  const existing = await prisma.khlPlayer.findUniqueOrThrow({ where: { khlPlayerId: String(expected) } });
+  await prisma.khlPlayer.update({ where: { id: existing.id }, data: {
+    adminPlayerId: "test-persistent-corrected-roster", adminBindingStatus: "CONFIRMED",
+  } });
+  raw.team_a.players[0].khl_id = 0;
+  const base = { sourceUrl: "https://khl.api.webcaster.pro/api/khl_mobile/event_v2.json?id=999000003&stage_id=395" };
+  const rejected = await ingestKhlEventDetail(prisma, { ...base, rawBody: JSON.stringify(raw) });
+  assert.equal(rejected.revision.state, "REJECTED");
+  assert.equal(rejected.match.activeRevisionId, null);
+  raw.team_a.players[0].khl_id = expected;
+  const corrected = await ingestKhlEventDetail(prisma, { ...base, rawBody: JSON.stringify(raw) });
+  assert.equal(corrected.revision.state, "VALIDATED");
+  assert.equal(corrected.activated, true);
+  assert.equal(await prisma.khlMatchParticipant.count({ where: { matchId: corrected.match.id, isListed: true } }), 43);
+  const saved = await prisma.khlPlayer.findUniqueOrThrow({ where: { id: existing.id } });
+  assert.equal(saved.adminPlayerId, "test-persistent-corrected-roster");
+  assert.equal(saved.adminBindingStatus, "CONFIRMED");
+});
+
+test("hard schema failures persist idempotent unassociated raw evidence, with no partial match/player mutation", async () => {
+  const raw = JSON.parse(rawFixture());
+  raw.khl_id = 999000002;
+  delete raw.team_a.players[0].name;
+  const rawBody = ` ${JSON.stringify(raw)}\n`;
+  const before = await prisma.khlPlayer.count();
+  const input = {
+    rawBody,
+    sourceUrl: "https://khl.api.webcaster.pro/api/khl_mobile/event_v2.json?id=2986031&stage_id=395",
+    expectedIdentity: { khlGameId: "999000002", apiEventId: "2986031", stageId: "395" },
+  };
+  await assert.rejects(ingestKhlEventDetail(prisma, input), /player name/);
+  await assert.rejects(ingestKhlEventDetail(prisma, input), /player name/);
+  const snapshots = await prisma.khlRawSnapshot.findMany({ where: { externalKey: "999000002" } });
+  assert.equal(snapshots.length, 1);
+  assert.deepEqual(snapshots[0].rawBody, Buffer.from(rawBody));
+  assert.equal(snapshots[0].fetchCount, 2);
+  assert.equal(snapshots[0].matchId, null);
+  assert.equal(await prisma.khlMatch.count({ where: { khlGameId: "999000002" } }), 0);
+  assert.equal(await prisma.khlPlayer.count(), before);
+});
+
+test("lost sync lease prevents normal ingestion before any database projection is changed", async () => {
+  const snapshotsBefore = await prisma.khlRawSnapshot.count();
+  await assert.rejects(ingestKhlEventDetail(prisma, {
+    rawBody: rawFixture(),
+    sourceUrl: "https://khl.api.webcaster.pro/api/khl_mobile/event_v2.json?id=2986031&stage_id=395",
+    assertCanWrite: async () => { throw new Error("test lease lost"); },
+  }), /test lease lost/);
+  assert.equal(await prisma.khlRawSnapshot.count(), snapshotsBefore);
+});

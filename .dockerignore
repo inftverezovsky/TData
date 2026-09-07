@@ -42,3 +42,6 @@ liquipedia-remote-deploy.sh
 .deploy-backups
 .deploy.lock
 .deploy-image.env
+.deploy/
+__pycache__/
+*.pyc

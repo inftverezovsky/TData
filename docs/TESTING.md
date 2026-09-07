@@ -95,8 +95,16 @@ npm run test:consultant:coverage
 `.github/workflows/quality.yml` проверяет pull request и может запускаться вручную.
 Он поднимает PostgreSQL 16, выполняет static/unit/DB/coverage/build и браузерные
 проверки. `build-production-image.yml` вызывает этот workflow перед сборкой
-production-архива. Эти файлы не выполняют SSH-deploy и не отправляют Docker image
-в registry. Фактический зелёный статус GitHub появится только после запуска CI.
+production-архива и автоматической выкладкой актуального `main` через ограниченный
+SSH-доступ. Порядок обновления и восстановления описан в
+[AUTO_DEPLOY.md](AUTO_DEPLOY.md); результат каждого push виден в GitHub Actions.
+
+Сценарии автоматической выкладки и установщика проверяются без доступа к серверу:
+
+```bash
+python3 -m unittest discover -s tests -p 'test_auto_deploy.py' -v
+python3 -m unittest discover -s tests -p 'test_configure_autodeploy.py' -v
+```
 
 `npm run test:all` — полный локальный набор. Перед ним должны быть готовы тестовая
 БД, обе переменные подключения, миграции, seed и Chromium.

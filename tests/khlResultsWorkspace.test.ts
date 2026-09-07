@@ -4,8 +4,36 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { KhlResultMatchCard } from "../frontend/src/components/results/khl/KhlResultsWorkspace";
+import { KhlResultMatchCard, KhlResultsWorkspace } from "../frontend/src/components/results/khl/KhlResultsWorkspace";
 import type { StoredMatch } from "../frontend/src/components/results/khl/types";
+
+test("workspace SSR is identical across Moscow midnight and does not embed the build date", (context) => {
+  context.mock.timers.enable({ apis: ["Date"], now: new Date("2026-09-05T20:59:59.000Z") });
+  const props = {
+    matches: [storedMatch({ activeRevision: null, latestRevision: null, displayRevision: null })],
+    hasMoreMatches: false, busyKey: null, onRefresh: () => {}, onLoadMore: () => {},
+  };
+  const before = renderToStaticMarkup(createElement(KhlResultsWorkspace, props));
+  context.mock.timers.setTime(new Date("2026-09-05T21:00:01.000Z").getTime());
+  const after = renderToStaticMarkup(createElement(KhlResultsWorkspace, props));
+  assert.equal(after, before);
+  assert.match(before, /Определяем московскую дату/);
+  assert.doesNotMatch(before, /5 сентября|6 сентября/);
+});
+
+test("results offer actual collection and an explicit per-match protocol refresh", () => {
+  const html = renderToStaticMarkup(createElement(KhlResultsWorkspace, {
+    matches: [], hasMoreMatches: false, busyKey: null,
+    onRefresh: () => {}, onLoadMore: () => {}, onReingest: () => {},
+  }));
+  assert.match(html, /Собрать сейчас/);
+  assert.doesNotMatch(html, /Обновить данные/);
+  const card = renderToStaticMarkup(createElement(KhlResultMatchCard, {
+    match: storedMatch({ activeRevision: null, latestRevision: null, displayRevision: null }),
+    onReingest: () => {}, busyKey: null,
+  }));
+  assert.match(card, /Переполучить протокол/);
+});
 
 test("collapsed match warns about a rejected-first diagnostic revision", () => {
   const html = renderToStaticMarkup(createElement(KhlResultMatchCard, {

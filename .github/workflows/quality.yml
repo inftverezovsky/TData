@@ -42,6 +42,8 @@ jobs:
         run: npm run check
       - name: Deployment safety scenarios without Docker or SSH
         run: |
+          python3 -m unittest discover -s tests -p 'test_auto_deploy.py' -v
+          python3 -m unittest discover -s tests -p 'test_configure_autodeploy.py' -v
           bash -n scripts/deploy/remote-redeploy.sh
           for scenario in success foreign port configport configimage migration backup upfail healthfail wrongimage rollbackfail; do
             bash tests/fixtures/deployment/remote-harness.sh "$scenario" "$GITHUB_WORKSPACE/scripts/deploy/remote-redeploy.sh"

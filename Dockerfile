@@ -23,6 +23,9 @@ FROM deps AS runner
 
 WORKDIR /app
 
+ARG TDATA_GIT_SHA=unknown
+ENV TDATA_GIT_SHA=$TDATA_GIT_SHA
+LABEL org.opencontainers.image.revision=$TDATA_GIT_SHA
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
@@ -44,4 +47,5 @@ COPY --from=builder /app/deploy/systemd ./deploy/systemd
 
 EXPOSE 3010
 
-CMD ["sh", "-c", "npm run db:migrate:deploy && npm run start"]
+# Миграции выполняются отдельным deploy-шагом после проверки резервной копии.
+CMD ["npm", "run", "start"]

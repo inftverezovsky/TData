@@ -2,6 +2,59 @@ generator client {
   provider = "prisma-client-js"
 }
 
+enum KhlSyncRunStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  PARTIAL
+  FAILED
+  CANCELLED
+}
+
+enum KhlSyncTrigger {
+  MANUAL
+  AUTOMATIC
+}
+
+model KhlSyncControl {
+  id                   String    @id @default("khl")
+  activeRunId          String?   @unique
+  leaseOwner           String?
+  leaseExpiresAt       DateTime?
+  workerHeartbeatAt    DateTime?
+  nextRunAt            DateTime?
+  bootstrapCompletedAt DateTime?
+  lastAttemptAt        DateTime?
+  lastSuccessAt        DateTime?
+  lastChangedAt        DateTime?
+  updatedAt            DateTime  @updatedAt
+  activeRun            KhlSyncRun? @relation(fields: [activeRunId], references: [id], onDelete: Restrict)
+}
+
+model KhlSyncRun {
+  id          String           @id @default(cuid())
+  trigger     KhlSyncTrigger
+  status      KhlSyncRunStatus  @default(QUEUED)
+  scopeKey    String
+  khlGameId   String?
+  apiEventId  String?
+  stageId     String?
+  full        Boolean          @default(false)
+  from        DateTime
+  to          DateTime
+  requestedAt DateTime         @default(now())
+  startedAt   DateTime?
+  completedAt DateTime?
+  checkpoint  Json?
+  summary     Json?
+  error       String?          @db.Text
+  attempts    Int             @default(0)
+  control     KhlSyncControl?
+
+  @@index([status, requestedAt])
+  @@index([scopeKey, status])
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
@@ -501,9 +554,28 @@ model KhlPlayer {
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
 
-  participants KhlMatchParticipant[]
+  participants  KhlMatchParticipant[]
+  extraBindings KhlPlayerExtraBinding[]
 
   @@index([apiPlayerId])
+  @@index([adminBindingStatus])
+}
+
+model KhlPlayerExtraBinding {
+  id                 String           @id @default(cuid())
+  playerId           String
+  extraCode          String
+  adminExtraId       String?          @unique
+  adminExtraName     String?
+  adminBindingStatus KhlBindingStatus @default(UNMAPPED)
+  adminConfirmedAt   DateTime?
+  adminConfirmedBy   String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  player KhlPlayer @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, extraCode])
   @@index([adminBindingStatus])
 }
 
