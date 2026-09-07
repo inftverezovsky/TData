@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { acquireTransactionLock } from "@backend/db/advisoryLock";
 
 export type TournamentParticipantManualFields = {
   platformId?: string | null;
@@ -50,10 +51,7 @@ export async function refreshTournamentParticipantsPreservingState(params: {
   tournamentId: string;
   participants: TournamentParticipantRefreshRow[];
 }) {
-  await params.tx.$queryRaw`
-    SELECT 1 AS "lockAcquired"
-    FROM pg_advisory_xact_lock(hashtext(${`tournament-participants:${params.tournamentId}`}))
-  `;
+  await acquireTransactionLock(params.tx, `tournament-participants:${params.tournamentId}`);
 
   const existingParticipants = await params.tx.tournamentParticipant.findMany({
     where: { tournamentId: params.tournamentId },

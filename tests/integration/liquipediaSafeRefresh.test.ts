@@ -5,6 +5,7 @@ import { prisma } from "../../backend/src/db/db";
 import { clearTournamentForceRefreshState } from "../../backend/src/sources/tdata/liquipedia/importer/helpers";
 import { replaceTournamentMatchSnapshot, publishTournamentSnapshot } from "../../backend/src/sources/tdata/liquipedia/importer/persistence";
 import { mergeParticipantCandidates } from "../../backend/src/sources/tdata/liquipedia/importer/participants";
+import { publishLiquipediaSourceFetchSuccess } from "../../backend/src/sources/tdata/liquipedia/importer/singlePage";
 import { setTimeout as pause } from "node:timers/promises";
 
 process.env.DATABASE_URL = requireTestDatabaseUrl(process.env.TEST_DATABASE_URL);
@@ -30,6 +31,23 @@ test.beforeEach(async () => {
   await prisma.discipline.create({ data: { id: disciplineSlug, slug: disciplineSlug, name: title, tournamentImports: { create: { id: "safe-refresh-import", pageTitle: title, pageUrl: "https://liquipedia.net/audit/Safe_Refresh" } } } });
 });
 test.after(async () => { await cleanup(); await prisma.$disconnect(); });
+
+test("an accepted Liquipedia page publishes its last-good cache through a Prisma-compatible lock", async () => {
+  const snapshot = await prisma.rawSnapshot.create({
+    data: { tournamentImportId: "safe-refresh-import", source: "liquipedia", disciplineSlug, pageTitle: title, rawJson: { accepted: true } },
+  });
+  const published = await publishLiquipediaSourceFetchSuccess({
+    input: { source: "liquipedia", disciplineSlug, resourceType: "page", resourceKey: title },
+    data: { revisionId: 101, rawSnapshotId: snapshot.id, contentHash: "accepted-page" },
+  });
+
+  assert.ok(published?.lastGoodAt instanceof Date);
+  const persisted = await prisma.sourceFetchCache.findUniqueOrThrow({ where: { id: published.id } });
+  assert.equal(persisted.rawSnapshotId, snapshot.id);
+  assert.equal(persisted.revisionId, 101);
+  assert.equal(persisted.lastErrorClass, null);
+  assert.equal(await prisma.tournamentMatch.count({ where: { tournamentId } }), 1);
+});
 
 test("force invalidates fetch caches without deleting the last good schedule, bindings or raw evidence", async () => {
   const snapshot = await prisma.rawSnapshot.create({ data: { tournamentImportId: "safe-refresh-import", source: "liquipedia", disciplineSlug, pageTitle: title, rawJson: { fixture: true } } });

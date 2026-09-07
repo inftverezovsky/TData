@@ -1,6 +1,7 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 
 import { prisma } from "@backend/db/db";
+import { acquireTransactionLock } from "@backend/db/advisoryLock";
 
 export type TournamentImportFreshness = {
   id: string;
@@ -76,10 +77,7 @@ export async function assertTournamentImportFresh(params: {
   lookupBy?: "sourceTitle" | "sourceUrl";
 }) {
   const sourceIdentity = normalizeSourceIdentity(params.sourceIdentity);
-  await params.tx.$queryRaw`
-    SELECT 1 AS "lockAcquired"
-    FROM pg_advisory_xact_lock(hashtext(${`tournament-import:${params.disciplineSlug}:${sourceIdentity}`}))
-  `;
+  await acquireTransactionLock(params.tx, `tournament-import:${params.disciplineSlug}:${sourceIdentity}`);
 
   const candidate = await params.tx.tournamentImport.findUniqueOrThrow({
     where: { id: params.importRecordId },
