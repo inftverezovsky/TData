@@ -1,7 +1,8 @@
 import { prisma } from "@backend/db/db";
 import { apiOk, readJsonBody, requireTLineAccess, tlineErrorResponse } from "@backend/tline/api/http";
 import { objectBody, optionalBoolean, optionalInteger, optionalText, parseIanaTimezone, parseId, requiredText } from "@backend/tline/api/parsers";
-import { parseOfficialSourceUrl, TLineValidationError } from "@backend/tline/api/validation";
+import { TLineValidationError } from "@backend/tline/api/validation";
+import { resolveOfficialSourceConfig } from "@backend/tline/api/officialSource";
 import { normalizeAdminExternalId } from "@backend/tline/admin/directory";
 
 export const dynamic = "force-dynamic";
@@ -14,9 +15,9 @@ export async function PATCH(request: Request, context: Context) {
   if (denied) return denied;
   try {
     const body = objectBody(await readJsonBody(request));
-    const sourceUrl = body.sourceUrl === undefined
+    const source = body.sourceUrl === undefined
       ? undefined
-      : parseOfficialSourceUrl(requiredText(body, "sourceUrl", 2_048), ["volley.ru"]);
+      : resolveOfficialSourceConfig(requiredText(body, "sourceUrl", 2_048));
     const sourceTimezone = body.sourceTimezone === undefined
       ? undefined
       : parseIanaTimezone(requiredText(body, "sourceTimezone", 64));
@@ -34,8 +35,9 @@ export async function PATCH(request: Request, context: Context) {
         globalHeaderId,
         name: body.name === undefined ? undefined : requiredText(body, "name", 256),
         season: body.season === undefined ? undefined : optionalText(body, "season", 64),
-        sourceUrl,
-        sourceChampionshipId: sourceUrl === undefined ? undefined : championshipIdFromVolleyUrl(sourceUrl),
+        sourceProvider: source?.provider,
+        sourceUrl: source?.sourceUrl,
+        sourceChampionshipId: source?.externalId,
         sourceTimezone,
         adminChampionshipId: adminChampionshipText ? normalizeAdminExternalId(adminChampionshipText) : adminChampionshipText,
         adminChampionshipName: body.adminChampionshipName === undefined ? undefined : optionalText(body, "adminChampionshipName", 256),
@@ -71,12 +73,6 @@ export async function DELETE(request: Request, context: Context) {
   } catch (error) {
     return tlineErrorResponse(error);
   }
-}
-
-function championshipIdFromVolleyUrl(sourceUrl: string) {
-  const id = new URL(sourceUrl).pathname.match(/^\/calendar\/([^/]+)\/allgames\/?$/)?.[1];
-  if (!id) throw new TLineValidationError("INVALID_SOURCE_URL", "A volley.ru calendar URL is required.");
-  return id;
 }
 
 function defined<T extends Record<string, unknown>>(value: T) {

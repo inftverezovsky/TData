@@ -977,13 +977,14 @@ model TLineTeamMapping {
 }
 
 model TLineRun {
-  id                String          @id @default(cuid())
-  sportConfigId     String
-  trigger           TLineRunTrigger
-  status            TLineRunStatus  @default(QUEUED)
-  periodFrom        DateTime
-  periodTo          DateTime
-  scheduledAt       DateTime?
+  id                           String          @id @default(cuid())
+  sportConfigId                String
+  trigger                      TLineRunTrigger
+  status                       TLineRunStatus  @default(QUEUED)
+  periodFrom                   DateTime
+  periodTo                     DateTime
+  includeUndatedSourceMatches Boolean         @default(false)
+  scheduledAt                  DateTime?
   progressTotal     Int             @default(0)
   progressProcessed Int             @default(0)
   okCount           Int             @default(0)

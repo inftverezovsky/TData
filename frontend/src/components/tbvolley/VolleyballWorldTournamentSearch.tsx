@@ -12,7 +12,6 @@ type VolleyballWorldBeachTournamentSearch = ReturnType<typeof searchDecoders.vol
 type VolleyballWorldBeachTournament = VolleyballWorldBeachTournamentSearch["tournaments"][number];
 
 const BEACH_VOLLEYBALL_SLUG = "beachvolleyball";
-
 const searchGenders: VolleyballWorldGender[] = ["men", "women"];
 
 type CombinedVolleyballWorldTournamentSearch = Omit<VolleyballWorldBeachTournamentSearch, "gender"> & {
@@ -55,32 +54,28 @@ export default function VolleyballWorldTournamentSearch() {
     setError(null);
 
     try {
-      const searches = await Promise.all(searchGenders.map(async (gender) => {
-        const params = new URLSearchParams({
-          gender,
-          query: query.trim(),
-          fromDate,
-          days,
-        });
-        const response = await fetch(`/api/tbvolley/volleyballworld/tournaments?${params.toString()}`, { cache: "no-store" });
-        const payload = await readJsonResponse(response, searchDecoders.volleyballworld, "Не удалось загрузить турниры VolleyballWorld");
+      // Обе сетки получает один серверный запрос: общий лимит источника и единое состояние кэша.
+      const params = new URLSearchParams({ gender: "all", query: query.trim(), fromDate, days });
+      const response = await fetch(`/api/tbvolley/volleyballworld/tournaments?${params.toString()}`, {
+        cache: "no-store",
+      });
+      const payload = await readJsonResponse(
+        response,
+        searchDecoders.volleyballworld,
+        "Не удалось загрузить турниры VolleyballWorld",
+      );
 
-        return payload;
-      }));
-
-      const first = searches[0];
-      const tournaments = searches
-        .flatMap((search) => search.tournaments)
-        .sort(compareVolleyballWorldTournaments);
+      const tournaments = [...payload.tournaments].sort(compareVolleyballWorldTournaments);
       const tournamentGroups = groupVolleyballWorldTournaments(tournaments);
 
       setData({
         ok: true,
         source: "volleyballworld",
-        fromDate: first.fromDate,
-        toDate: first.toDate,
+        fromDate: payload.fromDate,
+        toDate: payload.toDate,
         gender: "all",
         query: query.trim(),
+        upstream: payload.upstream,
         tournaments,
         summary: {
           total: tournamentGroups.length,
@@ -126,14 +121,26 @@ export default function VolleyballWorldTournamentSearch() {
 
             <div>
               <h1 className="text-2xl font-black tracking-tight text-slate-950 md:text-3xl">Beach Volleyball</h1>
-              <p className="mt-1 text-sm font-semibold leading-relaxed text-slate-500">
-                VolleyballWorld tournaments
-              </p>
+              <p className="mt-1 text-sm font-semibold leading-relaxed text-slate-500">VolleyballWorld tournaments</p>
             </div>
 
             <TournamentSearchForm
-              query={{ label: "Турнир", placeholder: "Ostrava, Elite16, Challenge...", value: query, onChange: setQuery }}
-              fields={[{ type: "date", label: "Дата", value: fromDate, onChange: setFromDate }, { type: "select", label: "Период", value: days, onChange: setDays, options: [7, 14, 30, 60].map((value) => ({ value: String(value), label: `${value} дней` })) }]}
+              query={{
+                label: "Турнир",
+                placeholder: "Ostrava, Elite16, Challenge...",
+                value: query,
+                onChange: setQuery,
+              }}
+              fields={[
+                { type: "date", label: "Дата", value: fromDate, onChange: setFromDate },
+                {
+                  type: "select",
+                  label: "Период",
+                  value: days,
+                  onChange: setDays,
+                  options: [7, 14, 30, 60].map((value) => ({ value: String(value), label: `${value} дней` })),
+                },
+              ]}
               loading={loading}
               onSubmit={onSubmit}
             />
@@ -148,7 +155,9 @@ export default function VolleyballWorldTournamentSearch() {
             <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3">
               <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Выборка</p>
               <p className="mt-1 text-sm font-black text-white">Обе сетки</p>
-              <p className="mt-1 text-xs font-bold text-slate-400">{data ? `${data.fromDate} — ${data.toDate}` : fromDate}</p>
+              <p className="mt-1 text-xs font-bold text-slate-400">
+                {data ? `${data.fromDate} — ${data.toDate}` : fromDate}
+              </p>
             </div>
           </aside>
         </div>
@@ -161,7 +170,10 @@ export default function VolleyballWorldTournamentSearch() {
       </div>
 
       {error ? (
-        <section role="alert" className="rounded-3xl border border-rose-100 bg-rose-50 p-8 text-sm font-bold text-rose-700 shadow-soft">
+        <section
+          role="alert"
+          className="rounded-3xl border border-rose-100 bg-rose-50 p-8 text-sm font-bold text-rose-700 shadow-soft"
+        >
           {error}
         </section>
       ) : loading && !data ? (
@@ -175,12 +187,7 @@ export default function VolleyballWorldTournamentSearch() {
       ) : (
         <div className="grid gap-4">
           {tournamentGroups.map((group) => (
-            <TournamentCard
-              key={group.id}
-              group={group}
-              fromDate={data?.fromDate || fromDate}
-              days={days}
-            />
+            <TournamentCard key={group.id} group={group} fromDate={data?.fromDate || fromDate} days={days} />
           ))}
         </div>
       )}
@@ -188,10 +195,15 @@ export default function VolleyballWorldTournamentSearch() {
   );
 }
 
-function compareVolleyballWorldTournaments(left: VolleyballWorldBeachTournament, right: VolleyballWorldBeachTournament) {
-  return compareDateText(left.startDate, right.startDate)
-    || left.title.localeCompare(right.title)
-    || compareGender(left.gender, right.gender);
+function compareVolleyballWorldTournaments(
+  left: VolleyballWorldBeachTournament,
+  right: VolleyballWorldBeachTournament,
+) {
+  return (
+    compareDateText(left.startDate, right.startDate) ||
+    left.title.localeCompare(right.title) ||
+    compareGender(left.gender, right.gender)
+  );
 }
 
 function compareDateText(left: string | null | undefined, right: string | null | undefined) {
@@ -202,7 +214,9 @@ function compareGender(left: VolleyballWorldGender, right: VolleyballWorldGender
   return searchGenders.indexOf(left) - searchGenders.indexOf(right);
 }
 
-function groupVolleyballWorldTournaments(tournaments: VolleyballWorldBeachTournament[]): VolleyballWorldTournamentGroup[] {
+function groupVolleyballWorldTournaments(
+  tournaments: VolleyballWorldBeachTournament[],
+): VolleyballWorldTournamentGroup[] {
   const groups = new Map<string, VolleyballWorldTournamentGroup>();
 
   for (const tournament of tournaments) {
@@ -239,11 +253,17 @@ function groupVolleyballWorldTournaments(tournaments: VolleyballWorldBeachTourna
 
   return Array.from(groups.values())
     .map((group) => ({ ...group, items: sortByGender(group.items) }))
-    .sort((left, right) => compareDateText(left.items[0]?.startDate, right.items[0]?.startDate) || left.title.localeCompare(right.title));
+    .sort(
+      (left, right) =>
+        compareDateText(left.items[0]?.startDate, right.items[0]?.startDate) || left.title.localeCompare(right.title),
+    );
 }
 
 function normalizeGroupKey(value: string | null | undefined) {
-  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
 }
 
 function sortByGender<T extends { gender: VolleyballWorldGender }>(items: T[]) {
@@ -251,10 +271,12 @@ function sortByGender<T extends { gender: VolleyballWorldGender }>(items: T[]) {
 }
 
 function pickFirstMatchTime(items: VolleyballWorldBeachTournament[]) {
-  return items
-    .map((item) => ({ startDate: item.startDate, label: item.firstMatchTimeMoscow }))
-    .filter((item): item is { startDate: string; label: string } => Boolean(item.startDate && item.label))
-    .sort((left, right) => left.startDate.localeCompare(right.startDate))[0]?.label || null;
+  return (
+    items
+      .map((item) => ({ startDate: item.startDate, label: item.firstMatchTimeMoscow }))
+      .filter((item): item is { startDate: string; label: string } => Boolean(item.startDate && item.label))
+      .sort((left, right) => left.startDate.localeCompare(right.startDate))[0]?.label || null
+  );
 }
 
 function formatGroupGenderLabel(items: Array<{ gender: VolleyballWorldGender }>) {
@@ -277,7 +299,9 @@ function TournamentCard({
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
         <div className="min-w-0">
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <span className={`rounded-lg border px-2.5 py-1 text-[9px] font-black uppercase tracking-widest ${statusClasses[group.status]}`}>
+            <span
+              className={`rounded-lg border px-2.5 py-1 text-[9px] font-black uppercase tracking-widest ${statusClasses[group.status]}`}
+            >
               {statusLabels[group.status]}
             </span>
             <span className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-[9px] font-black uppercase tracking-widest text-slate-500">

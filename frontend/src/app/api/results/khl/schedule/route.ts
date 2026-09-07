@@ -1,7 +1,6 @@
 import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 
-import { requireAdmin } from "@backend/auth/adminAuth";
 import { KHL_RESULTS_CUTOFF } from "@backend/results/khl/autoSync";
 import { KhlApiClient, KhlApiError } from "@backend/sources/results/khl/client";
 
@@ -11,9 +10,6 @@ export const runtime = "nodejs";
 const MAX_RANGE_MS = 62 * 24 * 60 * 60 * 1000;
 
 export async function GET(request: Request) {
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
-
   const url = new URL(request.url);
   const stageId = positiveDecimalId(url.searchParams.get("stageId"));
   const requestedFrom = parseDate(url.searchParams.get("from"));

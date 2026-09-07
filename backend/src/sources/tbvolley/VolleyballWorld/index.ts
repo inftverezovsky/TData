@@ -1,4 +1,5 @@
 import { formatMoscowDate, formatMoscowDateTime } from "@backend/matches/scheduleOffset";
+import { BoundedBodyReadError, readBoundedBodyText } from "@backend/http/boundedResponse";
 
 export type VolleyballWorldGender = "men" | "women";
 export type VolleyballWorldMatchStatus = "upcoming" | "live" | "finished";
@@ -52,6 +53,7 @@ export type VolleyballWorldBeachSchedule = {
   toDate: string;
   gender: VolleyballWorldGender;
   generatedAt: string;
+  upstream: VolleyballWorldUpstreamState;
   matches: VolleyballWorldBeachMatch[];
   summary: {
     total: number;
@@ -59,8 +61,47 @@ export type VolleyballWorldBeachSchedule = {
     live: number;
     finished: number;
     competitions: number;
+    rawCompetitions: number;
+    beachCompetitions: number;
   };
 };
+
+export type VolleyballWorldUpstreamState = {
+  cacheStatus: "miss" | "fresh" | "stale";
+  fetchedAt: string;
+  ageMs: number;
+  fallbackErrorCode: VolleyballWorldRequestErrorCode | null;
+};
+
+export type VolleyballWorldRequestErrorCode =
+  | "invalid_request"
+  | "request_limit"
+  | "upstream_timeout"
+  | "upstream_http"
+  | "upstream_network"
+  | "invalid_json"
+  | "invalid_payload"
+  | "unconfirmed_empty";
+
+export class VolleyballWorldRequestError extends Error {
+  constructor(
+    message: string,
+    public readonly code: VolleyballWorldRequestErrorCode,
+    public readonly statusCode: number,
+    public readonly retryable = false,
+  ) {
+    super(message);
+    this.name = "VolleyballWorldRequestError";
+  }
+}
+
+export function getVolleyballWorldErrorStatus(error: unknown) {
+  return error instanceof VolleyballWorldRequestError ? error.statusCode : 500;
+}
+
+export function getVolleyballWorldErrorCode(error: unknown) {
+  return error instanceof VolleyballWorldRequestError ? error.code : "unknown_error";
+}
 
 export type VolleyballWorldBeachTournament = {
   id: string;
@@ -89,6 +130,7 @@ export type VolleyballWorldBeachTournamentSearch = {
   toDate: string;
   gender: VolleyballWorldGender;
   query: string;
+  upstream: VolleyballWorldUpstreamState;
   tournaments: VolleyballWorldBeachTournament[];
   summary: {
     total: number;
@@ -160,8 +202,41 @@ type SourcePayload = {
 };
 
 const VOLLEYBALL_WORLD_ORIGIN = "https://en.volleyballworld.com";
+const VOLLEYBALL_WORLD_SCHEDULE_PAGE = `${VOLLEYBALL_WORLD_ORIGIN}/global-schedule`;
+const VOLLEYBALL_WORLD_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36";
+const DEFAULT_TIMEOUT_MS = 120_000;
+const MAX_TIMEOUT_MS = 300_000;
+const SUCCESS_CACHE_TTL_MS = 5 * 60_000;
+const STALE_POSITIVE_TTL_MS = 24 * 60 * 60_000;
+const MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
 const DEFAULT_DAYS = 14;
 const MAX_DAYS = 60;
+const MAX_CACHE_ENTRIES = 16;
+const MAX_CONCURRENT_UPSTREAM_REQUESTS = 3;
+const MAX_NEW_REQUESTS_PER_MINUTE = 20;
+const REQUEST_BUDGET_WINDOW_MS = 60_000;
+
+type RawScheduleCacheEntry = {
+  payload: SourcePayload;
+  fetchedAt: number;
+};
+
+type RawScheduleResult = RawScheduleCacheEntry & {
+  cacheStatus: VolleyballWorldUpstreamState["cacheStatus"];
+  fallbackErrorCode: VolleyballWorldRequestErrorCode | null;
+};
+
+const rawScheduleCache = new Map<string, RawScheduleCacheEntry>();
+const rawScheduleInFlight = new Map<string, Promise<RawScheduleResult>>();
+let requestBudgetWindowStartedAt = 0;
+let requestBudgetCount = 0;
+
+export function clearVolleyballWorldScheduleCache() {
+  rawScheduleCache.clear();
+  rawScheduleInFlight.clear();
+  requestBudgetWindowStartedAt = 0;
+  requestBudgetCount = 0;
+}
 
 export function normalizeVolleyballWorldGender(value: string | null | undefined): VolleyballWorldGender {
   return readVolleyballWorldGender(value) || "men";
@@ -183,11 +258,25 @@ export function getDefaultVolleyballWorldFromDate() {
 }
 
 export function resolveVolleyballWorldDateRange(input: { fromDate?: string | null; toDate?: string | null; days?: number | string | null }) {
-  const fromDate = parseApiDate(input.fromDate) || parseApiDate(getDefaultVolleyballWorldFromDate())!;
+  const parsedFromDate = parseApiDate(input.fromDate);
+  if (clean(input.fromDate) && !parsedFromDate) {
+    throw new VolleyballWorldRequestError("Volleyball World fromDate must use a valid YYYY-MM-DD date.", "invalid_request", 400);
+  }
+  const fromDate = parsedFromDate || parseApiDate(getDefaultVolleyballWorldFromDate())!;
   const requestedDays = Number(input.days || DEFAULT_DAYS);
-  const days = Number.isFinite(requestedDays) ? Math.min(Math.max(Math.trunc(requestedDays), 1), MAX_DAYS) : DEFAULT_DAYS;
+  const requestedWindowDays = Number.isFinite(requestedDays) ? Math.min(Math.max(Math.trunc(requestedDays), 1), MAX_DAYS) : DEFAULT_DAYS;
   const explicitToDate = parseApiDate(input.toDate);
-  const toDate = explicitToDate || addDays(fromDate, days - 1);
+  if (clean(input.toDate) && !explicitToDate) {
+    throw new VolleyballWorldRequestError("Volleyball World toDate must use a valid YYYY-MM-DD date.", "invalid_request", 400);
+  }
+  if (explicitToDate && explicitToDate < fromDate) {
+    throw new VolleyballWorldRequestError("Volleyball World toDate cannot be earlier than fromDate.", "invalid_request", 400);
+  }
+  const maximumToDate = addDays(fromDate, MAX_DAYS - 1);
+  const toDate = explicitToDate
+    ? new Date(Math.min(explicitToDate.getTime(), maximumToDate.getTime()))
+    : addDays(fromDate, requestedWindowDays - 1);
+  const days = Math.floor((toDate.getTime() - fromDate.getTime()) / 86_400_000) + 1;
 
   return {
     fromDate: formatApiDate(fromDate),
@@ -201,42 +290,275 @@ export async function fetchVolleyballWorldBeachSchedule(input: {
   fromDate?: string | null;
   toDate?: string | null;
   days?: number | string | null;
+  forceFresh?: boolean;
+  signal?: AbortSignal;
 } = {}): Promise<VolleyballWorldBeachSchedule> {
   const gender = normalizeVolleyballWorldGender(input.gender);
   const range = resolveVolleyballWorldDateRange(input);
-  const url = `${VOLLEYBALL_WORLD_ORIGIN}/api/v1/globalschedule/${range.fromDate}/${range.toDate}`;
+  const raw = await fetchRawVolleyballWorldSchedule(range.fromDate, range.toDate, Boolean(input.forceFresh), input.signal);
+
+  return normalizeVolleyballWorldSchedule(raw.payload, {
+    gender,
+    fromDate: range.fromDate,
+    toDate: range.toDate,
+    upstream: {
+      cacheStatus: raw.cacheStatus,
+      fetchedAt: new Date(raw.fetchedAt).toISOString(),
+      ageMs: Math.max(0, Date.now() - raw.fetchedAt),
+      fallbackErrorCode: raw.fallbackErrorCode,
+    },
+  });
+}
+
+async function fetchRawVolleyballWorldSchedule(fromDate: string, toDate: string, forceFresh: boolean, signal?: AbortSignal): Promise<RawScheduleResult> {
+  signal?.throwIfAborted();
+  const key = `${fromDate}/${toDate}`;
+  const requestKey = key;
+  const now = Date.now();
+  pruneVolleyballWorldScheduleCache(now);
+  const cached = readVolleyballWorldScheduleCache(key);
+
+  if (!forceFresh && cached && now - cached.fetchedAt <= SUCCESS_CACHE_TTL_MS) {
+    return {
+      ...cached,
+      cacheStatus: "fresh",
+      fallbackErrorCode: null,
+    };
+  }
+
+  const activeRequest = rawScheduleInFlight.get(requestKey);
+  if (activeRequest) return activeRequest;
+
+  reserveVolleyballWorldUpstreamRequest(now);
+
+  const request = (async (): Promise<RawScheduleResult> => {
+    try {
+      const payload = await requestRawVolleyballWorldScheduleWithRetry(fromDate, toDate, signal);
+      const result = { payload, fetchedAt: Date.now() };
+      writeVolleyballWorldScheduleCache(key, result);
+      return {
+        ...result,
+        cacheStatus: "miss",
+        fallbackErrorCode: null,
+      };
+    } catch (error) {
+      signal?.throwIfAborted();
+      if (cached) {
+        return {
+          ...cached,
+          cacheStatus: "stale",
+          fallbackErrorCode: error instanceof VolleyballWorldRequestError ? error.code : "upstream_network",
+        };
+      }
+      throw error;
+    }
+  })();
+
+  rawScheduleInFlight.set(requestKey, request);
+  try {
+    return await request;
+  } finally {
+    if (rawScheduleInFlight.get(requestKey) === request) rawScheduleInFlight.delete(requestKey);
+  }
+}
+
+function pruneVolleyballWorldScheduleCache(now: number) {
+  for (const [key, entry] of rawScheduleCache) {
+    if (now - entry.fetchedAt > STALE_POSITIVE_TTL_MS) rawScheduleCache.delete(key);
+  }
+}
+
+function readVolleyballWorldScheduleCache(key: string) {
+  const cached = rawScheduleCache.get(key);
+  if (!cached) return undefined;
+  rawScheduleCache.delete(key);
+  rawScheduleCache.set(key, cached);
+  return cached;
+}
+
+function writeVolleyballWorldScheduleCache(key: string, entry: RawScheduleCacheEntry) {
+  rawScheduleCache.delete(key);
+  rawScheduleCache.set(key, entry);
+  while (rawScheduleCache.size > MAX_CACHE_ENTRIES) {
+    const oldestKey = rawScheduleCache.keys().next().value as string | undefined;
+    if (!oldestKey) break;
+    rawScheduleCache.delete(oldestKey);
+  }
+}
+
+function reserveVolleyballWorldUpstreamRequest(now: number) {
+  if (rawScheduleInFlight.size >= MAX_CONCURRENT_UPSTREAM_REQUESTS) {
+    throw new VolleyballWorldRequestError(
+      "Volleyball World has too many concurrent upstream requests.",
+      "request_limit",
+      429,
+    );
+  }
+  if (!requestBudgetWindowStartedAt || now - requestBudgetWindowStartedAt >= REQUEST_BUDGET_WINDOW_MS) {
+    requestBudgetWindowStartedAt = now;
+    requestBudgetCount = 0;
+  }
+  if (requestBudgetCount >= MAX_NEW_REQUESTS_PER_MINUTE) {
+    throw new VolleyballWorldRequestError(
+      "Volleyball World request budget is temporarily exhausted.",
+      "request_limit",
+      429,
+    );
+  }
+  requestBudgetCount += 1;
+}
+
+async function requestRawVolleyballWorldScheduleWithRetry(fromDate: string, toDate: string, signal?: AbortSignal) {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await requestRawVolleyballWorldSchedule(fromDate, toDate, signal);
+    } catch (error) {
+      lastError = error;
+      if (attempt > 0 || !(error instanceof VolleyballWorldRequestError) || !error.retryable) throw error;
+      signal?.throwIfAborted();
+      await warmUpVolleyballWorldSchedulePage(signal);
+    }
+  }
+
+  throw lastError;
+}
+
+async function warmUpVolleyballWorldSchedulePage(signal?: AbortSignal) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 20_000);
+  const onAbort = () => controller.abort(signal?.reason);
+  signal?.addEventListener("abort", onAbort, { once: true });
+  if (signal?.aborted) onAbort();
+  const timeout = setTimeout(() => controller.abort(), Math.min(resolveVolleyballWorldTimeoutMs(), 30_000));
+
+  try {
+    const response = await fetch(VOLLEYBALL_WORLD_SCHEDULE_PAGE, {
+      cache: "no-store",
+      signal: controller.signal,
+      headers: {
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "User-Agent": VOLLEYBALL_WORLD_USER_AGENT,
+      },
+    });
+    await readBoundedBodyText(response, {
+      maxBytes: 2 * 1024 * 1024,
+      signal: controller.signal,
+      label: "Volleyball World warm-up response",
+    });
+  } catch {
+    signal?.throwIfAborted();
+    // The API retry is still authoritative; warm-up is only a best-effort compatibility step.
+  } finally {
+    clearTimeout(timeout);
+    signal?.removeEventListener("abort", onAbort);
+  }
+}
+
+async function requestRawVolleyballWorldSchedule(fromDate: string, toDate: string, signal?: AbortSignal): Promise<SourcePayload> {
+  const url = `${VOLLEYBALL_WORLD_ORIGIN}/api/v1/globalschedule/${fromDate}/${toDate}`;
+  const controller = new AbortController();
+  const onAbort = () => controller.abort(signal?.reason);
+  signal?.addEventListener("abort", onAbort, { once: true });
+  if (signal?.aborted) onAbort();
+  const timeout = setTimeout(() => controller.abort(), resolveVolleyballWorldTimeoutMs());
 
   try {
     const response = await fetch(url, {
       cache: "no-store",
       signal: controller.signal,
       headers: {
-        Accept: "application/json",
-        "User-Agent": "TData TBvolley/1.0 (+https://en.volleyballworld.com/global-schedule)",
+        Accept: "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+        Referer: VOLLEYBALL_WORLD_SCHEDULE_PAGE,
+        "User-Agent": VOLLEYBALL_WORLD_USER_AGENT,
       },
     });
-    const text = await response.text();
-    if (!response.ok) {
-      throw new Error(`Volleyball World HTTP ${response.status}: ${text.slice(0, 220)}`);
-    }
 
-    let payload: SourcePayload;
-    try {
-      payload = JSON.parse(text) as SourcePayload;
-    } catch {
-      throw new Error("Volleyball World returned invalid JSON.");
-    }
-
-    return normalizeVolleyballWorldSchedule(payload, {
-      gender,
-      fromDate: range.fromDate,
-      toDate: range.toDate,
+    const text = await readBoundedBodyText(response, {
+      maxBytes: MAX_RESPONSE_BYTES,
+      signal: controller.signal,
+      label: "Volleyball World response",
     });
+    if (!response.ok) {
+      const retryable = response.status === 429 || response.status >= 500;
+      throw new VolleyballWorldRequestError(
+        `Volleyball World HTTP ${response.status}: ${text.slice(0, 220)}`,
+        "upstream_http",
+        502,
+        retryable,
+      );
+    }
+    const contentType = response.headers.get("content-type") || "";
+    if (!contentType.toLowerCase().includes("json")) {
+      throw new VolleyballWorldRequestError("Volleyball World returned a non-JSON response.", "invalid_payload", 502);
+    }
+
+    let payload: unknown;
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      throw new VolleyballWorldRequestError("Volleyball World returned invalid JSON.", "invalid_json", 502);
+    }
+    return validateVolleyballWorldPayload(payload);
+  } catch (error) {
+    if (error instanceof VolleyballWorldRequestError) throw error;
+    if (error instanceof BoundedBodyReadError) {
+      throw new VolleyballWorldRequestError(
+        error.code === "body_too_large"
+          ? "Volleyball World response is too large."
+          : "Volleyball World returned an invalid response body.",
+        "invalid_payload",
+        502,
+      );
+    }
+    if (controller.signal.aborted || isAbortError(error)) {
+      throw new VolleyballWorldRequestError(
+        `Volleyball World request timed out after ${resolveVolleyballWorldTimeoutMs()} ms.`,
+        "upstream_timeout",
+        504,
+        true,
+      );
+    }
+    throw new VolleyballWorldRequestError("Volleyball World network request failed.", "upstream_network", 502, true);
   } finally {
     clearTimeout(timeout);
+    signal?.removeEventListener("abort", onAbort);
   }
+}
+
+function validateVolleyballWorldPayload(payload: unknown): SourcePayload {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new VolleyballWorldRequestError("Volleyball World payload has an unexpected shape.", "invalid_payload", 502);
+  }
+
+  const candidate = payload as SourcePayload;
+  if (!Array.isArray(candidate.matches) || !Array.isArray(candidate.allTeams) || !Array.isArray(candidate.allTournaments)) {
+    throw new VolleyballWorldRequestError("Volleyball World payload is missing schedule arrays.", "invalid_payload", 502);
+  }
+  if (candidate.matches.length === 0 && candidate.allTeams.length === 0 && candidate.allTournaments.length === 0) {
+    throw new VolleyballWorldRequestError("Volleyball World returned an invalid empty payload.", "invalid_payload", 502);
+  }
+  if (candidate.matches.length === 0) {
+    throw new VolleyballWorldRequestError(
+      "Volleyball World returned an unconfirmed empty match array.",
+      "unconfirmed_empty",
+      502,
+    );
+  }
+
+  return candidate;
+}
+
+function resolveVolleyballWorldTimeoutMs() {
+  const configured = Number(process.env.VOLLEYBALL_WORLD_TIMEOUT_MS || DEFAULT_TIMEOUT_MS);
+  if (!Number.isFinite(configured)) return DEFAULT_TIMEOUT_MS;
+  return Math.min(Math.max(Math.trunc(configured), 1), MAX_TIMEOUT_MS);
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof Error && error.name === "AbortError";
 }
 
 export async function searchVolleyballWorldBeachTournaments(input: {
@@ -245,10 +567,12 @@ export async function searchVolleyballWorldBeachTournaments(input: {
   fromDate?: string | null;
   toDate?: string | null;
   days?: number | string | null;
+  forceFresh?: boolean;
+  signal?: AbortSignal;
 } = {}): Promise<VolleyballWorldBeachTournamentSearch> {
   const gender = normalizeVolleyballWorldGender(input.gender);
   const range = resolveVolleyballWorldDateRange(input);
-  const schedule = await fetchVolleyballWorldBeachSchedule({ ...range, gender });
+  const schedule = await fetchVolleyballWorldBeachSchedule({ ...range, gender, forceFresh: input.forceFresh, signal: input.signal });
   const query = normalizeSearch(input.query || "");
   const tournaments = groupVolleyballWorldBeachTournaments(schedule, query);
 
@@ -259,11 +583,118 @@ export async function searchVolleyballWorldBeachTournaments(input: {
     toDate: schedule.toDate,
     gender,
     query,
+    upstream: schedule.upstream,
     tournaments,
     summary: {
       total: tournaments.length,
       matches: tournaments.reduce((sum, tournament) => sum + tournament.matchCount, 0),
     },
+  };
+}
+
+export type VolleyballWorldTournamentGenderSummary = {
+  rawTotal: number;
+  total: number;
+  matches: number;
+};
+
+export type VolleyballWorldBeachTournamentSearchAll = Omit<VolleyballWorldBeachTournamentSearch, "gender" | "summary"> & {
+  gender: "all";
+  summary: VolleyballWorldBeachTournamentSearch["summary"] & {
+    rawTotal: number;
+    filteredOut: number;
+    emptyReason: "date_window" | "category_filter" | null;
+    byGender: Record<VolleyballWorldGender, VolleyballWorldTournamentGenderSummary>;
+  };
+};
+
+export async function searchAllVolleyballWorldBeachTournaments(input: {
+  query?: string | null;
+  fromDate?: string | null;
+  toDate?: string | null;
+  days?: number | string | null;
+  forceFresh?: boolean;
+  signal?: AbortSignal;
+} = {}): Promise<VolleyballWorldBeachTournamentSearchAll> {
+  const range = resolveVolleyballWorldDateRange(input);
+  const raw = await fetchRawVolleyballWorldSchedule(
+    range.fromDate,
+    range.toDate,
+    Boolean(input.forceFresh),
+    input.signal,
+  );
+  const upstream: VolleyballWorldUpstreamState = {
+    cacheStatus: raw.cacheStatus,
+    fetchedAt: new Date(raw.fetchedAt).toISOString(),
+    ageMs: Math.max(0, Date.now() - raw.fetchedAt),
+    fallbackErrorCode: raw.fallbackErrorCode,
+  };
+  const query = normalizeSearch(input.query || "");
+  const schedules = (["men", "women"] as const)
+    .map((gender) => normalizeVolleyballWorldSchedule(raw.payload, {
+        gender,
+        fromDate: range.fromDate,
+        toDate: range.toDate,
+        upstream,
+      }));
+  const tournaments = schedules
+    .flatMap((schedule) => groupVolleyballWorldBeachTournaments(schedule, query))
+    .sort((a, b) => {
+      const aTime = a.startDate ? new Date(a.startDate).getTime() : Number.MAX_SAFE_INTEGER;
+      const bTime = b.startDate ? new Date(b.startDate).getTime() : Number.MAX_SAFE_INTEGER;
+      return aTime - bTime || a.title.localeCompare(b.title) || a.gender.localeCompare(b.gender);
+    });
+
+  return {
+    ok: true,
+    source: "volleyballworld",
+    fromDate: range.fromDate,
+    toDate: range.toDate,
+    gender: "all",
+    query,
+    upstream,
+    tournaments,
+    summary: buildVolleyballWorldTournamentSearchAllSummary(schedules, tournaments),
+  };
+}
+
+export function buildVolleyballWorldTournamentSearchAllSummary(
+  schedules: ReadonlyArray<Pick<VolleyballWorldBeachSchedule, "gender" | "matches"> & {
+    summary?: Partial<Pick<VolleyballWorldBeachSchedule["summary"], "rawCompetitions" | "beachCompetitions">>;
+  }>,
+  tournaments: ReadonlyArray<Pick<VolleyballWorldBeachTournament, "gender" | "matchCount">>,
+): VolleyballWorldBeachTournamentSearchAll["summary"] {
+  let beachRawTotal = 0;
+  const byGender = Object.fromEntries((["men", "women"] as const).map((gender) => {
+    const schedule = schedules.find((candidate) => candidate.gender === gender);
+    const normalizedTournamentKeys = new Set((schedule?.matches || [])
+      .map((match) => clean(match.tournamentNo) || clean(match.competitionSlug))
+      .filter(Boolean));
+    const rawTotal = isNonNegativeInteger(schedule?.summary?.rawCompetitions)
+      ? Number(schedule?.summary?.rawCompetitions)
+      : normalizedTournamentKeys.size;
+    const beachTotal = isNonNegativeInteger(schedule?.summary?.beachCompetitions)
+      ? Number(schedule?.summary?.beachCompetitions)
+      : normalizedTournamentKeys.size;
+    beachRawTotal += beachTotal;
+    const filtered = tournaments.filter((tournament) => tournament.gender === gender);
+    return [gender, {
+      rawTotal,
+      total: filtered.length,
+      matches: filtered.reduce((sum, tournament) => sum + tournament.matchCount, 0),
+    }];
+  })) as Record<VolleyballWorldGender, VolleyballWorldTournamentGenderSummary>;
+  const rawTotal = byGender.men.rawTotal + byGender.women.rawTotal;
+  const total = tournaments.length;
+  return {
+    total,
+    matches: tournaments.reduce((sum, tournament) => sum + tournament.matchCount, 0),
+    rawTotal,
+    filteredOut: rawTotal - total,
+    emptyReason: total === 0 && rawTotal > 0
+      ? (beachRawTotal === 0 ? "category_filter" : "date_window")
+      : null,
+    byGender,
   };
 }
 
@@ -320,16 +751,23 @@ export function groupVolleyballWorldBeachTournaments(
 
 export function normalizeVolleyballWorldSchedule(
   payload: SourcePayload,
-  options: { gender: VolleyballWorldGender; fromDate: string; toDate: string },
+  options: {
+    gender: VolleyballWorldGender;
+    fromDate: string;
+    toDate: string;
+    upstream?: VolleyballWorldUpstreamState;
+  },
 ): VolleyballWorldBeachSchedule {
   const teamsByNo = new Map<string, SourceTeam>();
   for (const team of payload.allTeams || []) {
     if (team.no !== undefined && team.no !== null) teamsByNo.set(String(team.no), team);
   }
 
-  const matches = (payload.matches || [])
-    .filter((match) => String(match.discipline || "").toLowerCase() === "beach")
-    .filter((match) => readVolleyballWorldGender(match.gender) === options.gender)
+  const genderMatches = (payload.matches || [])
+    .filter((match) => readVolleyballWorldGender(match.gender) === options.gender);
+  const beachMatches = genderMatches
+    .filter((match) => String(match.discipline || "").toLowerCase() === "beach");
+  const matches = beachMatches
     .map((match) => normalizeMatch(match, teamsByNo, options.gender))
     .sort((a, b) => {
       const aTime = a.startTimeUtc ? new Date(a.startTimeUtc).getTime() : Number.MAX_SAFE_INTEGER;
@@ -343,7 +781,15 @@ export function normalizeVolleyballWorldSchedule(
       acc[match.status] += 1;
       return acc;
     },
-    { total: 0, upcoming: 0, live: 0, finished: 0, competitions: 0 },
+    {
+      total: 0,
+      upcoming: 0,
+      live: 0,
+      finished: 0,
+      competitions: 0,
+      rawCompetitions: countSourceCompetitions(genderMatches),
+      beachCompetitions: countSourceCompetitions(beachMatches),
+    },
   );
   summary.competitions = new Set(matches.map((match) => match.tournamentNo || match.competitionSlug)).size;
 
@@ -355,9 +801,27 @@ export function normalizeVolleyballWorldSchedule(
     toDate: options.toDate,
     gender: options.gender,
     generatedAt: new Date().toISOString(),
+    upstream: options.upstream || {
+      cacheStatus: "miss",
+      fetchedAt: new Date().toISOString(),
+      ageMs: 0,
+      fallbackErrorCode: null,
+    },
     matches,
     summary,
   };
+}
+
+function countSourceCompetitions(matches: readonly SourceMatch[]) {
+  return new Set(matches.map((match) => (
+    clean(match.tournamentNo)
+    || clean(match.competitionSlug)
+    || `match:${clean(match.matchNo)}`
+  )).filter((value) => value !== "match:")).size;
+}
+
+function isNonNegativeInteger(value: unknown) {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
 
 export function isActiveVolleyballWorldMatch(match: Pick<VolleyballWorldBeachMatch, "status" | "startTimeUtc">, now = new Date()) {
@@ -509,9 +973,11 @@ function parseUtcDate(value: string) {
 }
 
 function parseApiDate(value: string | null | undefined) {
-  const match = clean(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const normalized = clean(value);
+  const match = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return null;
-  return new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  return formatApiDate(date) === normalized ? date : null;
 }
 
 function addDays(date: Date, days: number) {

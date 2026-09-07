@@ -30,6 +30,7 @@ export function normalizeTLineRun(value: unknown): TLineRun | null {
     progress: numberValue(value.progress) ?? progressFromChampionships(championships, state),
     startedAt: nullableString(value.startedAt),
     finishedAt: nullableString(value.finishedAt),
+    includeUndatedSourceMatches: value.includeUndatedSourceMatches === true,
     championships,
   };
 }
@@ -97,6 +98,12 @@ export function countChampionshipFailures(championship: TLineChampionshipResult)
 }
 
 export function emptyChampionshipMessage(championship: TLineChampionshipResult) {
+  if (championship.reasons.includes("SOURCE_STAGE_NOT_PUBLISHED")) {
+    const sourceMessage = "Официальные этапы сезона 2026/27 ещё не опубликованы; товарищеские матчи исключены.";
+    return championship.reasons.includes("ADMIN_LINE_NOT_CONFIGURED")
+      ? `${sourceMessage} Сверка с Бетсити недоступна: линия Админа не настроена.`
+      : sourceMessage;
+  }
   if (!championship.reasons.includes("NO_MATCHES_IN_PERIOD")) {
     return "В выбранном периоде матчи не найдены.";
   }
@@ -104,6 +111,28 @@ export function emptyChampionshipMessage(championship: TLineChampionshipResult) 
   return championship.reasons.includes("ADMIN_LINE_NOT_CONFIGURED")
     ? `${sourceMessage} Сверка с Бетсити недоступна: линия Админа не настроена.`
     : sourceMessage;
+}
+
+export function formatOfficialConnectionMessage(result: {
+  readonly teamCount?: number;
+  readonly matchCount?: number;
+  readonly eligibleMatchCount?: number;
+  readonly excludedMatchCount?: number;
+  readonly diagnostics?: {
+    readonly reasonCodes?: readonly string[];
+    readonly excludedStageNames?: readonly string[];
+    readonly eligibleMatchCount?: number;
+    readonly excludedMatchCount?: number;
+  };
+}) {
+  const teamCount = result.teamCount ?? 0;
+  const matchCount = result.matchCount ?? 0;
+  const eligibleMatchCount = result.eligibleMatchCount ?? matchCount;
+  const excludedMatchCount = result.excludedMatchCount ?? 0;
+  const diagnostics = result.diagnostics?.reasonCodes?.includes("SOURCE_STAGE_NOT_PUBLISHED")
+    ? " Официальные этапы сезона 2026/27 ещё не опубликованы; товарищеские матчи исключены."
+    : "";
+  return `Источник доступен. Команд: ${teamCount}. Матчей найдено: ${matchCount}, допущено: ${eligibleMatchCount}, исключено: ${excludedMatchCount}.${diagnostics}`;
 }
 
 export function championshipTone(championship: TLineChampionshipResult) {
@@ -264,6 +293,7 @@ function reasonText(status: string, delta: number | null) {
     SOURCE_TIME_UNDEFINED: "Официальный источник не указал время",
     ADMIN_LINE_NOT_CONFIGURED: "Линия Админа не настроена",
     NO_MATCHES_IN_PERIOD: "На официальном сайте нет матчей в выбранном периоде",
+    SOURCE_STAGE_NOT_PUBLISHED: "Официальные этапы сезона 2026/27 ещё не опубликованы; товарищеские матчи исключены",
     PARSER_FAILED: "Не удалось прочитать официальный источник",
     CANCELLED: "Проверка остановлена",
   };
@@ -275,8 +305,24 @@ function safeOfficialUrl(value: unknown) {
   if (!candidate) return null;
   try {
     const url = new URL(candidate);
-    if (url.protocol !== "https:" || (url.hostname !== "volley.ru" && !url.hostname.endsWith(".volley.ru"))) return null;
-    return url.toString();
+    if (url.protocol !== "https:") return null;
+    if (url.hostname === "hockey.by") {
+      const safeOrigin = url.port === "" && url.username === "" && url.password === "" && url.search === "" && url.hash === "";
+      const safePath = url.pathname === "/calendar/" || /^\/gamecenter\/[1-9]\d*\/$/u.test(url.pathname);
+      return safeOrigin && safePath ? url.toString() : null;
+    }
+    if (url.hostname === "xn--m1agla.xn--p1ai") {
+      const safeOrigin = url.port === "" && url.username === "" && url.password === "" && url.search === "" && url.hash === "";
+      const safePath = /^\/sport\/(?:calendar|protocol)\/[1-9]\d*$/u.test(url.pathname);
+      return safeOrigin && safePath ? url.toString() : null;
+    }
+    if (url.hostname === "volley.ru") {
+      const safeOrigin = url.port === "" && url.username === "" && url.password === "" && url.search === "" && url.hash === "";
+      const safePath = /^\/games\/[A-Za-z0-9_-]{1,128}\/?$/u.test(url.pathname)
+        || /^\/calendar\/[A-Za-z0-9_-]{1,128}\/allgames\/?$/u.test(url.pathname);
+      return safeOrigin && safePath ? url.toString() : null;
+    }
+    return null;
   } catch {
     return null;
   }

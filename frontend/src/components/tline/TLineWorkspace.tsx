@@ -47,6 +47,7 @@ export function TLineWorkspace() {
   const [to, setTo] = useState(() => defaultMoscowDateTime(7));
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
+  const [includeUndatedSourceMatches, setIncludeUndatedSourceMatches] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [selectedHistoryRunId, setSelectedHistoryRunId] = useState<string | null>(null);
@@ -92,6 +93,7 @@ export function TLineWorkspace() {
           sportId,
           from: moscowInputToIso(from),
           to: moscowInputToIso(to),
+          includeUndatedSourceMatches,
         })
       );
       const candidate = typeof response === "object" && response !== null && "run" in response
@@ -269,13 +271,23 @@ export function TLineWorkspace() {
             </label>
           </div>
           {filtersOpen && (
-            <div className="mt-3 flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <div className="mt-3 flex flex-wrap items-center gap-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
               <label className="text-xs font-black uppercase tracking-wide text-slate-500" htmlFor="tline-status-filter">Статус чемпионата</label>
               <select id="tline-status-filter" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-bold">
                 <option value="ALL">Все</option>
                 <option value="OK">Без ошибок</option>
                 <option value="ERROR">С ошибками</option>
               </select>
+              <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-bold text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={includeUndatedSourceMatches}
+                  onChange={(event) => setIncludeUndatedSourceMatches(event.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                Включать матчи без даты
+              </label>
+              <span className="text-xs text-slate-500">Параметр применяется к следующему ручному запуску.</span>
             </div>
           )}
           {historyOpen && <TLineHistoryPanel sportId={sportId} selectedRunId={selectedHistoryRunId} onSelect={setSelectedHistoryRunId} />}

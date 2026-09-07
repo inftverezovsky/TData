@@ -2,6 +2,7 @@
 
 import { CheckCircle2, Database, Link2, RefreshCw, Settings2, Upload } from "lucide-react";
 import { jsonRequest, requestTLine } from "./api";
+import { formatOfficialConnectionMessage } from "./viewModel";
 import { ChampionshipConfigEditor, SportConfigEditor } from "./TLineConfigEditors";
 import { SettingsSection, LoadingRow, EmptyRow } from "./settings/SettingsUi";
 import { SportForm, GlobalHeaderForm, GlobalHeaderRow, ChampionshipForm } from "./settings/CatalogForms";
@@ -196,11 +197,14 @@ export function TLineSettingsWorkspace() {
                   disabled={busy !== null}
                   onClick={() =>
                     runAction(`championship:test:${championship.id}`, async () => {
-                      await requestTLine(
-                        `/api/tline/championships/${encodeURIComponent(championship.id)}/test`,
-                        jsonRequest("POST"),
-                      );
-                      return "Официальный источник доступен.";
+                      const result = await requestTLine<{
+                        teamCount?: number;
+                        matchCount?: number;
+                        eligibleMatchCount?: number;
+                        excludedMatchCount?: number;
+                        diagnostics?: { reasonCodes?: string[] };
+                      }>(`/api/tline/championships/${encodeURIComponent(championship.id)}/test`, jsonRequest("POST"));
+                      return formatOfficialConnectionMessage(result);
                     })
                   }
                   className="rounded-lg border border-blue-200 px-3 py-2 text-xs font-black text-blue-700 hover:bg-blue-50 disabled:opacity-50"

@@ -107,13 +107,13 @@ export async function markSourceFetchSuccess(input: SourceFetchCacheKey, data: {
   metadata?: Prisma.InputJsonValue;
   cacheTtlMs?: number;
   staleTtlMs?: number;
-}) {
+}, client: Prisma.TransactionClient | typeof prisma = prisma) {
   const key = normalizeSourceFetchCacheKey(input);
   const now = new Date();
   const cacheUntil = new Date(now.getTime() + (data.cacheTtlMs ?? SOURCE_CACHE_TTL_MS.liquipediaImport));
   const staleUntil = new Date(now.getTime() + (data.staleTtlMs ?? SOURCE_CACHE_TTL_MS.liquipediaStale));
 
-  return (prisma as any).sourceFetchCache.upsert({
+  return (client as any).sourceFetchCache.upsert({
     where: { source_disciplineSlug_resourceType_resourceKey_mode: key },
     update: {
       revisionId: data.revisionId ?? null,

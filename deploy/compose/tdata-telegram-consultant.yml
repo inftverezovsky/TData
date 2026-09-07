@@ -1,0 +1,37 @@
+services:
+  telegram-consultant:
+    image: ${TDATA_IMAGE:-tdata-local}
+    container_name: tdata-telegram-consultant
+    restart: unless-stopped
+    command: ["node", "--import", "tsx", "scripts/telegram-consultant.ts"]
+    init: true
+    stop_grace_period: 60s
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-tdata}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-tdata}?schema=public
+      TDATA_PARSER_MONITOR_TELEGRAM_BOT_TOKEN: ${TDATA_PARSER_MONITOR_TELEGRAM_BOT_TOKEN:?TDATA_PARSER_MONITOR_TELEGRAM_BOT_TOKEN is required}
+      TDATA_PARSER_MONITOR_TELEGRAM_CHAT_ID: ${TDATA_PARSER_MONITOR_TELEGRAM_CHAT_ID:?TDATA_PARSER_MONITOR_TELEGRAM_CHAT_ID is required}
+      TDATA_TELEGRAM_CONSULTANT_DEEPSEEK_API_KEY: ${TDATA_TELEGRAM_CONSULTANT_DEEPSEEK_API_KEY:?TDATA_TELEGRAM_CONSULTANT_DEEPSEEK_API_KEY is required}
+      TDATA_TELEGRAM_CONSULTANT_DEEPSEEK_MODEL: ${TDATA_TELEGRAM_CONSULTANT_DEEPSEEK_MODEL:-deepseek-v4-flash}
+      TDATA_TELEGRAM_CONSULTANT_MAX_REQUESTS_PER_DAY: ${TDATA_TELEGRAM_CONSULTANT_MAX_REQUESTS_PER_DAY:-12}
+      TDATA_TELEGRAM_CONSULTANT_MAX_INPUT_TOKENS_PER_DAY: ${TDATA_TELEGRAM_CONSULTANT_MAX_INPUT_TOKENS_PER_DAY:-30000}
+      TDATA_TELEGRAM_CONSULTANT_MAX_OUTPUT_TOKENS_PER_DAY: ${TDATA_TELEGRAM_CONSULTANT_MAX_OUTPUT_TOKENS_PER_DAY:-5000}
+      TDATA_TELEGRAM_CONSULTANT_MAX_OUTPUT_TOKENS: ${TDATA_TELEGRAM_CONSULTANT_MAX_OUTPUT_TOKENS:-450}
+      TDATA_TELEGRAM_CONSULTANT_MAX_QUESTION_CHARS: ${TDATA_TELEGRAM_CONSULTANT_MAX_QUESTION_CHARS:-1500}
+      TDATA_PARSER_MONITOR_DIR: /app/cache/parser-monitor
+      TDATA_TELEGRAM_CONSULTANT_STATE_DIR: /app/cache/telegram-consultant
+    volumes:
+      - tdata_cache:/app/cache
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"const fs=require('fs');const p='/app/cache/telegram-consultant/state.json';const s=fs.statSync(p);process.exit(Date.now()-s.mtimeMs<180000?0:1)\""]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 90s

@@ -1,7 +1,22 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { filterDltvEvents, filterDltvEventsByWindow, parseDltvEventPage, parseDltvEvents, parseDltvMatchPage } from "../backend/src/sources/tdata/dltv/parse";
-import { resolveDltvImportStatus, shouldReplaceDltvMatchesOnImport } from "../backend/src/sources/tdata/dltv/importTournament";
+import {
+  deriveDltvEventStatus,
+  extractDltvEventId,
+  filterDltvEvents,
+  filterDltvEventsByWindow,
+  normalizeDltvUrl,
+  parseDltvEventPage,
+  parseDltvEvents,
+  parseDltvMatchPage,
+} from "../backend/src/sources/tdata/dltv/parse";
+import {
+  classifyDltvHttpFailure,
+  fetchDltvWithRedirects,
+  resolveDltvRedirectUrl,
+  validateDltvFetchUrl,
+} from "../backend/src/sources/tdata/dltv/client";
+import { buildDltvTournamentIdentity, findExistingDltvTournament, resolveDltvImportFailureClass, resolveDltvImportStatus, shouldReplaceDltvMatchesOnImport } from "../backend/src/sources/tdata/dltv/importTournament";
 
 test("parseDltvEvents extracts and filters live/upcoming events", () => {
   const html = `
@@ -16,13 +31,254 @@ test("parseDltvEvents extracts and filters live/upcoming events", () => {
     </section>
   `;
 
-  const events = parseDltvEvents(html);
+  const events = parseDltvEvents(html, undefined, new Date("2026-05-20T12:00:00Z"));
   assert.equal(events.length, 2);
   assert.equal(events[0].id, "dreamleague-season-29");
   assert.equal(events[0].title, "DreamLeague 29");
   assert.equal(events[0].status, "live");
   assert.equal(events[0].dates, "2026-05-13 00:00:00 - 2026-05-24 00:00:00");
   assert.equal(filterDltvEvents(events, "blast")[0].id, "blast-slam-7");
+});
+
+test("DLTV identity uses the complete canonical event path", () => {
+  const closed = "https://ru.dltv.org/events/qualifiers/europe/elite-league?utm_source=test#matches";
+  const open = "https://ru.dltv.org/events/qualifiers/americas/elite-league/";
+
+  assert.equal(extractDltvEventId(closed), "qualifiers/europe/elite-league");
+  assert.equal(extractDltvEventId(open), "qualifiers/americas/elite-league");
+  assert.notEqual(extractDltvEventId(closed), extractDltvEventId(open));
+  assert.equal(
+    normalizeDltvUrl(closed),
+    "https://ru.dltv.org/events/qualifiers/europe/elite-league"
+  );
+});
+
+test("DLTV tournament storage identity is path-based and host-independent", () => {
+  assert.deepEqual(
+    buildDltvTournamentIdentity("https://www.dltv.org/events/qualifiers/europe/elite-league/?utm_source=x"),
+    {
+      sourceTitle: "dltv:qualifiers/europe/elite-league",
+      sourceUrl: "https://ru.dltv.org/events/qualifiers/europe/elite-league",
+    },
+  );
+  assert.notEqual(
+    buildDltvTournamentIdentity("https://ru.dltv.org/events/qualifiers/europe/elite-league").sourceTitle,
+    buildDltvTournamentIdentity("https://ru.dltv.org/events/qualifiers/americas/elite-league").sourceTitle,
+  );
+});
+
+test("DLTV title fallback is restricted to DLTV-owned or explicit legacy rows", async () => {
+  const calls: Array<Record<string, unknown>> = [];
+  const client = {
+    tournament: {
+      findFirst: async ({ where }: { where: Record<string, unknown> }) => {
+        calls.push(where);
+        if (where.sourceTitle === "dltv:qualifiers/europe/elite-league" && !("OR" in where)) {
+          return { id: "foreign-provider" };
+        }
+        return null;
+      },
+    },
+  };
+
+  const found = await findExistingDltvTournament({
+    disciplineSlug: "dota2",
+    sourceTitle: "dltv:qualifiers/europe/elite-league",
+    sourceUrl: "https://ru.dltv.org/events/qualifiers/europe/elite-league",
+  }, client as never);
+
+  assert.equal(found, null);
+  assert.deepEqual(calls[1], {
+    disciplineSlug: "dota2",
+    sourceTitle: "dltv:qualifiers/europe/elite-league",
+    OR: [
+      { sourceUrl: { startsWith: "https://ru.dltv.org/events/" } },
+      { sourceUrl: { startsWith: "https://www.dltv.org/events/" } },
+      { sourceUrl: "" },
+    ],
+  });
+});
+
+test("DLTV event status is derived from the date range before textual hints", () => {
+  const now = new Date("2026-05-20T12:00:00Z");
+  assert.equal(
+    deriveDltvEventStatus("2026-05-01 00:00:00 - 2026-05-10 00:00:00", "LIVE", now),
+    "finished"
+  );
+  assert.equal(
+    deriveDltvEventStatus("2026-06-01 00:00:00 - 2026-06-10 00:00:00", "ongoing__events", now),
+    "upcoming"
+  );
+  assert.equal(
+    deriveDltvEventStatus("2026-05-13 00:00:00 - 2026-05-24 00:00:00", "LIVE", now),
+    "live"
+  );
+});
+
+test("DLTV classifies published match placeholders separately from generic 404s", () => {
+  assert.equal(classifyDltvHttpFailure(404, "match"), "upstream_placeholder_404");
+  assert.equal(classifyDltvHttpFailure(404, "event"), "source_4xx");
+  assert.equal(classifyDltvHttpFailure(503, "match"), "source_5xx");
+});
+
+test("DLTV outbound requests allow only explicit HTTPS DLTV origins", () => {
+  assert.equal(
+    validateDltvFetchUrl("https://ru.dltv.org/events/test#matches"),
+    "https://ru.dltv.org/events/test",
+  );
+  assert.equal(
+    validateDltvFetchUrl("https://www.dltv.org/matches/42"),
+    "https://www.dltv.org/matches/42",
+  );
+
+  for (const value of [
+    "http://ru.dltv.org/events/test",
+    "https://evil.example/events/test",
+    "https://attacker.dltv.org/events/test",
+    "https://user:pass@ru.dltv.org/events/test",
+    "https://ru.dltv.org:444/events/test",
+  ]) {
+    assert.throws(
+      () => validateDltvFetchUrl(value),
+      (error: unknown) => error instanceof Error
+        && (error as Error & { errorClass?: string }).errorClass === "parse_failed",
+    );
+  }
+});
+
+test("DLTV redirects stay within the exact approved DLTV host set", () => {
+  assert.equal(
+    resolveDltvRedirectUrl("https://ru.dltv.org/events/test", "/events/canonical"),
+    "https://ru.dltv.org/events/canonical",
+  );
+  assert.equal(
+    resolveDltvRedirectUrl("https://ru.dltv.org/events/test", "https://www.dltv.org/events/test"),
+    "https://www.dltv.org/events/test",
+  );
+  assert.throws(
+    () => resolveDltvRedirectUrl("https://ru.dltv.org/events/test", "//metadata.example/latest"),
+    /same-origin HTTPS DLTV URL/u,
+  );
+});
+
+test("DLTV fetch follows same-origin redirects manually and validates before the next request", async () => {
+  const requests: Array<{ url: string; redirect: unknown }> = [];
+  const responses = [
+    {
+      status: 302,
+      url: "https://ru.dltv.org/events/test",
+      headers: { get: (name: string) => name.toLowerCase() === "location" ? "/events/canonical" : null },
+    },
+    {
+      status: 200,
+      url: "https://ru.dltv.org/events/canonical",
+      headers: { get: (_name: string) => null },
+    },
+  ];
+  let index = 0;
+
+  const response = await fetchDltvWithRedirects(
+    "https://ru.dltv.org/events/test",
+    async (url: string, options: Record<string, unknown>) => {
+      requests.push({ url, redirect: options.redirect });
+      return responses[index++];
+    },
+    { headers: { Accept: "text/html" } },
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(requests, [
+    { url: "https://ru.dltv.org/events/test", redirect: "manual" },
+    { url: "https://ru.dltv.org/events/canonical", redirect: "manual" },
+  ]);
+});
+
+test("DLTV fetch follows the production ru.dltv.org to dltv.org canonical redirect", async () => {
+  const requestedUrls: string[] = [];
+  let index = 0;
+  const responses = [
+    {
+      status: 301,
+      url: "https://ru.dltv.org/events",
+      headers: { get: (name: string) => name.toLowerCase() === "location" ? "https://dltv.org/events" : null },
+    },
+    {
+      status: 200,
+      url: "https://dltv.org/events",
+      headers: { get: (_name: string) => null },
+    },
+  ];
+
+  const response = await fetchDltvWithRedirects(
+    "https://ru.dltv.org/events",
+    async (url: string, _options: Record<string, unknown>) => {
+      requestedUrls.push(url);
+      return responses[index++];
+    },
+    {},
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(requestedUrls, ["https://ru.dltv.org/events", "https://dltv.org/events"]);
+});
+
+test("DLTV fetch blocks a cross-origin redirect before issuing another request", async () => {
+  const requestedUrls: string[] = [];
+
+  await assert.rejects(
+    fetchDltvWithRedirects(
+      "https://ru.dltv.org/events/test",
+      async (url: string, _options: Record<string, unknown>) => {
+        requestedUrls.push(url);
+        return {
+          status: 302,
+          url,
+          headers: { get: () => "https://169.254.169.254/latest/meta-data" },
+        };
+      },
+      {},
+    ),
+    (error: unknown) => error instanceof Error
+      && (error as Error & { errorClass?: string }).errorClass === "parse_failed",
+  );
+
+  assert.deepEqual(requestedUrls, ["https://ru.dltv.org/events/test"]);
+});
+
+test("DLTV fetch rejects automatic off-origin responses and bounds redirect chains", async () => {
+  await assert.rejects(
+    fetchDltvWithRedirects(
+      "https://ru.dltv.org/events/test",
+      async (_url: string, _options: Record<string, unknown>) => ({
+        status: 200,
+        url: "https://metadata.example/latest",
+        headers: { get: () => null },
+      }),
+      {},
+    ),
+    (error: unknown) => error instanceof Error
+      && (error as Error & { errorClass?: string }).errorClass === "parse_failed",
+  );
+
+  let requestCount = 0;
+  await assert.rejects(
+    fetchDltvWithRedirects(
+      "https://ru.dltv.org/events/test",
+      async (url: string, _options: Record<string, unknown>) => {
+        requestCount += 1;
+        return {
+          status: 302,
+          url,
+          headers: { get: () => `/events/redirect-${requestCount}` },
+        };
+      },
+      {},
+    ),
+    (error: unknown) => error instanceof Error
+      && /redirect limit exceeded/u.test(error.message)
+      && (error as Error & { errorClass?: string }).errorClass === "parse_failed",
+  );
+  assert.equal(requestCount, 4);
 });
 
 test("filterDltvEventsByWindow keeps only current and next 60 day events", () => {
@@ -206,28 +462,35 @@ test("resolveDltvImportStatus marks partial imports when match pages fail or sav
 });
 
 test("DLTV force replacement is allowed only after a complete source fetch", () => {
-  assert.equal(shouldReplaceDltvMatchesOnImport({
+  const complete = {
     ok: true,
+    stale: false,
+    warning: null,
     matchUrlsFound: 12,
     matchPagesFailed: 0,
     sourceMatchesCount: 12,
-  }), true);
+  };
+  assert.equal(shouldReplaceDltvMatchesOnImport(complete), true);
+  assert.equal(shouldReplaceDltvMatchesOnImport({ ...complete, stale: true }), false);
+  assert.equal(shouldReplaceDltvMatchesOnImport({ ...complete, warning: "stale fallback" }), false);
   assert.equal(shouldReplaceDltvMatchesOnImport({
-    ok: true,
-    matchUrlsFound: 12,
+    ...complete,
     matchPagesFailed: 1,
     sourceMatchesCount: 11,
   }), false);
   assert.equal(shouldReplaceDltvMatchesOnImport({
-    ok: true,
+    ...complete,
     matchUrlsFound: 0,
-    matchPagesFailed: 0,
     sourceMatchesCount: 0,
   }), false);
   assert.equal(shouldReplaceDltvMatchesOnImport({
+    ...complete,
     ok: false,
-    matchUrlsFound: 12,
-    matchPagesFailed: 0,
-    sourceMatchesCount: 12,
   }), false);
+});
+
+test("DLTV partial imports surface the typed upstream failure", () => {
+  assert.equal(resolveDltvImportFailureClass({ stale: true }), "stale_cache");
+  assert.equal(resolveDltvImportFailureClass({ errorClass: "cloudflare_block" }), "cloudflare_block");
+  assert.equal(resolveDltvImportFailureClass({ matchPageFailures: [{ url: "x", error: "404", errorClass: "upstream_placeholder_404" }] }), "upstream_placeholder_404");
 });

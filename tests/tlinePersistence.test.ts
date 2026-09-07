@@ -16,6 +16,10 @@ const adminHierarchyMigrationPath = new URL(
   "../backend/prisma/migrations/20260830233000_tline_admin_hierarchy/migration.sql",
   import.meta.url,
 );
+const floorballMigrationPath = new URL(
+  "../backend/prisma/migrations/20260831090000_tline_floorball/migration.sql",
+  import.meta.url,
+);
 
 test("TLine schema is additive and reuses Discipline and AdminTeam", async () => {
   const schema = await readFile(schemaPath, "utf8");
@@ -78,6 +82,17 @@ test("TLine Admin hierarchy migration is additive and leaves existing championsh
   assert.match(migration, /TLineGlobalHeaderAdminTeam_pkey/);
   assert.doesNotMatch(migration, /UPDATE\s+"TLineChampionship"/i);
   assert.doesNotMatch(migration, /DROP\s+(TABLE|COLUMN|TYPE)/i);
+});
+
+test("TLine floorball migration stores the undated-source filter with a safe false default", async () => {
+  const schema = await readFile(schemaPath, "utf8");
+  assert.match(schema, /model TLineRun \{[\s\S]*includeUndatedSourceMatches\s+Boolean\s+@default\(false\)/u);
+  const migration = await readFile(floorballMigrationPath, "utf8");
+  assert.match(migration, /ADD COLUMN "includeUndatedSourceMatches" BOOLEAN NOT NULL DEFAULT false/u);
+  assert.match(migration, /Флорбол\. Россия\. Высшая лига/u);
+  assert.match(migration, /nffr-floorball/u);
+  assert.match(migration, /sport\/calendar\/200/u);
+  assert.doesNotMatch(migration, /DROP\s+(TABLE|COLUMN|TYPE)/iu);
 });
 
 test("TLine migration enforces active-run and scheduled-slot uniqueness", async () => {

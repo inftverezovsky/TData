@@ -5,7 +5,11 @@ import test from "node:test";
 import type { PrismaClient } from "@prisma/client";
 
 import {
+  TLINE_FLOORBALL_PILOT_CHAMPIONSHIPS,
+  TLINE_HOCKEY_PILOT_CHAMPIONSHIPS,
   TLINE_VOLLEYBALL_PILOT_CHAMPIONSHIPS,
+  bootstrapTLineHockeyPilot,
+  bootstrapTLinePilots,
   bootstrapTLineVolleyballPilot,
 } from "../backend/src/tline/pilot/bootstrap";
 import { parseTLinePeriodBoundary } from "../backend/src/tline/pilot/period";
@@ -33,6 +37,74 @@ test("volleyball pilot contains the exact two approved championships", () => {
       },
     ],
   );
+});
+
+test("floorball pilot contains the approved NFFR championship with automation disabled", () => {
+  assert.deepEqual(TLINE_FLOORBALL_PILOT_CHAMPIONSHIPS, [{
+    name: "Флорбол. Россия. Высшая лига",
+    season: "2026/27",
+    sourceProvider: "nffr-floorball",
+    sourceChampionshipId: "200",
+    sourceUrl: "https://xn--m1agla.xn--p1ai/sport/calendar/200",
+    sourceTimezone: "Europe/Moscow",
+  }]);
+});
+
+test("hockey pilot contains the approved Belarus championship with automation disabled", () => {
+  assert.deepEqual(TLINE_HOCKEY_PILOT_CHAMPIONSHIPS, [{
+    name: "Хоккей. Беларусь. Высшая лига",
+    season: "2026/27",
+    sourceProvider: "hockey-by",
+    sourceChampionshipId: "11:5",
+    sourceUrl: "https://hockey.by/calendar/",
+    sourceTimezone: "Europe/Minsk",
+  }]);
+});
+
+test("combined pilot bootstrap creates volleyball, floorball and hockey without enabling Admin or automation", async () => {
+  const calls: Array<{ delegate: string; input: Record<string, unknown> }> = [];
+  const client = {
+    discipline: { upsert: async (input: Record<string, unknown>) => { calls.push({ delegate: "discipline", input }); return { id: `discipline-${calls.length}` }; } },
+    tLineSportConfig: { upsert: async (input: Record<string, unknown>) => { calls.push({ delegate: "sport", input }); return { id: `sport-${calls.length}` }; } },
+    tLineChampionship: { upsert: async (input: Record<string, unknown>) => { calls.push({ delegate: "championship", input }); return { id: `championship-${calls.length}` }; } },
+    tLineScheduleState: { upsert: async (input: Record<string, unknown>) => { calls.push({ delegate: "schedule", input }); return { id: "global" }; } },
+  } as unknown as PrismaClient;
+
+  const result = await bootstrapTLinePilots(client);
+  assert.equal(result.sports.length, 3);
+  assert.deepEqual(calls.filter((item) => item.delegate === "championship").map((item) => {
+    const create = item.input.create as Record<string, unknown>;
+    return { provider: create.sourceProvider, active: create.active, autoEnabled: create.autoEnabled, adminId: create.adminChampionshipId };
+  }), [
+    { provider: "volley-ru", active: true, autoEnabled: false, adminId: null },
+    { provider: "volley-ru", active: true, autoEnabled: false, adminId: null },
+    { provider: "nffr-floorball", active: true, autoEnabled: false, adminId: null },
+    { provider: "hockey-by", active: true, autoEnabled: false, adminId: null },
+  ]);
+});
+
+test("hockey bootstrap uses idempotent upserts and never overwrites operator settings", async () => {
+  const calls: Array<{ delegate: string; input: Record<string, unknown> }> = [];
+  const client = {
+    discipline: { upsert: async (input: Record<string, unknown>) => { calls.push({ delegate: "discipline", input }); return { id: "discipline-hockey" }; } },
+    tLineSportConfig: { upsert: async (input: Record<string, unknown>) => { calls.push({ delegate: "sport", input }); return { id: "sport-hockey" }; } },
+    tLineChampionship: { upsert: async (input: Record<string, unknown>) => { calls.push({ delegate: "championship", input }); return { id: "championship-hockey" }; } },
+    tLineScheduleState: { upsert: async (input: Record<string, unknown>) => { calls.push({ delegate: "schedule", input }); return { id: "global" }; } },
+  } as unknown as PrismaClient;
+
+  const result = await bootstrapTLineHockeyPilot(client);
+  assert.deepEqual(result.championshipIds, ["championship-hockey"]);
+  assert.deepEqual(calls.map((call) => call.delegate), ["discipline", "sport", "championship", "schedule"]);
+  assert.deepEqual(calls[0].input.update, {});
+  assert.deepEqual(calls[1].input.update, {});
+  assert.deepEqual(calls[2].input.update, {});
+  const sport = calls[1].input.create as Record<string, unknown>;
+  const championship = calls[2].input.create as Record<string, unknown>;
+  assert.equal(sport.adminSportId, null);
+  assert.equal(sport.autoEnabled, false);
+  assert.equal(championship.adminChampionshipId, null);
+  assert.equal(championship.globalHeaderId, undefined);
+  assert.equal(championship.autoEnabled, false);
 });
 
 test("volleyball pilot bootstrap is implemented with idempotent upserts and safe disabled automation", async () => {
@@ -117,6 +189,20 @@ test("the additive TLine migration creates the two pilot rows with automation di
   assert.match(sql, /01KYPZAKJB0SMM0D6TGV3W0Y85/u);
   assert.match(sql, /01KZQZR5T3NETE0RT7VHND16VW/u);
   assert.match(sql, /INSERT INTO "TLineScheduleState"[\s\S]*false/u);
+});
+
+test("the additive hockey migration creates only the approved fail-closed pilot", () => {
+  const sql = readFileSync(
+    path.join(process.cwd(), "backend", "prisma", "migrations", "20260831120000_tline_hockey", "migration.sql"),
+    "utf8",
+  );
+  assert.match(sql, /'hockey', 'Хоккей'/u);
+  assert.match(sql, /Хоккей\. Беларусь\. Высшая лига/u);
+  assert.match(sql, /'2026\/27', 'hockey-by'/u);
+  assert.match(sql, /'https:\/\/hockey\.by\/calendar\/'/u);
+  assert.match(sql, /'11:5', NULL, NULL, 'Europe\/Minsk'/u);
+  assert.match(sql, /true, false, NULL, NULL/u);
+  assert.doesNotMatch(sql, /UPDATE\s+"TLineScheduleState"/iu);
 });
 
 test("source-check datetimes without an offset use Europe/Moscow consistently", () => {

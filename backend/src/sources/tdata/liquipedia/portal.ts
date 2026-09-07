@@ -23,7 +23,21 @@ const PORTAL_UPCOMING_WINDOW_DAYS = Number(process.env.LIQUIPEDIA_PORTAL_UPCOMIN
 const PORTAL_MAX_TOURNAMENTS = Number(process.env.LIQUIPEDIA_PORTAL_MAX_TOURNAMENTS || 15);
 const PORTAL_TIMEOUT_MS = Number(process.env.LIQUIPEDIA_PORTAL_TIMEOUT_MS || 60000);
 
-export async function fetchDisciplinePortal(slug: string, force = false): Promise<DisciplinePortalData> {
+type PortalFetchOptions = {
+  force?: boolean;
+  readOnly?: boolean;
+  failClosed?: boolean;
+  signal?: AbortSignal;
+};
+
+export async function fetchDisciplinePortal(
+  slug: string,
+  input: boolean | PortalFetchOptions = false,
+): Promise<DisciplinePortalData> {
+  const options = typeof input === "boolean" ? { force: input } : input;
+  const force = Boolean(options.force);
+  const readOnly = Boolean(options.readOnly);
+  options.signal?.throwIfAborted();
   const cacheKey = slug;
   const portalCache = getPortalCache();
   
@@ -33,7 +47,7 @@ export async function fetchDisciplinePortal(slug: string, force = false): Promis
       console.log(`[Portal Lib] Returning in-memory cache for ${slug}`);
       return cached.data;
     }
-  } else {
+  } else if (!readOnly) {
     // If force, clear proxy cooldowns AND clear this portal's cache
     const { resetProxyCooldowns } = await import("@backend/proxy/proxySelector");
     await resetProxyCooldowns();
@@ -41,26 +55,37 @@ export async function fetchDisciplinePortal(slug: string, force = false): Promis
     console.log(`[Portal Lib] Force refresh: cleared proxy cooldowns and portal cache for ${slug}`);
   }
 
-  let timeoutId: NodeJS.Timeout | null = null;
-  const timeoutPromise = new Promise<DisciplinePortalData>((resolve) => {
-    timeoutId = setTimeout(() => {
-      console.warn(`[Portal Lib] TIMEOUT reached for ${slug}, returning cached/empty`);
-      const cached = portalCache.get(cacheKey);
-      resolve(cached?.data || { slug, name: slug, tournaments: [] });
-    }, PORTAL_TIMEOUT_MS);
-  });
+  const controller = new AbortController();
+  const onAbort = () => controller.abort(options.signal?.reason);
+  options.signal?.addEventListener("abort", onAbort, { once: true });
+  if (options.signal?.aborted) onAbort();
+  const timeoutId = setTimeout(() => {
+    console.warn(`[Portal Lib] TIMEOUT reached for ${slug}`);
+    controller.abort(new Error(`Liquipedia portal request timed out for ${slug}`));
+  }, PORTAL_TIMEOUT_MS);
 
   try {
-    return await Promise.race([
-      internalFetchDisciplinePortal(slug, force),
-      timeoutPromise,
-    ]);
+    return await internalFetchDisciplinePortal(slug, {
+      force,
+      allowCachedFallback: !readOnly,
+      writeCache: !readOnly,
+      failClosed: Boolean(options.failClosed || readOnly),
+      signal: controller.signal,
+    });
   } finally {
-    if (timeoutId) clearTimeout(timeoutId);
+    clearTimeout(timeoutId);
+    options.signal?.removeEventListener("abort", onAbort);
   }
 }
 
-async function internalFetchDisciplinePortal(slug: string, force = false): Promise<DisciplinePortalData> {
+async function internalFetchDisciplinePortal(slug: string, options: {
+  force: boolean;
+  allowCachedFallback: boolean;
+  writeCache: boolean;
+  failClosed: boolean;
+  signal: AbortSignal;
+}): Promise<DisciplinePortalData> {
+  const { force } = options;
   const cacheKey = slug;
   const urls = [`https://liquipedia.net/${slug}/Main_Page`];
   if (slug === 'leagueoflegends') {
@@ -78,26 +103,31 @@ async function internalFetchDisciplinePortal(slug: string, force = false): Promi
       for (const url of urls) {
         try {
           console.log(`[Portal Lib] Fetching ${url} via Proxy (Attempt ${attempts}/${maxAttempts})`);
-          const content = await withGenericRateLimit(() => fetchHtml(url), `portal:${slug}`);
+          options.signal.throwIfAborted();
+          const content = await withGenericRateLimit(() => fetchHtml(url, { signal: options.signal }), `portal:${slug}`);
           if (content.length > 5000) {
             html = content;
             break;
           }
         } catch (e) {
+          options.signal.throwIfAborted();
           console.error(`[Portal Lib] Failed to fetch ${url}:`, e);
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      options.signal.throwIfAborted();
+    }
 
     if (!html && attempts < maxAttempts) {
       console.log(`[Portal Lib] No content received, waiting 2s before retry...`);
-      await new Promise(r => setTimeout(r, 2000 + Math.floor(Math.random() * 700)));
+      await abortableDelay(2000 + Math.floor(Math.random() * 700), options.signal);
     }
   }
 
   if (!html) {
-    const cached = getPortalCache().get(cacheKey);
+    const cached = options.allowCachedFallback ? getPortalCache().get(cacheKey) : null;
     if (cached) return cached.data;
+    if (options.failClosed) throw new Error(`Liquipedia portal returned no usable HTML for ${slug}`);
     return { slug, name: slug, tournaments: [] };
   }
   
@@ -105,16 +135,33 @@ async function internalFetchDisciplinePortal(slug: string, force = false): Promi
       ? buildLeagueOfLegendsPortalResult(html, slug)
       : buildGenericPortalResult(html, slug);
 
-    if (result.tournaments.length > 0) {
+    if (options.writeCache && result.tournaments.length > 0) {
       getPortalCache().set(cacheKey, { data: result, timestamp: Date.now() });
     }
     return result;
   } catch (err) {
+    options.signal.throwIfAborted();
     console.error(`[Portal Lib] Error in fetchDisciplinePortal for ${slug}:`, err);
-    const cached = getPortalCache().get(cacheKey);
+    if (options.failClosed) throw err;
+    const cached = options.allowCachedFallback ? getPortalCache().get(cacheKey) : null;
     if (cached) return cached.data;
     return { slug, name: slug, tournaments: [] };
   }
+}
+
+function abortableDelay(milliseconds: number, signal: AbortSignal) {
+  signal.throwIfAborted();
+  return new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, milliseconds);
+    const onAbort = () => {
+      clearTimeout(timeout);
+      reject(signal.reason);
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 export function buildLeagueOfLegendsPortalResult(
@@ -448,5 +495,3 @@ function inferPortalYear(month: number, day: number, now: Date) {
 function isValidPortalDay(day: number) {
   return Number.isInteger(day) && day >= 1 && day <= 31;
 }
-
-

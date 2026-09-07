@@ -3,11 +3,8 @@
 import { useState } from "react";
 import { useGlobalSettings } from "@/hooks/useGlobalSettings";
 import { SettingsRequestError } from "./SettingsRequestError";
-import { WTT_EVENTS_ENDPOINT } from "@backend/sources/tablet/WTT";
 
 const DEFAULT_SETTINGS = {
-  tablet_wtt_events_endpoint: WTT_EVENTS_ENDPOINT,
-  tablet_wtt_user_agent: "TData TableT/WTT (+https://www.worldtabletennis.com/eventslist)",
   tablet_wtt_default_days: "14",
   tablet_wtt_window_days: "60",
   tablet_admin_api_url: "",
@@ -21,7 +18,10 @@ export default function TableTGlobalSettings() {
   const [isSourceOpen, setIsSourceOpen] = useState(false);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const { settings, setSettings, loading, loaded, saving, error, retryLoad, save } = useGlobalSettings(DEFAULT_SETTINGS, normalizeSettings);
+  const { settings, setSettings, loading, loaded, saving, error, retryLoad, save } = useGlobalSettings(
+    DEFAULT_SETTINGS,
+    normalizeSettings,
+  );
 
   const handleSave = async () => {
     // Выходим из редактирования только после подтверждения сервера; при ошибке введённые значения остаются на месте.
@@ -41,39 +41,45 @@ export default function TableTGlobalSettings() {
           onClick={() => !isEditing && setIsSourceOpen(!isSourceOpen)}
         >
           <div className="flex items-center gap-4">
-            <div className={`flex h-10 w-10 items-center justify-center rounded-2xl transition-all ${isSourceOpen ? "bg-cyan-600 text-white shadow-lg shadow-cyan-200" : "bg-slate-100 text-slate-400"}`}>
-              <svg className={`h-6 w-6 transition-transform duration-500 ${isSourceOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div
+              className={`flex h-10 w-10 items-center justify-center rounded-2xl transition-all ${isSourceOpen ? "bg-cyan-600 text-white shadow-lg shadow-cyan-200" : "bg-slate-100 text-slate-400"}`}
+            >
+              <svg
+                className={`h-6 w-6 transition-transform duration-500 ${isSourceOpen ? "rotate-180" : ""}`}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
               </svg>
             </div>
             <div>
               <h2 className="text-2xl font-black tracking-tight text-slate-900">TableT: WTT</h2>
-              <p className="mt-0.5 text-xs font-bold text-slate-500">Источник событий World Table Tennis и окно поиска турниров</p>
+              <p className="mt-0.5 text-xs font-bold text-slate-500">
+                Источник событий World Table Tennis и окно поиска турниров
+              </p>
             </div>
           </div>
 
-          <EditActions isEditing={isEditing} saving={saving} onEdit={() => { setIsEditing(true); setIsSourceOpen(true); }} onCancel={() => setIsEditing(false)} onSave={handleSave} />
+          <EditActions
+            isEditing={isEditing}
+            saving={saving}
+            onEdit={() => {
+              setIsEditing(true);
+              setIsSourceOpen(true);
+            }}
+            onCancel={() => setIsEditing(false)}
+            onSave={handleSave}
+          />
         </div>
 
-        <div className={`overflow-hidden transition-all duration-500 ease-in-out ${isSourceOpen ? "max-h-[1200px] opacity-100" : "max-h-0 opacity-0"}`}>
+        <div
+          className={`overflow-hidden transition-all duration-500 ease-in-out ${isSourceOpen ? "max-h-[1200px] opacity-100" : "max-h-0 opacity-0"}`}
+        >
           <div className="space-y-6 p-8 pt-0">
             <div className="mb-8 h-px bg-slate-100" />
 
             <dl className="grid gap-6">
-              <SettingsRow
-                label="WTT Events Endpoint"
-                name="tablet_wtt_events_endpoint"
-                value={settings.tablet_wtt_events_endpoint}
-                isEditing={isEditing}
-                onChange={(val) => setSettings({ ...settings, tablet_wtt_events_endpoint: val })}
-              />
-              <SettingsRow
-                label="WTT User-Agent"
-                name="tablet_wtt_user_agent"
-                value={settings.tablet_wtt_user_agent}
-                isEditing={isEditing}
-                onChange={(val) => setSettings({ ...settings, tablet_wtt_user_agent: val })}
-              />
               <SettingsRow
                 label="Default Days"
                 name="tablet_wtt_default_days"
@@ -99,21 +105,41 @@ export default function TableTGlobalSettings() {
           onClick={() => !isEditing && setIsUploadOpen(!isUploadOpen)}
         >
           <div className="flex items-center gap-4">
-            <div className={`flex h-10 w-10 items-center justify-center rounded-2xl transition-all ${isUploadOpen ? "bg-cyan-600 text-white shadow-lg shadow-cyan-200" : "bg-slate-100 text-slate-400"}`}>
-              <svg className={`h-6 w-6 transition-transform duration-500 ${isUploadOpen ? "rotate-180" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div
+              className={`flex h-10 w-10 items-center justify-center rounded-2xl transition-all ${isUploadOpen ? "bg-cyan-600 text-white shadow-lg shadow-cyan-200" : "bg-slate-100 text-slate-400"}`}
+            >
+              <svg
+                className={`h-6 w-6 transition-transform duration-500 ${isUploadOpen ? "rotate-180" : ""}`}
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
               </svg>
             </div>
             <div>
               <h2 className="text-2xl font-black tracking-tight text-slate-900">TableT: Заливка</h2>
-              <p className="mt-0.5 text-xs font-bold text-slate-500">Отдельные Admin API и Sport ID для настольного тенниса</p>
+              <p className="mt-0.5 text-xs font-bold text-slate-500">
+                Отдельные Admin API и Sport ID для настольного тенниса
+              </p>
             </div>
           </div>
 
-          <EditActions isEditing={isEditing} saving={saving} onEdit={() => { setIsEditing(true); setIsUploadOpen(true); }} onCancel={() => setIsEditing(false)} onSave={handleSave} />
+          <EditActions
+            isEditing={isEditing}
+            saving={saving}
+            onEdit={() => {
+              setIsEditing(true);
+              setIsUploadOpen(true);
+            }}
+            onCancel={() => setIsEditing(false)}
+            onSave={handleSave}
+          />
         </div>
 
-        <div className={`overflow-hidden transition-all duration-500 ease-in-out ${isUploadOpen ? "max-h-[1200px] opacity-100" : "max-h-0 opacity-0"}`}>
+        <div
+          className={`overflow-hidden transition-all duration-500 ease-in-out ${isUploadOpen ? "max-h-[1200px] opacity-100" : "max-h-0 opacity-0"}`}
+        >
           <div className="space-y-6 p-8 pt-0">
             <div className="mb-8 h-px bg-slate-100" />
 

@@ -30,7 +30,7 @@ const RUSSIAN_MONTHS: Record<string, number> = {
   "декабря": 11,
 };
 
-export function parseDltvEvents(html: string, baseUrl = DLTV_ORIGIN): DltvEvent[] {
+export function parseDltvEvents(html: string, baseUrl = DLTV_ORIGIN, now = new Date()): DltvEvent[] {
   const $ = cheerio.load(html);
   const byUrl = new Map<string, DltvEvent>();
 
@@ -53,7 +53,7 @@ export function parseDltvEvents(html: string, baseUrl = DLTV_ORIGIN): DltvEvent[
       title,
       url,
       dates: dates || undefined,
-      status: detectEventStatus(text, $(element).closest("section").attr("class") || ""),
+      status: deriveDltvEventStatus(dates, `${text} ${$(element).closest("section").attr("class") || ""}`, now),
     };
     const existing = byUrl.get(url);
     if (!existing || scoreEvent(event) > scoreEvent(existing)) byUrl.set(url, event);
@@ -93,7 +93,7 @@ export function parseDltvEventPage(html: string, pageUrl: string): DltvEventPage
   const title = cleanText($("h1").first().text()) || cleanTitle($("title").text()) || id.replace(/-/g, " ");
   const overviewText = cleanText($(".event__overview").first().text());
   const dates = extractDateRange(cleanText($(".event__title-dates").first().text()) || overviewText);
-  const status = detectEventStatus(overviewText, "");
+  const status = deriveDltvEventStatus(dates, overviewText);
   const participantsByUrl = new Map<string, DltvParticipant>();
 
   $("a[href*='/teams/']").each((_, element) => {
@@ -265,8 +265,14 @@ function findJsonDate(value: unknown): string | null {
 
 export function extractDltvEventId(pageUrl: string) {
   const path = safeUrl(pageUrl)?.pathname || pageUrl;
-  const match = path.match(/\/events\/([^/?#]+)/i);
-  return decodeURIComponent(match?.[1] || "").trim();
+  const match = path.match(/\/events\/(.+?)(?:\/+)?$/i);
+  if (!match?.[1]) return "";
+  return match[1]
+    .split("/")
+    .filter(Boolean)
+    .map((segment) => decodeURIComponent(segment))
+    .join("/")
+    .trim();
 }
 
 export function extractDltvMatchId(pageUrl: string) {
@@ -282,7 +288,9 @@ export function normalizeDltvUrl(href: string, baseUrl = DLTV_ORIGIN) {
     const url = new URL(raw, baseUrl);
     if (!/(^|\.)dltv\.org$/i.test(url.hostname)) return "";
     url.hash = "";
-    return url.toString();
+    url.search = "";
+    url.pathname = url.pathname.replace(/\/{2,}/g, "/").replace(/\/$/, "") || "/";
+    return url.toString().replace(/\/$/, "");
   } catch {
     return "";
   }
@@ -414,10 +422,24 @@ function extractPrizePool(text: string) {
   return match ? cleanText(match[1]) : null;
 }
 
-function detectEventStatus(text: string, context: string): DltvEventStatus {
-  const combined = `${text} ${context}`.toLowerCase();
+export function deriveDltvEventStatus(dates: string | null | undefined, context: string, now = new Date()): DltvEventStatus {
+  const range = parseDltvDateRange(dates || "");
+  if (range) {
+    const todayStart = new Date(now);
+    todayStart.setUTCHours(0, 0, 0, 0);
+    const todayEnd = new Date(todayStart);
+    todayEnd.setUTCDate(todayEnd.getUTCDate() + 1);
+    if (range.end && range.end < todayStart) return "finished";
+    if (range.start >= todayEnd) return "upcoming";
+
+    const combined = String(context || "").toLowerCase();
+    return /\blive\b|ongoing__events/.test(combined) ? "live" : "ongoing";
+  }
+
+  const combined = String(context || "").toLowerCase();
   if (/\blive\b|ongoing__events/.test(combined)) return "live";
   if (/upcoming__events|предст|будущ/i.test(combined)) return "upcoming";
+  if (/finished|заверш|прошед/i.test(combined)) return "finished";
   return "ongoing";
 }
 

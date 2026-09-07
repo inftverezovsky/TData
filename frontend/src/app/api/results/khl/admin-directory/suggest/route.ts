@@ -2,7 +2,6 @@ import { apiErrorResponse, logApiError } from "@backend/http/apiResponse";
 import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
 
-import { requireAdmin } from "@backend/auth/adminAuth";
 import { prisma } from "@backend/db/db";
 import {
   buildKhlAdminDirectorySearch,
@@ -14,9 +13,6 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
-    const unauthorized = await requireAdmin(request);
-    if (unauthorized) return unauthorized;
-
     const url = new URL(request.url);
     const query = String(url.searchParams.get("q") || "").trim();
     const limit = clampLimit(url.searchParams.get("limit"));

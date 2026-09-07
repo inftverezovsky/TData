@@ -33,7 +33,7 @@ npm run build
 
 Do not put the runtime password in repository files or shell scripts. If a local file is required, create `C:\Users\Sa1z1ngr0z\Desktop\TData\.env.test.local`, keep it ignored by Git, and define `DATABASE_URL=...` and `TEST_DATABASE_URL=...` there with local-only values. Existing scripts do not automatically load that file; inject it only into the intended test process.
 
-The base additive migration is `backend/prisma/migrations/20260830190000_tline_mvp/migration.sql`; the Admin hierarchy is added by `backend/prisma/migrations/20260830233000_tline_admin_hierarchy/migration.sql`. Before production both must pass a clean test database and a restored production dump rehearsal, followed by a schema diff.
+The base additive migration is `backend/prisma/migrations/20260830190000_tline_mvp/migration.sql`; the Admin hierarchy is added by `backend/prisma/migrations/20260830233000_tline_admin_hierarchy/migration.sql`; the floorball pilot and persisted undated-match option are added by `backend/prisma/migrations/20260831090000_tline_floorball/migration.sql`; the Belarus hockey pilot is added by the data-only `backend/prisma/migrations/20260831120000_tline_hockey/migration.sql`. Before production all migrations must pass a clean test database and a restored production dump rehearsal, followed by a schema diff.
 
 ## Admin hierarchy and team directory
 
@@ -65,6 +65,30 @@ To repeat the database bootstrap explicitly after applying the migration:
 ```powershell
 npm run tline:bootstrap-pilot
 ```
+
+## Floorball pilot
+
+The same idempotent bootstrap creates the active `Флорбол` sport and one disabled 2026/27 pilot championship:
+
+- `Флорбол. Россия. Высшая лига` — NFFR calendar ID `200` at `https://xn--m1agla.xn--p1ai/sport/calendar/200`.
+
+The `nffr-floorball` adapter performs one fresh HTML request, follows no redirects, and accepts only the exact NFFR HTTPS calendar path. It extracts official match, team and competition IDs directly from calendar links, so it does not request individual protocol pages.
+
+The current calendar has 8 teams and 56 matches without assigned dates. Manual runs exclude those matches by default while still synchronizing all source teams. Enable `Включать матчи без даты` for a run to persist and display them as `Время на сайте не определено`. The choice is stored with the run and its job; scheduled runs always keep it disabled. Historical rows with `dd.MM.yyyy HH:mm` are interpreted in `Europe/Moscow` and stored in UTC together with the original source text.
+
+Until the independent Admin Sport/Shapka/Championship IDs and the read-only Admin adapter are configured, a run intentionally keeps the official evidence and reports `ADMIN_LINE_NOT_CONFIGURED` rather than fabricating Admin matches.
+
+## Belarus hockey pilot
+
+The idempotent bootstrap also creates the active `Хоккей` sport and one disabled 2026/27 pilot championship:
+
+- `Хоккей. Беларусь. Высшая лига` — hockey.by Season `11`, League `5` (`11:5`) at `https://hockey.by/calendar/`, interpreted in `Europe/Minsk`.
+
+The `hockey-by` adapter uses the fixed public Bitrix calendar endpoint. Every check makes fresh `POST` requests with `cache: no-store`, rejects redirects and protection responses, and never serves stored business HTML as a fallback. It requests only the months in the selected period, discovers published stages dynamically, and excludes `Товарищеские матчи`. Requests are sequential and bounded to 12 months, 50 pages, 600 raw match cards, 5 MiB per response, 15 seconds per request and 120 seconds for the complete operation, with a 250 ms pause between calls. Client cancellation propagates to the source request. It never opens a separate gamecenter page for each match.
+
+Match evidence uses stable `/gamecenter/{id}/` IDs and team links from `/new-admin/clubs/{id}/`. Seasonal roster IDs are used only to enrich names and aliases. As of 2026-08-30 the official 2026/27 response lists 15 roster entries and 20 friendlies, but no competitive stage. A source connection check therefore reports 15 teams, 20 found, 0 eligible and 20 excluded. The run state uses `SOURCE_STAGE_NOT_PUBLISHED` and shows the precise empty-state explanation instead of claiming that the parser found nothing. When hockey.by publishes a competitive stage, the same discovery flow starts returning those matches without a configuration change.
+
+Admin Sport/Shapka/Championship IDs, championship automation and the scheduler remain unset. This preserves official-source diagnostics while keeping the Admin comparison fail-closed.
 
 ## Runtime
 

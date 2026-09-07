@@ -1,4 +1,7 @@
 import type { OfficialSourceAdapter } from "./contracts";
+import { createHockeyByAdapter } from "./hockeyBy";
+import { createNffrFloorballAdapter } from "./nffrFloorball";
+import { createVolleyRuAdapter } from "./volleyRu";
 
 export interface OfficialSourceRegistry {
   readonly providers: readonly string[];
@@ -21,4 +24,12 @@ export function createOfficialSourceRegistry(adapters: readonly OfficialSourceAd
       return adapter;
     },
   });
+}
+
+export function createDefaultOfficialSourceRegistry(): OfficialSourceRegistry {
+  return createOfficialSourceRegistry([
+    createVolleyRuAdapter(),
+    createNffrFloorballAdapter(),
+    createHockeyByAdapter(),
+  ]);
 }

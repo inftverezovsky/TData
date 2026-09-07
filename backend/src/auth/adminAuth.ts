@@ -6,6 +6,13 @@ import { apiErrorResponse, ApiRequestError, logApiError } from "../http/apiRespo
 const ADMIN_SESSION_COOKIE = "tdata_admin_session";
 const SESSION_TTL_SECONDS = 12 * 60 * 60;
 const SESSION_SIGNATURE_VERSION = "settings-password-v3";
+const PUBLIC_ORIGIN_ENV_KEYS = [
+  "TDATA_PUBLIC_BASE_URL",
+  "NEXT_PUBLIC_APP_URL",
+  "NEXT_PUBLIC_SITE_URL",
+  "PUBLIC_BASE_URL",
+  "APP_URL",
+] as const;
 
 export async function verifyAdminPassword(password: string) {
   return Boolean(await verifyAdminCredential(password));
@@ -164,6 +171,12 @@ function requestOrigins(request: Request) {
     ? normalizeOrigin(request.url)
     : normalizeHostOrigin(host, new URL(request.url).protocol);
   if (requestOrigin) origins.add(requestOrigin);
+
+  // Явно настроенный адрес сайта принимаем и при внутреннем HTTP-адресе reverse proxy.
+  for (const key of PUBLIC_ORIGIN_ENV_KEYS) {
+    const configuredOrigin = normalizeOrigin(process.env[key] || null);
+    if (configuredOrigin) origins.add(configuredOrigin);
+  }
 
   // Пересылаемый внешний authority разрешаем только за явно настроенным доверенным прокси.
   if (process.env.TRUST_PROXY_HEADERS !== "1" && process.env.TRUST_PROXY_HEADERS !== "true") {

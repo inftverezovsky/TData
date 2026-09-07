@@ -1,23 +1,21 @@
 import { PrismaClient } from "@prisma/client";
 
-import { bootstrapTLineVolleyballPilot } from "../backend/src/tline/pilot/bootstrap";
+import { bootstrapTLinePilots } from "../backend/src/tline/pilot/bootstrap";
 
 const prisma = new PrismaClient();
 
 async function main() {
-  const result = await bootstrapTLineVolleyballPilot(prisma);
+  const result = await bootstrapTLinePilots(prisma);
   console.log(JSON.stringify({
     ok: true,
-    disciplineId: result.disciplineId,
-    sportConfigId: result.sportConfigId,
-    championshipIds: result.championshipIds,
+    sports: result.sports,
     existingOperationalStatePreserved: true,
   }, null, 2));
 }
 
 main()
   .catch((error) => {
-    console.error("TLine volleyball pilot bootstrap failed:", error instanceof Error ? error.message : error);
+    console.error("TLine pilot bootstrap failed:", error instanceof Error ? error.message : error);
     process.exitCode = 1;
   })
   .finally(async () => {

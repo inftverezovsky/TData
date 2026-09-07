@@ -96,17 +96,24 @@ export function getTitleVariants(title: string, pageUrl: string | null | undefin
   return variants;
 }
 
-export async function canonicalizeMatchesWithTournamentTeams(matches: any[], tournamentId: string, disciplineSlug: string, draftParticipants?: Prisma.TournamentParticipantCreateManyInput[]) {
+export async function canonicalizeMatchesWithTournamentTeams(
+  matches: any[],
+  tournamentId: string,
+  disciplineSlug: string,
+  incomingParticipants: any[] = [],
+  transactionClient?: Prisma.TransactionClient,
+) {
+  const client = transactionClient || prisma;
   const [participants, mappings] = await Promise.all([
-    draftParticipants ?? prisma.tournamentParticipant.findMany({
+    client.tournamentParticipant.findMany({
       where: { tournamentId },
       select: { name: true, rawText: true, platformId: true, logoUrl: true },
     }),
-    prisma.teamMapping.findMany({ where: { disciplineSlug } }),
+    client.teamMapping.findMany({ where: { disciplineSlug } }),
   ]);
 
   const canonicalizer = buildTeamNameCanonicalizer({
-    participants,
+    participants: [...participants, ...incomingParticipants],
     mappings,
     extraNames: matches.flatMap((match: any) => [match.teamAName, match.teamBName]),
   });
@@ -116,29 +123,44 @@ export async function canonicalizeMatchesWithTournamentTeams(matches: any[], tou
   }
 }
 
-export async function appendTournamentWarning(tournamentId: string, warning: string) {
-  const tournament = await prisma.tournament.findUnique({
-    where: { id: tournamentId },
+type TournamentWarningClient = Pick<Prisma.TransactionClient, "tournament">;
+
+export async function appendTournamentWarning(params: {
+  client: TournamentWarningClient;
+  tournamentId: string;
+  warning: string;
+}) {
+  const tournament = await params.client.tournament.findUnique({
+    where: { id: params.tournamentId },
     select: { normalization: true },
   });
-  const normalization = isPlainObject(tournament?.normalization)
-    ? tournament?.normalization as Record<string, unknown>
+  const normalization = mergeTournamentWarningNormalization(
+    tournament?.normalization,
+    params.warning,
+  );
+
+  await params.client.tournament.update({
+    where: { id: params.tournamentId },
+    data: {
+      extractionStatus: "PARTIAL",
+      normalization,
+    },
+  });
+}
+
+export function mergeTournamentWarningNormalization(value: unknown, warning: string) {
+  const normalization = isPlainObject(value)
+    ? value as Record<string, unknown>
     : {};
   const existingWarnings = Array.isArray(normalization.warnings)
     ? normalization.warnings.filter((item): item is string => typeof item === "string")
     : [];
 
-  await prisma.tournament.update({
-    where: { id: tournamentId },
-    data: {
-      extractionStatus: "PARTIAL",
-      normalization: {
-        ...normalization,
-        warnings: Array.from(new Set([...existingWarnings, warning])),
-        qualityGateKeptPrevious: true,
-      } as Prisma.InputJsonValue,
-    },
-  });
+  return {
+    ...normalization,
+    warnings: Array.from(new Set([...existingWarnings, warning])),
+    qualityGateKeptPrevious: true,
+  } as Prisma.InputJsonValue;
 }
 
 export function extractRevisionId(rawJson: any) {

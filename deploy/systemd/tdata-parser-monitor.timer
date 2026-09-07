@@ -1,0 +1,11 @@
+[Unit]
+Description=Run TData parser reliability monitor every Friday at 18:00 Moscow time
+
+[Timer]
+OnCalendar=Fri *-*-* 18:00:00 Europe/Moscow
+Persistent=true
+AccuracySec=1min
+Unit=tdata-parser-monitor.service
+
+[Install]
+WantedBy=timers.target

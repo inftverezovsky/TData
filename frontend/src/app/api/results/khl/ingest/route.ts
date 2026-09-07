@@ -1,7 +1,7 @@
 import { safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 
-import { requireAdmin, requireSameOriginJsonMutation } from "@backend/auth/adminAuth";
+import { requireSameOriginJsonMutation } from "@backend/auth/adminAuth";
 import { prisma } from "@backend/db/db";
 import { KHL_RESULTS_CUTOFF } from "@backend/results/khl/autoSync";
 import { KhlRepositoryError, ingestKhlEventDetail } from "@backend/results/khl/repository";
@@ -12,8 +12,6 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
   const unsafeRequest = requireSameOriginJsonMutation(request);
   if (unsafeRequest) return unsafeRequest;
 

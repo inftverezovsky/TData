@@ -1,17 +1,14 @@
 import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
-import { requireAdmin, requireSameOriginJsonMutation } from "@backend/auth/adminAuth";
+import { requireSameOriginJsonMutation } from "@backend/auth/adminAuth";
 import { getNormalizer, hasNormalizer } from "@backend/normalizers/registry";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
-
-  // Запускаем парсер лишь для авторизованного запроса из интерфейса своего сайта.
-  const unsafeMutation = requireSameOriginJsonMutation(request);
-  if (unsafeMutation) return unsafeMutation;
+  // Публичный парсер запускаем только для запроса из интерфейса своего сайта.
+  const invalidMutation = requireSameOriginJsonMutation(request);
+  if (invalidMutation) return invalidMutation;
 
   try {
     const { disciplineSlug, wikitext } = await request.json();

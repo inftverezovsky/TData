@@ -65,4 +65,5 @@ export type ApiRequestOptions = {
   timeoutMs?: number;
   maxRetries?: number;
   mode?: string;
+  signal?: AbortSignal;
 };

@@ -1,7 +1,13 @@
 import * as cheerio from "cheerio";
 import { DateTime } from "luxon";
 import { formatMoscowDate, formatMoscowDateTime } from "@backend/matches/scheduleOffset";
+import { readBoundedBodyText } from "@backend/http/boundedResponse";
 import { normalizeBeachVolleyballGender, type BeachVolleyballGender } from "@backend/sources/tbvolley/config";
+import {
+  fetchFedervolleyOfficialCalendar,
+  fetchFedervolleyOfficialTournamentRows,
+  type FedervolleyOfficialTournamentRow,
+} from "./officialJson";
 
 export type FedervolleyGender = BeachVolleyballGender;
 export type FedervolleyCategory = "all" | "assoluto" | "serie";
@@ -78,6 +84,9 @@ export type FedervolleyTournamentSearch = {
     assoluto: number;
     serie: number;
     matches: number;
+    rawTotal?: number;
+    filteredOut?: number;
+    emptyReason?: "date_window" | null;
   };
 };
 
@@ -100,6 +109,7 @@ type MatchshareTeamRef = {
 };
 
 const FEDERVOLLEY_ORIGIN = "https://beachvolley.federvolley.it";
+const FEDERVOLLEY_PUBLIC_ORIGIN = "https://www.federvolley.it";
 const MATCHSHARE_ORIGIN = "https://srv.matchshare.it";
 const MATCHSHARE_CLIENT_NAME = "bvl_development";
 const FEDERVOLLEY_USER_AGENT = "TData TBvolley/1.0 (+https://beachvolley.federvolley.it)";
@@ -169,28 +179,25 @@ export async function searchFedervolleyTournaments(input: {
   gender?: string | null;
   category?: string | null;
   query?: string | null;
+  signal?: AbortSignal;
 } = {}): Promise<FedervolleyTournamentSearch> {
   const year = normalizeYear(input.year);
   const gender = normalizeFedervolleyGender(input.gender);
   const category = normalizeFedervolleyCategory(input.category);
   const query = normalizeSearch(input.query || "");
-  const categories = category === "all"
-    ? (["assoluto", "serie"] as const)
-    : ([category] as Array<Exclude<FedervolleyCategory, "all">>);
-
-  const listings = await Promise.all(categories.map(async (item) => {
-    const sourceUrl = buildListingUrl(item);
-    const html = await fetchFedervolleyText(sourceUrl, "text/html,application/xhtml+xml");
-    return parseFedervolleyListing(html, { category: item, gender, year, query });
-  }));
-  const tournaments = filterFedervolleyUpcomingTournaments(
-    listings.flat().sort(compareFedervolleyTournaments),
-  );
+  const discovered = await discoverFedervolleyTournaments({
+    year,
+    gender,
+    category,
+    query,
+    signal: input.signal,
+  });
+  const tournaments = filterFedervolleyUpcomingTournaments(discovered);
 
   return {
     ok: true,
     source: "federvolley",
-    sourceUrl: category === "all" ? FEDERVOLLEY_ORIGIN : buildListingUrl(category),
+    sourceUrl: `${FEDERVOLLEY_PUBLIC_ORIGIN}/campionati/beach-volley/eventi`,
     year,
     category,
     gender,
@@ -201,6 +208,9 @@ export async function searchFedervolleyTournaments(input: {
       assoluto: tournaments.filter((tournament) => tournament.category === "assoluto").length,
       serie: tournaments.filter((tournament) => tournament.category === "serie").length,
       matches: tournaments.reduce((sum, tournament) => sum + (tournament.matchCount || 0), 0),
+      rawTotal: discovered.length,
+      filteredOut: Math.max(0, discovered.length - tournaments.length),
+      emptyReason: discovered.length > 0 && tournaments.length === 0 ? "date_window" : null,
     },
   };
 }
@@ -212,19 +222,41 @@ export async function fetchFedervolleyTournament(input: {
   title?: string | null;
   pageUrl?: string | null;
   gender?: string | null;
+  signal?: AbortSignal;
 }): Promise<FedervolleyTournament> {
   const nodeId = clean(input.federvolleyNodeId)
     || extractFedervolleyNodeId(input.pageUrl)
     || extractFedervolleyNodeId(input.title);
   if (!nodeId) throw new Error("Не удалось определить Federvolley node id");
 
+  const gender = normalizeFedervolleyGender(input.gender || input.title || input.pageUrl);
+  const officialYear = extractFedervolleySeason(input.pageUrl)
+    || extractFedervolleySeason(input.title)
+    || getDefaultFedervolleyYear();
+  const loadOfficial = () => fetchOfficialFedervolleyTournamentDetail({
+    year: officialYear,
+    gender,
+    nodeId,
+    category: input.category,
+    title: input.title,
+    signal: input.signal,
+  });
+  if (isFedervolleyOfficialPageUrl(input.pageUrl)) return loadOfficial();
+
+  try {
+    return await loadOfficial();
+  } catch {
+    input.signal?.throwIfAborted();
+    // Old tournament records can still point to the retired Drupal/Matchshare pages.
+  }
+
   const pageUrl = buildTournamentPageUrl(nodeId);
-  const html = await fetchFedervolleyText(pageUrl, "text/html,application/xhtml+xml");
+  const html = await fetchFedervolleyText(pageUrl, "text/html,application/xhtml+xml", input.signal);
   const detail = parseFedervolleyTournamentPage(html, {
     nodeId,
     requestedTitle: input.title || "",
     pageUrl,
-    gender: input.gender,
+    gender,
     category: input.category,
     matchshareLid: clean(input.matchshareLid),
   });
@@ -238,6 +270,7 @@ export async function fetchFedervolleyTournament(input: {
         pageUrl: detail.pageUrl,
         startDate: detail.startDate,
         endDate: detail.endDate,
+        signal: input.signal,
       })
     : [];
   const htmlMatches = matchshareMatches.length > 0
@@ -259,6 +292,334 @@ export async function fetchFedervolleyTournament(input: {
       ? "upcoming"
       : resolveTournamentStatus(detail.startDate, detail.endDate),
   };
+}
+
+async function fetchOfficialFedervolleyTournamentDetail(input: {
+  year: number;
+  gender: FedervolleyGender;
+  nodeId: string;
+  category?: string | null;
+  title?: string | null;
+  signal?: AbortSignal;
+}) {
+  const payload = await fetchFedervolleyOfficialCalendar({
+    year: input.year,
+    gender: input.gender,
+    nodeId: input.nodeId,
+    signal: input.signal,
+  });
+  return parseFedervolleyOfficialCalendar(payload, {
+    year: input.year,
+    nodeId: input.nodeId,
+    gender: input.gender,
+    category: input.category,
+    requestedTitle: input.title,
+  });
+}
+
+function isFedervolleyOfficialPageUrl(value: unknown) {
+  try {
+    const url = new URL(clean(value));
+    return url.protocol === "https:"
+      && !url.username
+      && !url.password
+      && !url.port
+      && ["federvolley.it", "www.federvolley.it"].includes(url.hostname.toLowerCase())
+      && /^\/campionati\/beach-volley\/20\d{2}\/BVL[MF][1-9]\d{0,15}\/?$/iu.test(url.pathname);
+  } catch {
+    return false;
+  }
+}
+
+async function discoverFedervolleyTournaments(input: {
+  year: number;
+  gender: FedervolleyGender;
+  category: FedervolleyCategory;
+  query: string;
+  signal?: AbortSignal;
+}) {
+  const rows = await fetchFedervolleyOfficialTournamentRows(input.year, input.signal);
+  input.signal?.throwIfAborted();
+  return parseFedervolleyOfficialTournamentRows(rows, input);
+}
+
+export function parseFedervolleyOfficialTournamentRows(
+  rows: readonly FedervolleyOfficialTournamentRow[],
+  options: {
+    year: number;
+    gender: FedervolleyGender;
+    category: FedervolleyCategory;
+    query?: string;
+  },
+): FedervolleyTournament[] {
+  const tournaments: FedervolleyTournament[] = [];
+  const seen = new Set<string>();
+
+  for (const row of rows) {
+    const path = clean(row.path);
+    const nodeId = clean(row.girone_index) || clean(path.match(/\/BVL\/[MF]\/([1-9]\d*)\//u)?.[1]);
+    const code = clean(row.codice);
+    if (!nodeId || !code || seen.has(nodeId)) continue;
+
+    const genderCode = (clean(path.match(/\/BVL\/([MFX])\//iu)?.[1])
+      || clean(code.match(/^BVL([MFX])/iu)?.[1])).toUpperCase();
+    if (genderCode !== "M" && genderCode !== "F") continue;
+    const gender: FedervolleyGender = genderCode === "F" ? "women" : "men";
+    if (gender !== options.gender) continue;
+    const category = resolveOfficialFedervolleyCategory(row);
+    if (options.category !== "all" && category !== options.category) continue;
+
+    const startDate = parseOfficialIsoDate(row.data_inizio_iso) || parseOfficialItalianDate(row.dal);
+    const endDate = parseOfficialIsoDate(row.data_fine_iso) || parseOfficialItalianDate(row.al);
+    if (yearFromIso(startDate || endDate) !== options.year) continue;
+
+    const city = clean(row.comune) || clean(row.luogo).split(/\s+-\s+/u)[0] || "";
+    const region = clean(row.regione) || clean(row.luogo).split(/\s+-\s+/u).slice(1).join(" - ");
+    const tipologia = clean(row.tipologia) || clean(row.menu_eventi_label) || CATEGORY_LABELS[category];
+    const title = [tipologia, city].filter(Boolean).join(" - ") || `Federvolley ${nodeId}`;
+    const pageUrl = buildFedervolleyOfficialPageUrl(options.year, code);
+    const matchshareLid = clean(row.codice_torneo);
+    const tournament: FedervolleyTournament = {
+      id: nodeId,
+      nodeId,
+      matchshareLid,
+      title,
+      sourceTitle: buildFedervolleySourceTitle(title, gender, category, nodeId, matchshareLid),
+      pageUrl,
+      gender,
+      category,
+      categoryLabel: CATEGORY_LABELS[category],
+      code,
+      region,
+      city,
+      location: [city, region].filter(Boolean).join(", "),
+      venue: city,
+      dates: formatDateRangeLabel(startDate, endDate),
+      startDate,
+      endDate,
+      status: resolveTournamentStatus(startDate, endDate),
+      prizePool: clean(row.montepremi),
+      bracketType: clean(row.ranking_type) || tipologia,
+      teams: null,
+    };
+    if (options.query && !normalizeSearch([
+      tournament.title,
+      tournament.code,
+      tournament.city,
+      tournament.region,
+      tournament.categoryLabel,
+      tournament.dates,
+      tournament.nodeId,
+    ].join(" ")).includes(options.query)) continue;
+
+    seen.add(nodeId);
+    tournaments.push(tournament);
+  }
+
+  return tournaments.sort(compareFedervolleyTournaments);
+}
+
+export function parseFedervolleyOfficialCalendar(
+  payload: unknown,
+  options: {
+    year: number;
+    nodeId: string;
+    gender: FedervolleyGender;
+    category?: string | null;
+    requestedTitle?: string | null;
+  },
+): FedervolleyTournament {
+  const root = asRecord(payload);
+  const data = asRecord(root?.data);
+  if (!data || !Array.isArray(data.matches)) {
+    throw new Error("Federvolley official calendar has an unexpected schema.");
+  }
+  const responseNodeId = clean(data.id);
+  if (responseNodeId && responseNodeId !== options.nodeId) {
+    throw new Error("Federvolley official calendar returned a different tournament id.");
+  }
+
+  const gender = normalizeFedervolleyGender(data.genere || options.gender);
+  if (gender !== options.gender) {
+    throw new Error("Federvolley official calendar returned a different gender.");
+  }
+  const category = options.category && normalizeFedervolleyCategory(options.category) !== "all"
+    ? normalizeDetailCategory(options.category)
+    : resolveOfficialFedervolleyCategory(data);
+  const startDate = parseOfficialIsoDate(data.data_inizio_iso) || parseOfficialItalianDate(data.dal);
+  const endDate = parseOfficialIsoDate(data.data_fine_iso) || parseOfficialItalianDate(data.al);
+  const city = clean(data.comune) || clean(data.luogo).split(/\s+-\s+/u)[0] || "";
+  const region = clean(data.regione) || clean(data.luogo).split(/\s+-\s+/u).slice(1).join(" - ");
+  const code = clean(data["title-short"]);
+  const matchshareLid = clean(data.codice_torneo);
+  const pageUrl = buildFedervolleyOfficialPageUrl(options.year, code || `BVL${gender === "women" ? "F" : "M"}${options.nodeId}`);
+  const title = clean(data.title)
+    || stripSourceTitleMetadata(options.requestedTitle || "")
+    || [clean(data.tipologia), city].filter(Boolean).join(" - ")
+    || `Federvolley ${options.nodeId}`;
+  const matches = data.matches
+    .map((match) => parseFedervolleyOfficialMatch(match, {
+      nodeId: options.nodeId,
+      matchshareLid,
+      gender,
+      category,
+      pageUrl,
+    }))
+    .filter((match): match is FedervolleyMatch => Boolean(match))
+    .sort(compareFedervolleyMatches);
+  const teams = new Set(matches.flatMap((match) => [match.teamA.id, match.teamB.id]).filter(Boolean));
+
+  return {
+    id: options.nodeId,
+    nodeId: options.nodeId,
+    matchshareLid,
+    title,
+    sourceTitle: buildFedervolleySourceTitle(title, gender, category, options.nodeId, matchshareLid),
+    pageUrl,
+    gender,
+    category,
+    categoryLabel: CATEGORY_LABELS[category],
+    code,
+    region,
+    city,
+    location: [city, region].filter(Boolean).join(", "),
+    venue: city,
+    dates: formatDateRangeLabel(startDate, endDate),
+    startDate,
+    endDate,
+    status: resolveTournamentStatus(startDate, endDate),
+    prizePool: clean(data.montepremi),
+    bracketType: clean(data.ranking_type) || clean(data.tipologia),
+    teams: teams.size || null,
+    matches,
+    matchCount: matches.length,
+  };
+}
+
+function parseFedervolleyOfficialMatch(
+  value: unknown,
+  options: {
+    nodeId: string;
+    matchshareLid: string;
+    gender: FedervolleyGender;
+    category: Exclude<FedervolleyCategory, "all">;
+    pageUrl: string;
+  },
+): FedervolleyMatch | null {
+  const raw = asRecord(value);
+  if (!raw) return null;
+  const id = clean(raw.id);
+  if (!id) return null;
+  const teamA = parseFedervolleyOfficialTeam(raw.team1);
+  const teamB = parseFedervolleyOfficialTeam(raw.team2);
+  if (!teamA.name && !teamB.name) return null;
+  const startDate = parseFedervolleyOfficialDateTime(raw.date, raw.time);
+  const phase = asRecord(raw.fase);
+  const stage = clean(raw.fase_label)
+    || normalizeStage(clean(phase?.season_type) || clean(phase?.descrizione));
+  const round = clean(raw.fase_long)
+    || clean(phase?.season_descrizione)
+    || clean(raw.day)
+    || (clean(raw.ng) ? `Match ${clean(raw.ng)}` : stage);
+  const field = asRecord(asRecord(raw.bvl)?.campo);
+  const courtValue = clean(field?.name) || clean(raw.stadium);
+  const court = courtValue ? `Court ${courtValue}` : "";
+  const played = raw.played === true || clean(raw.ris_ufficiale) === "1";
+  const setScoresA = numberArray(raw.pt_a);
+  const setScoresB = numberArray(raw.pt_b);
+  const sets = Array.from({ length: Math.max(setScoresA.length, setScoresB.length) }, (_, index) => ({
+    no: index + 1,
+    teamA: setScoresA[index] ?? 0,
+    teamB: setScoresB[index] ?? 0,
+  }));
+  const scoreA = played ? nullableNumber(raw["team1-setwin"]) : null;
+  const scoreB = played ? nullableNumber(raw["team2-setwin"]) : null;
+  const sourceUrl = `${options.pageUrl}#match-${encodeURIComponent(id)}`;
+
+  return {
+    id,
+    nodeId: options.nodeId,
+    matchshareLid: options.matchshareLid,
+    gender: options.gender,
+    category: options.category,
+    stage: stage || "Main Draw",
+    round,
+    court,
+    startTimeUtc: startDate ? startDate.toUTC().toISO() : null,
+    startTimeMoscow: startDate ? formatMoscowDateTime(startDate.toJSDate()) : "",
+    dateKey: startDate ? formatMoscowDate(startDate.toJSDate()) : "",
+    status: played ? "finished" : "upcoming",
+    teamA,
+    teamB,
+    score: { teamA: scoreA, teamB: scoreB, sets },
+    sourceUrl,
+    rawText: [
+      stage || null,
+      round || null,
+      clean(raw.ng) ? `Match ${clean(raw.ng)}` : null,
+      court || null,
+      startDate ? formatMoscowDateTime(startDate.toJSDate()) : null,
+      `${teamA.name} vs ${teamB.name}`,
+      scoreA !== null || scoreB !== null ? `${scoreA}-${scoreB}` : null,
+      sourceUrl,
+    ].filter(Boolean).join(" | "),
+  };
+}
+
+function parseFedervolleyOfficialTeam(value: unknown): FedervolleyTeam {
+  const raw = asRecord(value);
+  const rawName = clean(raw?.title)
+    || (Array.isArray(raw?.players)
+      ? raw.players.map((player) => clean(asRecord(player)?.name)).filter(Boolean).join(" - ")
+      : "");
+  return {
+    id: clean(raw?.id),
+    name: normalizeFedervolleyTeamName(rawName) || "TBD",
+    rawName,
+    seed: "",
+  };
+}
+
+function parseFedervolleyOfficialDateTime(dateValue: unknown, timeValue: unknown) {
+  const date = clean(dateValue);
+  const time = clean(timeValue).replace(".", ":");
+  if (!/^\d{2}\/\d{2}\/20\d{2}$/.test(date) || !/^\d{1,2}:\d{2}$/.test(time)) return null;
+  const parsed = DateTime.fromFormat(`${date} ${time}`, "dd/MM/yyyy H:mm", { zone: "Europe/Rome" });
+  return parsed.isValid ? parsed : null;
+}
+
+function resolveOfficialFedervolleyCategory(value: Record<string, unknown>) {
+  const text = normalizeSearch([
+    clean(value.menu_eventi),
+    clean(value.menu_eventi_label),
+    clean(value.ranking_type),
+    clean(value.tipologia),
+  ].join(" "));
+  return text.includes("assoluto") || text.includes("campionato italiano")
+    ? "assoluto" as const
+    : "serie" as const;
+}
+
+function parseOfficialIsoDate(value: unknown) {
+  const date = clean(value);
+  return /^20\d{2}-\d{2}-\d{2}$/.test(date) ? date : null;
+}
+
+function parseOfficialItalianDate(value: unknown) {
+  const match = clean(value).match(/^(\d{1,2})\/(\d{1,2})\/(20\d{2})$/u);
+  return match ? `${match[3]}-${match[2].padStart(2, "0")}-${match[1].padStart(2, "0")}` : null;
+}
+
+function numberArray(value: unknown) {
+  return Array.isArray(value)
+    ? value.map(nullableNumber).filter((item): item is number => item !== null)
+    : [];
+}
+
+function nullableNumber(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 export function parseFedervolleyListing(
@@ -502,6 +863,18 @@ export function buildTournamentPageUrl(nodeId: string | number) {
   return new URL(`/index.php/node/${clean(nodeId)}`, FEDERVOLLEY_ORIGIN).toString();
 }
 
+export function buildFedervolleyOfficialPageUrl(year: number, code: string) {
+  const season = String(year);
+  const tournamentCode = clean(code);
+  if (!/^20\d{2}$/.test(season) || !/^BVL[MF][1-9]\d{0,15}$/i.test(tournamentCode)) {
+    throw new Error("Federvolley official tournament URL identity is invalid.");
+  }
+  return new URL(
+    `/campionati/beach-volley/${season}/${encodeURIComponent(tournamentCode)}`,
+    FEDERVOLLEY_PUBLIC_ORIGIN,
+  ).toString();
+}
+
 export function buildListingUrl(category: Exclude<FedervolleyCategory, "all">) {
   return new URL(CATEGORY_LISTING_PATHS[category], FEDERVOLLEY_ORIGIN).toString();
 }
@@ -525,7 +898,15 @@ export function buildMatchsharePageUrl(matchshareLid: string | number) {
 export function extractFedervolleyNodeId(value: unknown) {
   const text = clean(value);
   return clean(text.match(/\[FIPAV:[^:\]]+:([^:\]]+)(?::[^\]]+)?]/i)?.[1])
-    || clean(text.match(/\/node\/(\d+)/i)?.[1]);
+    || clean(text.match(/\/node\/(\d+)/i)?.[1])
+    || clean(text.match(/\/beach-volley\/20\d{2}\/BVL[MF]([1-9]\d*)/i)?.[1])
+    || clean(text.match(/\bBVL[MF]([1-9]\d*)\b/i)?.[1]);
+}
+
+export function extractFedervolleySeason(value: unknown) {
+  const text = clean(value);
+  const year = Number(text.match(/\/beach-volley\/(20\d{2})\//i)?.[1]);
+  return Number.isInteger(year) ? year : null;
 }
 
 export function extractMatchshareLid(value: unknown) {
@@ -565,13 +946,15 @@ async function fetchFedervolleyMatches(input: {
   pageUrl: string;
   startDate: string | null;
   endDate: string | null;
+  signal?: AbortSignal;
 }) {
   try {
-    const text = await fetchFedervolleyText(buildMatchshareBracketUrl(input.matchshareLid), "application/json,text/plain,*/*");
+    const text = await fetchFedervolleyText(buildMatchshareBracketUrl(input.matchshareLid), "application/json,text/plain,*/*", input.signal);
     const trimmed = text.trim();
     if (!trimmed || /^Tabellone non pubblicato/i.test(trimmed)) return [];
     return parseFedervolleyMatchshareBracket(JSON.parse(trimmed), input);
   } catch (error) {
+    input.signal?.throwIfAborted();
     if (error instanceof Error && isRecoverableMatchshareError(error.message)) {
       return [];
     }
@@ -583,8 +966,11 @@ function isRecoverableMatchshareError(message: string) {
   return /Tabellone non pubblicato|Federvolley Matchshare HTTP [45]\d{2}/i.test(message);
 }
 
-async function fetchFedervolleyText(url: string, accept: string) {
+async function fetchFedervolleyText(url: string, accept: string, signal?: AbortSignal) {
   const controller = new AbortController();
+  const onAbort = () => controller.abort(signal?.reason);
+  signal?.addEventListener("abort", onAbort, { once: true });
+  if (signal?.aborted) onAbort();
   const timeout = setTimeout(() => controller.abort(), 20_000);
 
   try {
@@ -596,7 +982,11 @@ async function fetchFedervolleyText(url: string, accept: string) {
         "User-Agent": FEDERVOLLEY_USER_AGENT,
       },
     });
-    const text = await response.text();
+    const text = await readBoundedBodyText(response, {
+      maxBytes: 8 * 1024 * 1024,
+      signal: controller.signal,
+      label: "Federvolley response",
+    });
     if (!response.ok) {
       const source = url.includes("matchshare") || url.includes("srv.matchshare") ? "Federvolley Matchshare" : "Federvolley";
       throw new Error(`${source} HTTP ${response.status}: ${text.slice(0, 220)}`);
@@ -604,6 +994,7 @@ async function fetchFedervolleyText(url: string, accept: string) {
     return text;
   } finally {
     clearTimeout(timeout);
+    signal?.removeEventListener("abort", onAbort);
   }
 }
 

@@ -1,7 +1,7 @@
 import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 
-import { requireAdmin, requireSameOriginJsonMutation } from "@backend/auth/adminAuth";
+import { requireSameOriginJsonMutation } from "@backend/auth/adminAuth";
 import { prisma } from "@backend/db/db";
 import {
   KhlDeliveryBlockedError,
@@ -14,8 +14,6 @@ export const runtime = "nodejs";
 const STAGING_ENDPOINT_VERSION = "admin-results-contract-unconfirmed";
 
 export async function POST(request: Request) {
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
   const unsafeRequest = requireSameOriginJsonMutation(request);
   if (unsafeRequest) return unsafeRequest;
 

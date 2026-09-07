@@ -78,6 +78,7 @@ export type TLineRun = {
   progress: number;
   startedAt: string | null;
   finishedAt: string | null;
+  includeUndatedSourceMatches: boolean;
   championships: TLineChampionshipResult[];
 };
 
@@ -92,6 +93,9 @@ export type TLineChampionship = {
   name: string;
   sportId: string;
   sourceUrl: string;
+  sourceProvider?: string;
+  sourceTimezone?: string;
+  season?: string | null;
   globalHeaderId?: string | null;
   globalHeader?: {
     id: string;

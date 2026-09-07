@@ -34,8 +34,16 @@ test("manual run input accepts one valid UTC interval", () => {
       sportId: "cm123sport",
       from: new Date("2026-10-01T00:00:00.000Z"),
       to: new Date("2026-10-02T00:00:00.000Z"),
+      includeUndatedSourceMatches: false,
     }
   );
+
+  assert.equal(parseManualRunRequest({
+    sportId: "cm123sport",
+    from: "2026-10-01T00:00:00.000Z",
+    to: "2026-10-02T00:00:00.000Z",
+    includeUndatedSourceMatches: true,
+  }).includeUndatedSourceMatches, true);
 });
 
 test("manual run input rejects invalid or reversed intervals", () => {
@@ -50,5 +58,14 @@ test("manual run input rejects invalid or reversed intervals", () => {
       to: "2026-10-01T00:00:00.000Z",
     }),
     (error: unknown) => error instanceof TLineInputError && error.code === "INVALID_PERIOD"
+  );
+  assert.throws(
+    () => parseManualRunRequest({
+      sportId: "cm123sport",
+      from: "2026-10-01T00:00:00.000Z",
+      to: "2026-10-02T00:00:00.000Z",
+      includeUndatedSourceMatches: "yes",
+    }),
+    (error: unknown) => error instanceof TLineInputError && error.code === "INVALID_MANUAL_RUN"
   );
 });

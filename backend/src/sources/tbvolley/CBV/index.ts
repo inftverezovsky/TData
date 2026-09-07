@@ -1,5 +1,6 @@
 import { DateTime } from "luxon";
 import { formatMoscowDate, formatMoscowDateTime } from "@backend/matches/scheduleOffset";
+import { readBoundedBodyText } from "@backend/http/boundedResponse";
 import { normalizeBeachVolleyballGender, type BeachVolleyballGender } from "@backend/sources/tbvolley/config";
 
 export type CBVGender = BeachVolleyballGender;
@@ -74,6 +75,9 @@ export type CBVTournamentSearch = {
   summary: {
     total: number;
     matches: number;
+    rawTotal?: number;
+    filteredOut?: number;
+    emptyReason?: "date_window" | null;
   };
 };
 
@@ -183,24 +187,24 @@ export async function searchCBVTournaments(input: {
   year?: string | number | null;
   gender?: string | null;
   query?: string | null;
+  signal?: AbortSignal;
 } = {}): Promise<CBVTournamentSearch> {
   const year = normalizeYear(input.year);
   const gender = normalizeCBVGender(input.gender);
   const query = normalizeSearch(input.query || "");
-  const championship = await findAdultChampionship(gender);
-  const seasons = await fetchCBVSeasons(clean(championship.id));
+  const championship = await findAdultChampionship(gender, input.signal);
+  const seasons = await fetchCBVSeasons(clean(championship.id), input.signal);
   const season = seasons.find((item) => clean(item.nome) === String(year)) || seasons[0];
   if (!season?.id) throw new Error(`CBV season ${year} не найден`);
 
-  const etapas = await fetchCBVEtapas(clean(championship.id), clean(season.id));
-  const tournaments = filterCBVUpcomingTournaments(
-    parseCBVEtapas(etapas, {
-      gender,
-      query,
-      fallbackCampeonatoId: clean(championship.id),
-      fallbackTemporadaId: clean(season.id),
-    }),
-  );
+  const etapas = await fetchCBVEtapas(clean(championship.id), clean(season.id), input.signal);
+  const discovered = parseCBVEtapas(etapas, {
+    gender,
+    query,
+    fallbackCampeonatoId: clean(championship.id),
+    fallbackTemporadaId: clean(season.id),
+  });
+  const tournaments = filterCBVUpcomingTournaments(discovered);
 
   return {
     ok: true,
@@ -213,6 +217,9 @@ export async function searchCBVTournaments(input: {
     summary: {
       total: tournaments.length,
       matches: tournaments.reduce((sum, tournament) => sum + (tournament.matchCount || 0), 0),
+      rawTotal: discovered.length,
+      filteredOut: Math.max(0, discovered.length - tournaments.length),
+      emptyReason: discovered.length > 0 && tournaments.length === 0 ? "date_window" : null,
     },
   };
 }
@@ -224,6 +231,7 @@ export async function fetchCBVTournament(input: {
   title?: string | null;
   pageUrl?: string | null;
   gender?: string | null;
+  signal?: AbortSignal;
 }): Promise<CBVTournament> {
   const gender = normalizeCBVGender(input.gender || input.title || input.pageUrl);
   const campeonatoId = clean(input.campeonatoId) || extractCBVCampeonatoId(input.title) || extractCBVCampeonatoId(input.pageUrl);
@@ -233,15 +241,22 @@ export async function fetchCBVTournament(input: {
     throw new Error("Не удалось определить CBV campeonato/temporada/etapa");
   }
 
-  const etapas = await fetchCBVEtapas(campeonatoId, temporadaId);
+  const etapas = await fetchCBVEtapas(campeonatoId, temporadaId, input.signal);
   const etapa = etapas.find((item) => clean(item.id) === etapaId);
   if (!etapa) throw new Error(`CBV etapa ${etapaId} не найдена`);
 
-  const phases = await fetchCBVPhases(etapaId);
-  const gamesByPhase = await Promise.all(phases.map(async (phase) => ({
+  const phases = await fetchCBVPhases(etapaId, input.signal);
+  const gameResults = await Promise.allSettled(phases.map(async (phase) => ({
     phase,
-    games: await fetchCBVGames(etapaId, clean(phase.id)),
+    games: await fetchCBVGames(etapaId, clean(phase.id), input.signal),
   })));
+  input.signal?.throwIfAborted();
+  const gameFailure = gameResults.find((result): result is PromiseRejectedResult => result.status === "rejected");
+  if (gameFailure) throw gameFailure.reason;
+  const gamesByPhase = gameResults.map((result) => (result as PromiseFulfilledResult<{
+    phase: CBVPhase;
+    games: CBVGame[];
+  }>).value);
   const matches = gamesByPhase.flatMap(({ phase, games }) =>
     games.map((game) => normalizeCBVMatch(game, {
       gender,
@@ -447,8 +462,8 @@ export function isActiveCBVMatch(match: Pick<CBVMatch, "status" | "startTimeUtc"
   return formatMoscowDate(start) >= formatMoscowDate(now);
 }
 
-async function findAdultChampionship(gender: CBVGender) {
-  const championships = await fetchCBVChampionships();
+async function findAdultChampionship(gender: CBVGender, signal?: AbortSignal) {
+  const championships = await fetchCBVChampionships(signal);
   const cbvGender = gender === "women" ? "F" : "M";
   const championship = championships.find((item) =>
     clean(item.nome).toUpperCase() === "CBVP ADULTO" && clean(item.genero).toUpperCase() === cbvGender,
@@ -457,40 +472,43 @@ async function findAdultChampionship(gender: CBVGender) {
   return championship;
 }
 
-async function fetchCBVChampionships() {
-  return fetchCBVJson<CBVChampionship[]>("/campeonatos/public/listarCampeonatosAtivos");
+async function fetchCBVChampionships(signal?: AbortSignal) {
+  return fetchCBVJson<CBVChampionship[]>("/campeonatos/public/listarCampeonatosAtivos", {}, signal);
 }
 
-async function fetchCBVSeasons(campeonatoId: string) {
-  return fetchCBVJson<CBVSeason[]>("/temporadas/public/temporadaByCampeonatoComJogos", { idCampeonato: campeonatoId });
+async function fetchCBVSeasons(campeonatoId: string, signal?: AbortSignal) {
+  return fetchCBVJson<CBVSeason[]>("/temporadas/public/temporadaByCampeonatoComJogos", { idCampeonato: campeonatoId }, signal);
 }
 
-async function fetchCBVEtapas(campeonatoId: string, temporadaId: string) {
+async function fetchCBVEtapas(campeonatoId: string, temporadaId: string, signal?: AbortSignal) {
   return fetchCBVJson<CBVEtapa[]>("/etapas/public/listarEtapasByCampeonatoTemporada", {
     idCampeonato: campeonatoId,
     idTemporada: temporadaId,
-  });
+  }, signal);
 }
 
-async function fetchCBVPhases(etapaId: string) {
-  return fetchCBVJson<CBVPhase[]>("/fases/public/fasesByEtapa", { idEtapa: etapaId });
+async function fetchCBVPhases(etapaId: string, signal?: AbortSignal) {
+  return fetchCBVJson<CBVPhase[]>("/fases/public/fasesByEtapa", { idEtapa: etapaId }, signal);
 }
 
-async function fetchCBVGames(etapaId: string, phaseId: string) {
+async function fetchCBVGames(etapaId: string, phaseId: string, signal?: AbortSignal) {
   if (!phaseId) return [];
   return fetchCBVJson<CBVGame[]>("/jogos/public/listarJogosByEtapaFasePublicada", {
     idEtapa: etapaId,
     idFase: phaseId,
-  });
+  }, signal);
 }
 
-async function fetchCBVJson<T>(path: string, params: Record<string, string> = {}): Promise<T> {
+async function fetchCBVJson<T>(path: string, params: Record<string, string> = {}, signal?: AbortSignal): Promise<T> {
   const url = new URL(`${CBV_API_BASE}${path}`);
   for (const [key, value] of Object.entries(params)) {
     if (value) url.searchParams.set(key, value);
   }
 
   const controller = new AbortController();
+  const onAbort = () => controller.abort(signal?.reason);
+  signal?.addEventListener("abort", onAbort, { once: true });
+  if (signal?.aborted) onAbort();
   const timeout = setTimeout(() => controller.abort(), 20_000);
 
   try {
@@ -502,7 +520,11 @@ async function fetchCBVJson<T>(path: string, params: Record<string, string> = {}
         "User-Agent": CBV_USER_AGENT,
       },
     });
-    const text = await response.text();
+    const text = await readBoundedBodyText(response, {
+      maxBytes: 8 * 1024 * 1024,
+      signal: controller.signal,
+      label: "CBV response",
+    });
     if (!response.ok) throw new Error(`CBV HTTP ${response.status}: ${text.slice(0, 220)}`);
     try {
       return JSON.parse(text) as T;
@@ -511,6 +533,7 @@ async function fetchCBVJson<T>(path: string, params: Record<string, string> = {}
     }
   } finally {
     clearTimeout(timeout);
+    signal?.removeEventListener("abort", onAbort);
   }
 }
 

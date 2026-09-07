@@ -1,6 +1,10 @@
-import { TLINE_VOLLEYBALL_PILOT_CHAMPIONSHIPS } from "../backend/src/tline/pilot/bootstrap";
+import {
+  TLINE_FLOORBALL_PILOT_CHAMPIONSHIPS,
+  TLINE_HOCKEY_PILOT_CHAMPIONSHIPS,
+  TLINE_VOLLEYBALL_PILOT_CHAMPIONSHIPS,
+} from "../backend/src/tline/pilot/bootstrap";
 import { parseTLinePeriodBoundary } from "../backend/src/tline/pilot/period";
-import { createVolleyRuAdapter } from "../backend/src/tline/sources/volleyRu";
+import { createDefaultOfficialSourceRegistry } from "../backend/src/tline/sources/registry";
 
 const args = parseArgs(process.argv.slice(2));
 
@@ -9,9 +13,22 @@ async function main() {
   const to = parseTLinePeriodBoundary(args.to, "end");
   if (to <= from) throw new Error("--to must be later than --from");
 
-  const adapter = createVolleyRuAdapter();
+  const registry = createDefaultOfficialSourceRegistry();
   const reports = [];
-  for (const championship of TLINE_VOLLEYBALL_PILOT_CHAMPIONSHIPS) {
+  const championships = [
+    ...TLINE_VOLLEYBALL_PILOT_CHAMPIONSHIPS,
+    ...TLINE_FLOORBALL_PILOT_CHAMPIONSHIPS,
+    ...TLINE_HOCKEY_PILOT_CHAMPIONSHIPS,
+  ];
+  for (const championship of championships) {
+    const adapter = registry.get(championship.sourceProvider);
+    const connection = await adapter.testConnection({
+      id: championship.sourceChampionshipId,
+      externalId: championship.sourceChampionshipId,
+      name: championship.name,
+      sourceUrl: championship.sourceUrl,
+      sourceTimezone: championship.sourceTimezone,
+    });
     const snapshot = await adapter.fetchChampionship({
       championship: {
         id: championship.sourceChampionshipId,
@@ -23,26 +40,33 @@ async function main() {
       from,
       to,
       forceFresh: true,
+      includeUndatedSourceMatches: true,
     });
     const matchIds = new Set(snapshot.matches.map((match) => match.id));
     if (matchIds.size !== snapshot.matches.length) {
-      throw new Error(`${championship.name}: volley.ru returned duplicate match IDs`);
+      throw new Error(`${championship.name}: ${championship.sourceProvider} returned duplicate match IDs`);
     }
-    const fallbackTeamIds = snapshot.teams.filter((team) => team.externalId?.startsWith("volley-ru:"));
-    if (fallbackTeamIds.length > 0) {
-      throw new Error(`${championship.name}: official team IDs were not resolved for ${fallbackTeamIds.length} teams`);
+    const missingTeamIds = snapshot.teams.filter((team) => !team.externalId?.trim());
+    if (missingTeamIds.length > 0) {
+      throw new Error(`${championship.name}: official team IDs were not resolved for ${missingTeamIds.length} teams`);
     }
     reports.push({
+      provider: championship.sourceProvider,
       name: championship.name,
       season: championship.season,
       sourceChampionshipId: championship.sourceChampionshipId,
       sourceUrl: championship.sourceUrl,
       fetchedAt: snapshot.fetchedAt,
-      matches: snapshot.matches.length,
-      teams: snapshot.teams.length,
-      exactTime: snapshot.matches.filter((match) => match.timePrecision === "EXACT").length,
-      dateOnly: snapshot.matches.filter((match) => match.timePrecision === "DATE_ONLY").length,
-      undefinedTime: snapshot.matches.filter((match) => match.timePrecision === "UNDEFINED").length,
+      teams: connection.teamCount,
+      matches: connection.matchCount,
+      eligibleMatches: connection.eligibleMatchCount,
+      excludedMatches: connection.excludedMatchCount,
+      diagnostics: connection.diagnostics,
+      sourceTeams: snapshot.teams.length,
+      eligibleSnapshotMatches: snapshot.matches.length,
+      exactTime: connection.exactTimeCount,
+      dateOnly: connection.dateOnlyTimeCount,
+      undefinedTime: connection.undefinedTimeCount,
       firstMatch: snapshot.matches.at(0) ? summarizeMatch(snapshot.matches[0]) : null,
       lastMatch: snapshot.matches.at(-1) ? summarizeMatch(snapshot.matches.at(-1)!) : null,
     });

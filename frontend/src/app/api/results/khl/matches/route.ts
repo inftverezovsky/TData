@@ -1,7 +1,6 @@
 import { apiErrorResponse, logApiError } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 
-import { requireAdmin } from "@backend/auth/adminAuth";
 import { prisma } from "@backend/db/db";
 import { KHL_RESULTS_CUTOFF } from "@backend/results/khl/autoSync";
 import { getKhlResultsAutomationStatus } from "@backend/results/khl/automation";
@@ -13,9 +12,6 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
-    const unauthorized = await requireAdmin(request);
-    if (unauthorized) return unauthorized;
-
     const url = new URL(request.url);
     const stageId = optionalExternalId(url.searchParams.get("stageId"));
     const limit = Math.min(optionalPositiveInteger(url.searchParams.get("limit")) || 50, 100);

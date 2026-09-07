@@ -2,8 +2,8 @@ import { normalizeFuzzyName } from "@backend/teams/fuzzyMatch";
 import { prisma } from "@backend/db/db";
 import { apiError, apiOk, requireTLineAccess, tlineErrorResponse } from "@backend/tline/api/http";
 import { parseId } from "@backend/tline/api/parsers";
-import { createOfficialSourceRegistry } from "@backend/tline/sources/registry";
-import { createVolleyRuAdapter } from "@backend/tline/sources/volleyRu";
+import { buildTLineSourceTeamSyncPeriod } from "@backend/tline/pilot/period";
+import { createDefaultOfficialSourceRegistry } from "@backend/tline/sources/registry";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -17,8 +17,9 @@ export async function POST(request: Request, context: Context) {
     const championship = await prisma.tLineChampionship.findUniqueOrThrow({
       where: { id: parseId((await context.params).id) },
     });
-    const adapter = createOfficialSourceRegistry([createVolleyRuAdapter()]).get(championship.sourceProvider);
+    const adapter = createDefaultOfficialSourceRegistry().get(championship.sourceProvider);
     const now = new Date();
+    const period = buildTLineSourceTeamSyncPeriod(now, championship.sourceTimezone, championship.season);
     const snapshot = await adapter.fetchChampionship({
       championship: {
         id: championship.id,
@@ -27,9 +28,10 @@ export async function POST(request: Request, context: Context) {
         sourceUrl: championship.sourceUrl,
         sourceTimezone: championship.sourceTimezone,
       },
-      from: new Date(now.getTime() - 366 * 24 * 60 * 60 * 1000),
-      to: new Date(now.getTime() + 366 * 24 * 60 * 60 * 1000),
+      from: period.from,
+      to: period.to,
       forceFresh: true,
+      includeUndatedSourceMatches: true,
     });
     const teams = await prisma.$transaction(snapshot.teams.map((team) => prisma.tLineSourceTeam.upsert({
       where: {

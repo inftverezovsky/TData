@@ -11,6 +11,7 @@ type HistoryItem = {
   periodFrom: string | null;
   periodTo: string | null;
   createdAt: string | null;
+  includeUndatedSourceMatches: boolean;
   counts: { total: number; processed: number; error: number; critical: number };
 };
 
@@ -45,6 +46,7 @@ export function TLineHistoryPanel({ sportId, selectedRunId, onSelect }: {
           >
             <div className="flex items-center justify-between gap-3"><span className="text-xs font-black text-slate-900">{item.trigger === "SCHEDULED" ? "Автоматический" : "Ручной"} · {formatMoscow(item.createdAt)}</span><span className="text-[11px] font-black text-slate-500">{stateLabel(item.state)}</span></div>
             <p className="mt-1 text-xs text-slate-500">{formatMoscow(item.periodFrom)} — {formatMoscow(item.periodTo)}</p>
+            <p className="mt-1 text-[11px] font-bold text-slate-500">Матчи без даты: {item.includeUndatedSourceMatches ? "включены" : "исключены"}</p>
             <p className="mt-2 text-xs font-bold text-slate-700">Обработано {item.counts.processed}/{item.counts.total} · ошибок {item.counts.error + item.counts.critical}</p>
           </button>
         ))}
@@ -66,6 +68,7 @@ async function loadHistory(url: string): Promise<HistoryItem[]> {
       periodFrom: nullableString(value.periodFrom),
       periodTo: nullableString(value.periodTo),
       createdAt: nullableString(value.createdAt),
+      includeUndatedSourceMatches: value.includeUndatedSourceMatches === true,
       counts: {
         total: asNumber(counts.total),
         processed: asNumber(counts.processed),

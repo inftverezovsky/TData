@@ -1,6 +1,7 @@
 import { getOrCreateDiscipline } from "@backend/config/disciplines";
 import { prisma } from "@backend/db/db";
 import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
+import { normalizeParserErrorClass } from "@backend/proxy/parserErrors";
 import { dedupeTournamentMatches } from "@backend/matches/dedupe";
 import { getNormalizer } from "@backend/normalizers/registry";
 import { importBeachVolleyRuTournament } from "@backend/sources/tbvolley/beach.volley.ru/importTournament";
@@ -10,6 +11,7 @@ import { importGermanBeachTourTournament } from "@backend/sources/tbvolley/Germa
 import { importTwelveNdrTournament } from "@backend/sources/tbvolley/TwelveNdr/importTournament";
 import { importVolleyballWorldTournament } from "@backend/sources/tbvolley/VolleyballWorld/importTournament";
 import { importWttTournament } from "@backend/sources/tablet/WTT/importTournament";
+import { TournamentSnapshotRejectedError } from "@backend/sources/importSafety";
 import { importDltvTournament } from "@backend/sources/tdata/dltv/importTournament";
 import { importFandomTournament } from "@backend/sources/tdata/fandom/importTournament";
 import { importHltvTournament } from "@backend/sources/tdata/hltv/importTournament";
@@ -20,6 +22,7 @@ import {
   toLiquipediaUserFacingError,
 } from "@backend/sources/tdata/liquipedia/userFacingErrors";
 import { importVlrTournament } from "@backend/sources/tdata/vlr/importTournament";
+import { isTournamentImportSource, validateTournamentImportSourceUrl } from "./sourceUrlPolicy";
 
 export type TournamentImportSource =
   | "liquipedia"
@@ -67,20 +70,32 @@ export type ImportTournamentDispatchResult = {
   status?: number;
 };
 
-/**
- * Единая точка входа API импорта: привести входные поля → определить дисциплину →
- * передать запрос адаптеру выбранного источника → вернуть результат и HTTP-статус.
- * Формат страницы и правила извлечения матчей остаются внутри соответствующего адаптера.
- */
+/** Проверить источник и URL до обращения к БД → выбрать адаптер → вернуть его проверенный результат. */
 export async function dispatchTournamentImport(
   disciplineSlug: string,
   body: ImportTournamentRequestBody,
 ): Promise<ImportTournamentDispatchResult> {
   const slug = disciplineSlug.trim().toLowerCase();
-  const source = body.source || "liquipedia";
+  const sourceValue: unknown = body.source || "liquipedia";
+  if (!isTournamentImportSource(sourceValue)) {
+    return { body: { error: "Неподдерживаемый источник турнира" }, status: 400 };
+  }
+  const source = sourceValue;
   const pageId = typeof body.pageId === "number" ? body.pageId : undefined;
   const title = typeof body.title === "string" ? body.title.trim() : "";
-  const pageUrl = resolvePageUrl(source, body.pageUrl, title, slug);
+  let pageUrl: string;
+  try {
+    pageUrl = validateTournamentImportSourceUrl(
+      source,
+      resolvePageUrl(source, body.pageUrl, title, slug),
+      slug,
+    );
+  } catch (error) {
+    return {
+      body: { error: safeErrorMessage(error, "Некорректный URL источника") },
+      status: 400,
+    };
+  }
 
   if (!pageId && title.length < 2) {
     return { body: { error: "Нужен pageId или title выбранной страницы" }, status: 400 };
@@ -327,7 +342,7 @@ async function importLiquipediaTournament(input: {
     };
   }
 
-  // Запись запуска появляется до сетевых запросов: история хранит и успешные, и неудачные попытки.
+  // История попытки создаётся до сетевых запросов; rejected snapshot останется PARTIAL, а не ложным SUCCESS.
   const tournamentImport = await prisma.tournamentImport.create({
     data: {
       disciplineId: input.disciplineId,
@@ -361,7 +376,6 @@ async function importLiquipediaTournament(input: {
       },
     });
 
-    // Ответ читается из БД после сохранения, чтобы API показывал принятый снимок, а не сырые кандидаты.
     const fullTournament = await prisma.tournament.findUnique({
       where: { id: tournament.id },
       include: { participants: true, matches: true, lastImport: true },
@@ -382,11 +396,12 @@ async function importLiquipediaTournament(input: {
     };
   } catch (error) {
     const userFacingError = toLiquipediaUserFacingError(error);
+    const isSnapshotRejection = error instanceof TournamentSnapshotRejectedError;
     logApiError("tournament-import-liquipedia", error);
-    await prisma.tournamentImport.update({
-      where: { id: tournamentImport.id },
+    await prisma.tournamentImport.updateMany({
+      where: { id: tournamentImport.id, status: "PENDING" },
       data: {
-        status: "FAILED",
+        status: isSnapshotRejection ? "PARTIAL" : "FAILED",
         finishedAt: new Date(),
         errorMessage: userFacingError.userMessage,
       },
@@ -398,23 +413,30 @@ async function importLiquipediaTournament(input: {
         userMessage: userFacingError.userMessage,
         errorClass: userFacingError.errorClass,
       },
-      status: getLiquipediaResponseStatus(userFacingError.errorClass),
+      status: isSnapshotRejection ? error.statusCode : getLiquipediaResponseStatus(userFacingError.errorClass),
     };
   }
 }
 
-function sourceError(
+export function sourceError(
   error: unknown,
   fallback: string,
   status: number,
   includeUserMessage = false,
 ): ImportTournamentDispatchResult {
-  // Adapter может вернуть исключение с HTTP-телом или аргументами Prisma; наружу передаём только безопасный текст.
+  // Parser rejection сохраняет HTTP-код и класс, но не переносит внешние diagnostic/error тела в API.
   logApiError("tournament-import-source", error);
   const message = safeErrorMessage(error, fallback);
+  const typed = error as { errorClass?: unknown; statusCode?: unknown } | null;
+  const errorClass = typeof typed?.errorClass === "string" ? normalizeParserErrorClass(typed.errorClass) : null;
+  const errorStatus = typeof typed?.statusCode === "number" && typed.statusCode >= 400 && typed.statusCode <= 599
+    ? typed.statusCode
+    : status;
   return {
-    body: includeUserMessage ? { error: message, userMessage: message } : { error: message },
-    status,
+    body: includeUserMessage
+      ? { error: message, userMessage: message, errorClass }
+      : { error: message, errorClass },
+    status: errorStatus,
   };
 }
 

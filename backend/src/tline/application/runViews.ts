@@ -59,6 +59,7 @@ export async function listTLineRunHistory(
       status: true,
       periodFrom: true,
       periodTo: true,
+      includeUndatedSourceMatches: true,
       progressTotal: true,
       progressProcessed: true,
       okCount: true,
@@ -84,6 +85,7 @@ export async function listTLineRunHistory(
       state: run.status,
       periodFrom: run.periodFrom,
       periodTo: run.periodTo,
+      includeUndatedSourceMatches: run.includeUndatedSourceMatches,
       progress: percentage(run.progressProcessed, run.progressTotal),
       counts: {
         total: run.progressTotal,
@@ -110,6 +112,7 @@ export function mapTLineRunView(run: RunWithResults) {
     trigger: run.trigger,
     periodFrom: run.periodFrom,
     periodTo: run.periodTo,
+    includeUndatedSourceMatches: run.includeUndatedSourceMatches,
     progress: percentage(run.progressProcessed, run.progressTotal),
     counts: {
       total: run.progressTotal,

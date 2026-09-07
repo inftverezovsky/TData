@@ -10,12 +10,12 @@ let lastHealthStartedAt = 0;
 
 const HLTV_MODES = new Set<HltvMode>(["scrape", "search", "event", "events", "health"]);
 
-export async function runHltvScript(mode: HltvMode, queryOrId?: string, options: { noCache?: boolean } = {}) {
+export async function runHltvScript(mode: HltvMode, queryOrId?: string, options: { noCache?: boolean; signal?: AbortSignal } = {}) {
   if (!HLTV_MODES.has(mode)) {
     throw new Error(`Unsupported HLTV scraper mode: ${mode}`);
   }
 
-  const requestKey = `${mode}:${queryOrId}:${options.noCache ? "force" : "cached"}`;
+  const requestKey = `${mode}:${queryOrId}:${options.noCache ? "force" : "cached"}:${options.signal ? "abortable" : "shared"}`;
   
   // DEDUPLICATION: If exactly the same request is already running, return its promise
   if (activeRequests.has(requestKey)) {
@@ -33,11 +33,12 @@ export async function runHltvScript(mode: HltvMode, queryOrId?: string, options:
   const nextPromise = (async () => {
     try {
       await currentPromise;
+      options.signal?.throwIfAborted();
       const lastStartedAt = isHealth ? lastHealthStartedAt : lastHeavyStartedAt;
       const waitMs = Math.max(0, queueDelayMs - (Date.now() - lastStartedAt));
       if (waitMs > 0) {
         console.log(`[HLTV Queue] Waiting ${waitMs}ms before starting ${requestKey}.`);
-        await new Promise((resolve) => setTimeout(resolve, waitMs + Math.floor(Math.random() * Math.min(queueDelayMs, 500))));
+        await abortableDelay(waitMs + Math.floor(Math.random() * Math.min(queueDelayMs, 500)), options.signal);
       }
       console.log(`[HLTV Queue] Request ${requestId} is now STARTING.`);
     } catch (e) {
@@ -59,4 +60,20 @@ export async function runHltvScript(mode: HltvMode, queryOrId?: string, options:
   if (isHealth) hltvHealthQueue = nextPromise;
   else hltvHeavyQueue = nextPromise;
   return nextPromise;
+}
+
+function abortableDelay(milliseconds: number, signal?: AbortSignal) {
+  if (!signal) return new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+  signal.throwIfAborted();
+  return new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, milliseconds);
+    const onAbort = () => {
+      clearTimeout(timeout);
+      reject(signal.reason);
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
 }

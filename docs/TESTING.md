@@ -80,6 +80,7 @@ Admin API и проверяет payload, журналирование и бло�
 npm run test:tline:coverage
 npm run test:normalizers:coverage
 npm run test:frontend:coverage
+npm run test:consultant:coverage
 ```
 
 Команды проверяют ядро TLine, нормализаторы и чистые frontend-модели/сервисы

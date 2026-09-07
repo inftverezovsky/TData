@@ -29,7 +29,6 @@ test("admin auth protects settings endpoints and creates a usable session cookie
     () => request.post("/api/settings"),
     () => request.get("/api/admin/proxies"),
     () => request.get("/api/admin/health"),
-    () => request.post("/api/admin/sandbox"),
     () => request.get("/api/admin-settings/counterstrike"),
     () => request.post("/api/admin-settings/counterstrike"),
     () => request.get("/api/admin-settings/proxy-pool"),
@@ -57,6 +56,9 @@ test("admin auth protects settings endpoints and creates a usable session cookie
 
   const publicTeamMapping = await request.get("/api/team-mapping?discipline=counterstrike");
   expect(publicTeamMapping.status()).not.toBe(401);
+
+  const publicSandboxCsrfCheck = await request.post("/api/admin/sandbox");
+  expect(publicSandboxCsrfCheck.status()).toBe(403);
 
   const publicCacheClearValidation = await request.post("/api/settings/clear-search-cache", {
     data: { source: "hltv", disciplineSlug: "../counterstrike" },

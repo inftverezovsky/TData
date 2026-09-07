@@ -51,6 +51,7 @@ test("TLine Line exposes history and the compact manual decision controls", () =
   const source = `${workspace}\n${decisionMenu}`;
   for (const label of [
     "История запусков",
+    "Включать матчи без даты",
     "Подтвердить OK вручную",
     "Отметить ошибкой вручную",
     "Считать события одним матчем",

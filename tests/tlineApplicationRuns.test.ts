@@ -13,6 +13,7 @@ const period = {
   sportId: "sport-volleyball",
   from: new Date("2026-10-01T00:00:00.000Z"),
   to: new Date("2026-10-02T00:00:00.000Z"),
+  includeUndatedSourceMatches: false,
 };
 
 test("manual run returns the existing active run without creating another job", async () => {
@@ -89,6 +90,7 @@ function runRecord(id: string, status: TLineRunRecord["status"]): TLineRunRecord
     status,
     periodFrom: period.from,
     periodTo: period.to,
+    includeUndatedSourceMatches: period.includeUndatedSourceMatches,
     createdAt: new Date("2026-08-30T12:00:00.000Z"),
   };
 }

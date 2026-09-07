@@ -5,7 +5,7 @@ import test from "node:test";
 
 const apiRoot = path.join(process.cwd(), "frontend", "src", "app", "api", "tline");
 
-test("every TLine API route is protected by the existing admin session gate", () => {
+test("every TLine API route uses the public access and mutation-safety boundary", () => {
   const routes = routeFiles(apiRoot);
   assert.ok(routes.length >= 20, "expected the complete TLine API surface");
   for (const route of routes) {

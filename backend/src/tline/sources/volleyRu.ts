@@ -30,18 +30,35 @@ export function createVolleyRuAdapter(options: { readonly fetchHtml?: HtmlFetche
 
   const adapter: OfficialSourceAdapter = Object.freeze({
     provider: VOLLEY_RU_PROVIDER,
-    async testConnection(config: TLineChampionshipConfig) {
-      const snapshot = await fetchAndParse(config);
+    async testConnection(config: TLineChampionshipConfig, testOptions?: { readonly signal?: AbortSignal }) {
+      const snapshot = await fetchAndParse(config, testOptions?.signal);
       return Object.freeze({
         ok: true as const,
         provider: VOLLEY_RU_PROVIDER,
+        teamCount: snapshot.teams.length,
         matchCount: snapshot.matches.length,
+        eligibleMatchCount: snapshot.matches.length,
+        excludedMatchCount: 0,
+        exactTimeCount: snapshot.matches.filter((match) => match.timePrecision === "EXACT").length,
+        dateOnlyTimeCount: snapshot.matches.filter((match) => match.timePrecision === "DATE_ONLY").length,
+        undefinedTimeCount: snapshot.matches.filter((match) => match.timePrecision === "UNDEFINED").length,
+        diagnostics: Object.freeze({
+          reasonCodes: Object.freeze([]),
+          excludedStageNames: Object.freeze([]),
+          eligibleMatchCount: snapshot.matches.length,
+          excludedMatchCount: 0,
+        }),
         checkedAt: new Date().toISOString(),
       });
     },
     async fetchChampionship(input: Parameters<OfficialSourceAdapter["fetchChampionship"]>[0]) {
       const snapshot = await fetchAndParse(input.championship, input.signal);
-      const matches = snapshot.matches.filter((match) => isMatchInsidePeriod(match, input.from, input.to));
+      const matches = snapshot.matches.filter((match) => isMatchInsidePeriod(
+        match,
+        input.from,
+        input.to,
+        input.includeUndatedSourceMatches,
+      ));
       const usedTeamIds = new Set(matches.flatMap((match) => [match.home.sourceTeamId, match.away.sourceTeamId]));
       return Object.freeze({
         ...snapshot,
@@ -239,13 +256,18 @@ function uniqueSourceTeams(
   return Array.from(byId.values());
 }
 
-function isMatchInsidePeriod(match: OfficialSourceMatch, from: Date, to: Date): boolean {
+function isMatchInsidePeriod(
+  match: OfficialSourceMatch,
+  from: Date,
+  to: Date,
+  includeUndatedSourceMatches: boolean,
+): boolean {
   if (match.startTimeUtc) {
     const timestamp = new Date(match.startTimeUtc).getTime();
     return timestamp >= from.getTime() && timestamp <= to.getTime();
   }
   const rawDate = match.startTimeRaw.match(/\b(\d{2})\.(\d{2})\.(\d{4})/);
-  if (!rawDate) return true;
+  if (!rawDate) return includeUndatedSourceMatches;
   const day = DateTime.fromObject(
     { year: Number(rawDate[3]), month: Number(rawDate[2]), day: Number(rawDate[1]) },
     { zone: match.sourceTimezone },

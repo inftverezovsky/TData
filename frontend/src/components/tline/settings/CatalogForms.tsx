@@ -243,7 +243,7 @@ export function ChampionshipForm({
         type="url"
         value={sourceUrl}
         onChange={setSourceUrl}
-        placeholder="https://volley.ru/calendar/..."
+        placeholder="https://volley.ru/calendar/..., https://нффр.рф/sport/calendar/... или https://hockey.by/calendar/"
         required
       />
       <TextField

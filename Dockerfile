@@ -36,6 +36,11 @@ COPY --from=builder /app/backend/prisma ./backend/prisma
 COPY --from=builder /app/backend/src ./backend/src
 COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/data/tessdata ./data/tessdata
+COPY --from=builder /app/README.md ./README.md
+COPY --from=builder /app/backend/README.md ./backend/README.md
+COPY --from=builder /app/frontend/README.md ./frontend/README.md
+COPY --from=builder /app/docs ./docs
+COPY --from=builder /app/deploy/systemd ./deploy/systemd
 
 EXPOSE 3010
 

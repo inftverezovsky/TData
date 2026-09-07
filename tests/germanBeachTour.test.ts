@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildTournamentPageUrl,
+  buildTournamentScheduleUrl,
   extractGermanBeachTourTournamentId,
+  fetchGermanBeachTourTournament,
   filterGermanBeachTourUpcomingTournaments,
   isActiveGermanBeachTourMatch,
   parseGermanBeachTourCalendar,
@@ -10,6 +12,41 @@ import {
   parseGermanBeachTourTournamentPage,
   resolveGermanBeachTourUpcomingWindow,
 } from "../backend/src/sources/tbvolley/GermanBeachTour";
+
+const originalFetch = globalThis.fetch;
+
+function germanBeachTourDetailHtml(scheduleLinks: Array<"main" | "qualification">) {
+  const links = scheduleLinks.map((field) => {
+    const href = field === "qualification"
+      ? "tur-sp.php?id=14684&amp;feld=2"
+      : "tur-sp.php?id=14684";
+    return `<a href="${href}">${field}</a>`;
+  }).join("\n");
+
+  return `
+    <p class="pageheader">German Beach Tour Berlin I Männer</p>
+    <table>
+      <tr><td class="bez2">Datum von</td><td>04.06.2026</td></tr>
+      <tr><td class="bez2">Datum bis</td><td>07.06.2026</td></tr>
+      <tr><td class="bez2">Geschlecht</td><td>Männer</td></tr>
+      <tr><td class="bez2">Typ</td><td>German Beach Tour</td></tr>
+      <tr><td class="bez2">Ort</td><td>Berlin</td></tr>
+    </table>
+    ${links}
+  `;
+}
+
+const EMPTY_GERMAN_BEACH_TOUR_SCHEDULE = `
+  <div class="content"><center>
+    <div class="sectionheader">Spiele</div>
+    <table width="100%">
+      <tr class="bez2">
+        <td>Spiel</td><td>Tag</td><td>Zeit</td><td>Court</td><td>Team 1</td><td>vs</td><td>Team 2</td>
+        <td>Schiedsrichter</td><td>Ergebnis</td><td>Dauer</td><td>Platz</td><td></td>
+      </tr>
+    </table>
+  </center></div>
+`;
 
 test("German Beach Tour calendar parser keeps upcoming gender-specific tour events", () => {
   const html = `
@@ -200,4 +237,127 @@ test("German Beach Tour active match filter drops finished and out-of-window mat
 test("German Beach Tour helpers resolve source IDs", () => {
   assert.equal(extractGermanBeachTourTournamentId("tur-show.php?id=14684"), "14684");
   assert.equal(extractGermanBeachTourTournamentId("German Beach Tour Berlin I — Men [GBT:14684]"), "14684");
+});
+
+test("German Beach Tour tournament fetch rejects a failed published schedule instead of returning a partial snapshot", { concurrency: false }, async () => {
+  for (const status of [404, 429, 503]) {
+    globalThis.fetch = async (input) => {
+      const url = String(input);
+      if (url === buildTournamentPageUrl("14684")) {
+        return new Response(germanBeachTourDetailHtml(["qualification", "main"]), { status: 200 });
+      }
+      if (url === buildTournamentScheduleUrl("14684", "qualification")) {
+        return new Response(EMPTY_GERMAN_BEACH_TOUR_SCHEDULE, { status: 200 });
+      }
+      if (url === buildTournamentScheduleUrl("14684", "main")) {
+        return new Response(`schedule failure ${status}`, { status });
+      }
+      throw new Error(`Unexpected German Beach Tour URL: ${url}`);
+    };
+
+    try {
+      await assert.rejects(
+        fetchGermanBeachTourTournament({ tournamentId: "14684", gender: "men" }),
+        new RegExp(`German Beach Tour HTTP ${status}`),
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+});
+
+test("German Beach Tour tournament fetch propagates schedule aborts", { concurrency: false }, async () => {
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url === buildTournamentPageUrl("14684")) {
+      return new Response(germanBeachTourDetailHtml(["main"]), { status: 200 });
+    }
+    if (url === buildTournamentScheduleUrl("14684", "main")) {
+      throw new DOMException("The upstream request timed out", "TimeoutError");
+    }
+    throw new Error(`Unexpected German Beach Tour URL: ${url}`);
+  };
+
+  try {
+    await assert.rejects(
+      fetchGermanBeachTourTournament({ tournamentId: "14684", gender: "men" }),
+      /timed out/i,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("German Beach Tour tournament fetch requests only schedule fields confirmed by detail links", { concurrency: false }, async () => {
+  const fetchedUrls: string[] = [];
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    fetchedUrls.push(url);
+    if (url === buildTournamentPageUrl("14684")) {
+      return new Response(germanBeachTourDetailHtml(["main"]), { status: 200 });
+    }
+    if (url === buildTournamentScheduleUrl("14684", "main")) {
+      return new Response(EMPTY_GERMAN_BEACH_TOUR_SCHEDULE, { status: 200 });
+    }
+    throw new Error(`Unconfirmed German Beach Tour schedule was requested: ${url}`);
+  };
+
+  try {
+    const tournament = await fetchGermanBeachTourTournament({ tournamentId: "14684", gender: "men" });
+    assert.equal(tournament.matchCount, 0);
+    assert.deepEqual(fetchedUrls, [
+      buildTournamentPageUrl("14684"),
+      buildTournamentScheduleUrl("14684", "main"),
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("German Beach Tour tournament fetch rejects detail HTTP failures", { concurrency: false }, async () => {
+  globalThis.fetch = async () => new Response("detail unavailable", { status: 503 });
+
+  try {
+    await assert.rejects(
+      fetchGermanBeachTourTournament({ tournamentId: "14684", gender: "men" }),
+      /German Beach Tour HTTP 503/,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("German Beach Tour tournament fetch does not treat an unknown detail page as a confirmed empty tournament", { concurrency: false }, async () => {
+  globalThis.fetch = async () => new Response("<html><body>upstream challenge</body></html>", { status: 200 });
+
+  try {
+    await assert.rejects(
+      fetchGermanBeachTourTournament({ tournamentId: "14684", gender: "men" }),
+      /detail layout is not recognized/i,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("German Beach Tour tournament fetch accepts empty matches only from a structurally valid schedule", { concurrency: false }, async () => {
+  globalThis.fetch = async (input) => {
+    const url = String(input);
+    if (url === buildTournamentPageUrl("14684")) {
+      return new Response(germanBeachTourDetailHtml(["main"]), { status: 200 });
+    }
+    if (url === buildTournamentScheduleUrl("14684", "main")) {
+      return new Response("<html><body>temporary upstream page</body></html>", { status: 200 });
+    }
+    throw new Error(`Unexpected German Beach Tour URL: ${url}`);
+  };
+
+  try {
+    await assert.rejects(
+      fetchGermanBeachTourTournament({ tournamentId: "14684", gender: "men" }),
+      /schedule layout is not recognized/i,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

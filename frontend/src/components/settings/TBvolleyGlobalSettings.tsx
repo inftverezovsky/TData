@@ -6,8 +6,6 @@ import { SettingsRequestError } from "./SettingsRequestError";
 import { BEACH_VOLLEYBALL_ADMIN_SPORT_ID } from "@backend/sources/tbvolley/config";
 
 const DEFAULT_SETTINGS = {
-  tbvolley_volleyballworld_api: "https://en.volleyballworld.com/api/v1/globalschedule",
-  tbvolley_user_agent: "TData TBvolley/1.0 (+https://en.volleyballworld.com/global-schedule)",
   tbvolley_default_days: "14",
   tbvolley_beachvolleyru_calendar_url: "https://beach.volley.ru/calendar/",
   tbvolley_beachvolleyru_user_agent: "TData TBvolley/1.0 (+https://beach.volley.ru/calendar/)",
@@ -79,20 +77,6 @@ export default function TBvolleyGlobalSettings() {
             <div className="mb-8 h-px bg-slate-100" />
 
             <dl className="grid gap-6">
-              <SettingsRow
-                label="Volleyball World API"
-                name="tbvolley_volleyballworld_api"
-                value={settings.tbvolley_volleyballworld_api}
-                isEditing={isEditing}
-                onChange={(val) => setSettings({ ...settings, tbvolley_volleyballworld_api: val })}
-              />
-              <SettingsRow
-                label="User-Agent"
-                name="tbvolley_user_agent"
-                value={settings.tbvolley_user_agent}
-                isEditing={isEditing}
-                onChange={(val) => setSettings({ ...settings, tbvolley_user_agent: val })}
-              />
               <SettingsRow
                 label="Default Days"
                 name="tbvolley_default_days"

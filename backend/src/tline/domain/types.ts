@@ -25,6 +25,7 @@ export type TLineTimePrecision = "EXACT" | "DATE_ONLY" | "UNDEFINED";
 export interface OfficialSourceTeamRef {
   readonly sourceTeamId: string;
   readonly name: string;
+  readonly city?: string | null;
   readonly adminTeamId: string | null;
 }
 
@@ -45,6 +46,10 @@ export interface OfficialSourceMatch {
   readonly startTimeMoscow?: string | null;
   readonly timePrecision?: TLineTimePrecision;
   readonly status: TLineMatchStatus;
+  readonly matchNumber?: string | null;
+  readonly score?: Readonly<{ home: number | null; away: number | null }>;
+  readonly scoreNote?: string | null;
+  readonly venue?: string | null;
   readonly stage?: string | null;
   readonly round?: string | null;
   readonly sourceUrl?: string | null;
@@ -86,6 +91,7 @@ export interface TLineSourceTeam {
   readonly externalId: string | null;
   readonly nameRu: string | null;
   readonly nameEn: string | null;
+  readonly city?: string | null;
   readonly aliases: readonly string[];
 }
 
