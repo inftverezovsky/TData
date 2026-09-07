@@ -1,3 +1,4 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 import { getManualImportDiscipline } from "@backend/manualImport/config";
 import { extractManualImportOcr } from "@backend/manualImport/ocrPipeline";
@@ -40,9 +41,9 @@ export async function POST(request: Request) {
       error: ocr.text.trim() ? undefined : "OCR не смог извлечь текст из изображения.",
     });
   } catch (error) {
-    console.error("[Manual Import OCR] Error:", error);
+    logApiError("api:manual-import/ocr/route.ts", error);
     return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : "Manual OCR failed" },
+      { ok: false, error: error instanceof Error ? safeErrorMessage(error) : "Manual OCR failed" },
       { status: 500 }
     );
   }

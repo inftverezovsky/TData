@@ -1,3 +1,4 @@
+import { logApiError } from "@backend/http/apiResponse";
 import { prisma } from "@backend/db/db";
 import { getTLineScheduleView, parseScheduleSlots, updateTLineSchedule } from "@backend/tline/application/scheduleState";
 import { apiOk, readJsonBody, requireTLineAccess, tlineErrorResponse } from "@backend/tline/api/http";
@@ -7,9 +8,14 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
-  const denied = await requireTLineAccess(request);
-  if (denied) return denied;
-  return apiOk(await getTLineScheduleView(prisma));
+  try {
+    const denied = await requireTLineAccess(request);
+    if (denied) return denied;
+    return apiOk(await getTLineScheduleView(prisma));
+  } catch (error) {
+    logApiError("api:tline/schedule/route.ts", error);
+    return tlineErrorResponse(error);
+  }
 }
 
 export async function PATCH(request: Request) {

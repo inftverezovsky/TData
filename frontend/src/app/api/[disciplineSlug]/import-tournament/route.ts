@@ -1,3 +1,4 @@
+import { apiErrorResponse, logApiError } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 import {
   dispatchTournamentImport,
@@ -11,9 +12,14 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ disciplineSlug: string }> }
 ) {
-  const { disciplineSlug } = await params;
-  const body = (await request.json()) as ImportTournamentRequestBody;
-  const result = await dispatchTournamentImport(disciplineSlug, body);
+  try {
+    const { disciplineSlug } = await params;
+    const body = (await request.json()) as ImportTournamentRequestBody;
+    const result = await dispatchTournamentImport(disciplineSlug, body);
 
-  return NextResponse.json(result.body, { status: result.status ?? 200 });
+    return NextResponse.json(result.body, { status: result.status ?? 200 });
+  } catch (error) {
+    logApiError("api:[disciplineSlug]/import-tournament/route.ts", error);
+    return apiErrorResponse(error);
+  }
 }

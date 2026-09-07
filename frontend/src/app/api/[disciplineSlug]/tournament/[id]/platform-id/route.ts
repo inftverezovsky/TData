@@ -1,3 +1,4 @@
+import { logApiError } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 import { prisma } from "@backend/db/db";
 import { queueIdentitySync } from "@backend/sync/identitySync";
@@ -24,7 +25,7 @@ export async function POST(
     const identitySync = queueIdentitySync(`tournament-platform-id:${slug}`);
     return NextResponse.json({ tournament, identitySync });
   } catch (error) {
-    console.error(error);
+    logApiError("api:[disciplineSlug]/tournament/[id]/platform-id/route.ts", error);
     return NextResponse.json({ error: "Failed to save platformId" }, { status: 500 });
   }
 }

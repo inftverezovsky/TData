@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { RotateCcw, AlertTriangle } from 'lucide-react';
 
 export default function Error({
@@ -10,6 +11,7 @@ export default function Error({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const router = useRouter();
   useEffect(() => {
     console.error(error);
   }, [error]);
@@ -37,7 +39,7 @@ export default function Error({
           ПОПРОБОВАТЬ СНОВА
         </button>
         <button
-          onClick={() => window.location.href = '/'}
+          onClick={() => router.push('/')}
           className="px-8 py-4 bg-white border border-slate-200 text-slate-600 rounded-2xl font-bold hover:bg-slate-50 transition-all"
         >
           НА ГЛАВНУЮ

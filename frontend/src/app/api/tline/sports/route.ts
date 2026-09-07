@@ -1,3 +1,4 @@
+import { logApiError } from "@backend/http/apiResponse";
 import { prisma } from "@backend/db/db";
 import { apiOk, readJsonBody, requireTLineAccess, tlineErrorResponse } from "@backend/tline/api/http";
 import { objectBody, optionalText, parseSlug, requiredText } from "@backend/tline/api/parsers";
@@ -7,24 +8,29 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
-  const denied = await requireTLineAccess(request);
-  if (denied) return denied;
-  const sports = await prisma.tLineSportConfig.findMany({
-    orderBy: { discipline: { name: "asc" } },
-    include: { discipline: { select: { slug: true, name: true } } },
-  });
-  return apiOk(sports.map((sport) => ({
-    id: sport.id,
-    slug: sport.discipline.slug,
-    name: sport.discipline.name,
-    adminSportId: sport.adminSportId,
-    active: sport.active,
-    autoEnabled: sport.autoEnabled,
-    autoPeriodFromOffsetMinutes: sport.autoPeriodFromOffsetMinutes,
-    autoPeriodToOffsetMinutes: sport.autoPeriodToOffsetMinutes,
-    candidateMatchWindowMinutes: sport.candidateMatchWindowMinutes,
-    defaultAllowedTimeDriftMinutes: sport.defaultAllowedTimeDriftMinutes,
-  })));
+  try {
+    const denied = await requireTLineAccess(request);
+    if (denied) return denied;
+    const sports = await prisma.tLineSportConfig.findMany({
+      orderBy: { discipline: { name: "asc" } },
+      include: { discipline: { select: { slug: true, name: true } } },
+    });
+    return apiOk(sports.map((sport) => ({
+      id: sport.id,
+      slug: sport.discipline.slug,
+      name: sport.discipline.name,
+      adminSportId: sport.adminSportId,
+      active: sport.active,
+      autoEnabled: sport.autoEnabled,
+      autoPeriodFromOffsetMinutes: sport.autoPeriodFromOffsetMinutes,
+      autoPeriodToOffsetMinutes: sport.autoPeriodToOffsetMinutes,
+      candidateMatchWindowMinutes: sport.candidateMatchWindowMinutes,
+      defaultAllowedTimeDriftMinutes: sport.defaultAllowedTimeDriftMinutes,
+    })));
+  } catch (error) {
+    logApiError("api:tline/sports/route.ts", error);
+    return tlineErrorResponse(error);
+  }
 }
 
 export async function POST(request: Request) {

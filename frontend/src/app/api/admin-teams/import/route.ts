@@ -1,3 +1,4 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 import { prisma } from "@backend/db/db";
 import { queueIdentitySync } from "@backend/sync/identitySync";
@@ -14,7 +15,7 @@ import { normalizeManualImportDisciplineId, resolveManualImportDisciplineSlug } 
 export { toGoogleSheetsExportUrl };
 
 export async function POST(request: Request) {
-  // API remains callable directly; password gate is UI-only for settings visibility.
+  // Открытый рабочий сценарий: доступность без сессии закреплена API-контрактом проекта.
 
   try {
     const formData = await request.formData();
@@ -28,6 +29,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Укажите дисциплину или Sport ID перед импортом команд." }, { status: 400 });
     }
 
+    // Проверяем источник и размер, читаем Excel, определяем ID/имена команд по заголовкам или данным.
     const { rows: data, fileName } = await readAdminTeamRowsFromSpreadsheetSource({ file, url });
 
     const { layout, records, skippedCount } = parseAdminTeamImportRows(data);
@@ -44,6 +46,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No teams with IDs were found in the source sheet." }, { status: 400 });
     }
 
+    // Заменяем команды данного источника атомарно: ошибка вставки откатывает и удаление старых строк.
     await prisma.$transaction([
       prisma.adminTeam.deleteMany({
         where: {
@@ -69,7 +72,7 @@ export async function POST(request: Request) {
     ]);
     invalidateAdminTeamSuggestCache(disciplineSlug);
 
-    // Run auto-mapping after import
+    // После успешной записи обновляем сопоставления и ставим синхронизацию идентификаторов в очередь.
     const mappingResult = await runAutoMappingForDiscipline(disciplineSlug);
 
     const identitySync = queueIdentitySync(`admin-teams:import:${disciplineSlug}`);
@@ -84,12 +87,17 @@ export async function POST(request: Request) {
       mappingResult,
       identitySync,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    // Ошибки источника объясняем пользователю, а внутренние детали сохраняем только как класс ошибки.
     const status = getSpreadsheetSourceErrorStatus(error);
     if (status >= 500) {
-      console.error("Import error:", error);
+      logApiError("api:admin-teams/import/route.ts", error);
     }
-    return NextResponse.json({ error: error.message }, { status });
+    return NextResponse.json({
+      error: status >= 500
+        ? "Admin team import failed."
+        : error instanceof Error ? safeErrorMessage(error) : "Invalid import request.",
+    }, { status });
   }
 }
 

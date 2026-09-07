@@ -1,3 +1,4 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 import {
   applyAutoMappingForDiscipline,
@@ -49,10 +50,10 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, preview });
   } catch (error) {
-    console.error("[Team Mapping Auto] Error:", error);
+    logApiError("api:team-mapping/auto/route.ts", error);
     return NextResponse.json({
       success: false,
-      error: error instanceof Error ? error.message : "Ошибка авто-маппинга",
+      error: error instanceof Error ? safeErrorMessage(error) : "Ошибка авто-маппинга",
     }, { status: 500 });
   }
 }

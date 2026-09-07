@@ -1,5 +1,46 @@
 # Deployment via Portainer
 
+## Статус этой инструкции после аудита 07.09.2026
+
+Документ описывает ручные варианты развёртывания, а не автоматический deploy
+после `git push`. Текущий GitHub workflow проверяет проект и собирает Docker-архив;
+сервер он не обновляет. Результаты локальных проверок и ограничения находятся в
+[отчёте аудита](AUDIT_2026-09-07.md).
+
+Локальные deploy helpers работают в режиме предварительного просмотра по умолчанию.
+`scripts/ssh-redeploy.ps1` выполняет inventory контейнеров, Compose-проектов,
+портов, диска и каталога; проверяет принадлежность web/worker/PostgreSQL проекту
+`tdata` и пути `/root/tdata`. Публикуемый порт должен оставаться `127.0.0.1:3010`.
+Изменения происходят только с `-Apply`; глобальный `-Prune` отклоняется.
+
+Для выкладки нужен immutable digest `repository@sha256:...`. Скрипт проверяет
+Prisma migration status до остановки приложения. Если есть pending/failed
+миграции, выкладка останавливается: изменение схемы требует отдельного окна,
+проверенной резервной копии и плана восстановления. В этом обновлении добавлена
+миграция `20260907190000_admin_login_rate_limit`; она создаёт только новую таблицу
+и индекс, не изменяя существующие данные. Её следует применить перед запуском
+нового образа командой `npm run db:migrate:deploy` в окружении целевого приложения
+после резервного копирования. Скрипт не откатывает схему автоматически.
+
+При готовой схеме скрипт создаёт закрытую DB-копию в `/root/tdata/.deploy-backups/`
+и проверяет её оглавление через `pg_restore --list`. Это проверка формата, а не
+полная репетиция восстановления. Затем обновляет только `web` и `tline-worker`,
+проверяет `ok=true` через локальный health endpoint и запущенный worker. При
+ошибке возвращает прежний image ID обоих сервисов и повторяет health check;
+даже успешный откат завершает deployment с ненулевым кодом.
+
+Выбранный образ записывается без секретов в `/root/tdata/.deploy-image.env`.
+Для последующего ручного Compose-запуска используйте оба env-файла:
+`docker compose --env-file .env --env-file .deploy-image.env -p tdata ...`.
+Резервные копии, lock и receipt исключены из Git и Docker context. Nginx,
+порты 80/443 и посторонние контейнеры скрипт не изменяет.
+
+SSH использует ключ `C:\Users\Sa1z1ngr0z\.ssh\codex_deploy_ed25519` и строгую
+проверку known_hosts. При первом подключении проверьте fingerprint сервера
+через доверенный канал и зарегистрируйте хост обычным интерактивным SSH.
+Рабочие секреты остаются в существующем runtime environment/Portainer.
+После обновления потребуется повторный вход администратора.
+
 ## Recommended: Portainer Stack from Git
 
 This avoids manual `scp`, manual archive uploads, and repeated command-line deploys.
@@ -55,13 +96,33 @@ The app requires these runtime paths inside the `web` container:
 
 The Dockerfile copies and installs these. If HLTV says Playwright browser is missing, rebuild the image instead of only recreating the container.
 
-## Fallback: Current PowerShell Deploy Script
+## PowerShell pipeline
 
-From local PowerShell:
+Предварительный просмотр не запускает Docker и SSH:
 
 ```powershell
 cd C:\Users\Sa1z1ngr0z\Desktop\TData
-.\scripts\deploy-all.ps1
+.\scripts\deploy-all.ps1 -Tag audit-20260907
 ```
 
-This is a fallback, not the preferred long-term flow. It builds and pushes the Docker image and runs the configured SSH deploy helper. Add `-Prune` only when you intentionally want to clean unused local Docker images/build cache.
+После отдельного разрешения на публикацию/выкладку и подготовки схемы:
+
+```powershell
+.\scripts\deploy-all.ps1 -Tag audit-20260907 -Apply
+```
+
+Pipeline выполняет `npm run check`, собирает и публикует image, получает его
+registry digest и передаёт именно этот digest SSH helper. Один только
+`build-and-push.ps1 -Apply` публикует образ и не объявляет сервер обновлённым.
+Если имя/каталог/контейнеры не соответствуют canonical TData, helper останавливается.
+Сначала нужно проверить фактическое размещение, а не создавать второй проект.
+
+Локальные проверки helper выполняются без daemon/SSH:
+
+```bash
+npx tsx --test tests/deploymentScripts.test.ts
+bash -n scripts/deploy/remote-redeploy.sh
+for scenario in success foreign port configport configimage migration backup upfail healthfail wrongimage rollbackfail; do
+  bash tests/fixtures/deployment/remote-harness.sh "$scenario" "$PWD/scripts/deploy/remote-redeploy.sh"
+done
+```

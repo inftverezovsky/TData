@@ -23,7 +23,9 @@ Background crawler → generated HTML pages → DOM parsing → database
 - random jitter: `LIQUIPEDIA_JITTER_MS`, по умолчанию `650 ms`;
 - cooldown after 429/Cloudflare blocks: `LIQUIPEDIA_COOLDOWN_MS`, по умолчанию `600000 ms`.
 
-Сейчас `action=parse` не используется, но отдельная переменная оставлена на будущее.
+По умолчанию `LIQUIPEDIA_SKIP_PARSED_HTML=1`: дорогой `action=parse` пропускается.
+При значении `0` импорт может запросить parsed HTML через MediaWiki API;
+это отличается от обхода сгенерированных публичных HTML-страниц.
 
 HLTV Playwright tasks are queued and additionally spaced by `HLTV_QUEUE_DELAY_MS`, по умолчанию `1000 ms`.
 

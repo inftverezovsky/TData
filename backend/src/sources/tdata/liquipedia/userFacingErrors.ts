@@ -35,7 +35,7 @@ export function getLiquipediaUserMessage(errorClass?: string | null, fallback?: 
     case "network_error":
       return "Не удалось подключиться к Liquipedia. Проверьте прокси и повторите запрос.";
     default:
-      if (fallback && !isInternalLiquipediaError(fallback)) return fallback;
+      // В ответ попадают только наши сообщения; неизвестный текст внешнего источника остаётся внутри сервера.
       return "Не удалось выполнить запрос к Liquipedia. Проверьте прокси и повторите попытку.";
   }
 }
@@ -85,8 +85,4 @@ export function getLiquipediaResponseStatus(errorClass?: string | null) {
 function toErrorLike(error: unknown): ErrorLike {
   if (error && typeof error === "object") return error as ErrorLike;
   return {};
-}
-
-function isInternalLiquipediaError(message: string) {
-  return /<!doctype|<html|<\/html|<head|<body|<script|cf-ray|cloudflare|turnstile|captcha|attention required|checking your browser|Liquipedia API error|Failed to fetch HTML|returned non-JSON|invalid JSON|fetch failed|AbortError|ERR_|ETIMEDOUT|ESOCKETTIMEDOUT|ECONNRESET|socket hang up|node-fetch|Unexpected token/i.test(message);
 }

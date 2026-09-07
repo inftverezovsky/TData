@@ -1,3 +1,4 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 import { runHltvScript } from "@backend/sources/tdata/hltv/scraper";
 import { prisma } from "@backend/db/db";
@@ -46,8 +47,8 @@ export async function GET(request: Request) {
       errorClass: data.errorClass || emptyValidIfNoItems([events.length]),
     });
   } catch (error: any) {
-    const errorClass = classifyParserError({ message: error.message });
-    console.error('[HLTV Events API] Error:', error);
-    return NextResponse.json({ ok: false, error: error.message, errorClass }, { status: 500 });
+    const errorClass = classifyParserError({ message: safeErrorMessage(error) });
+    logApiError("api:counterstrike/hltv/events/route.ts", error);
+    return NextResponse.json({ ok: false, error: safeErrorMessage(error), errorClass }, { status: 500 });
   }
 }

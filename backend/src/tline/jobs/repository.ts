@@ -37,6 +37,7 @@ export async function enqueueJob(
   return job;
 }
 
+/** Захват задачи выполняется SQL-запросом с арендой; разные worker не должны получить один запуск. */
 export async function claimNextJob(
   executor: RawQueryExecutor,
   options: ClaimNextJobOptions,
@@ -45,6 +46,7 @@ export async function claimNextJob(
   return rows[0] ?? null;
 }
 
+/** Продление возвращает false, если worker уже утратил право продолжать текущую попытку. */
 export async function heartbeatJob(
   executor: RawQueryExecutor,
   options: HeartbeatJobOptions,
@@ -69,6 +71,7 @@ export async function completeJob(
   return rows[0] ?? null;
 }
 
+/** Ошибка завершает задачу и незаконченные чемпионаты согласованно, только пока аренда принадлежит worker. */
 export async function failJobAndRun(
   executor: RawQueryExecutor,
   options: FailJobAndRunOptions,

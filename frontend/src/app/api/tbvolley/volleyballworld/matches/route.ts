@@ -1,3 +1,4 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 import { fetchVolleyballWorldBeachSchedule } from "@backend/sources/tbvolley/VolleyballWorld";
 
@@ -15,8 +16,8 @@ export async function GET(request: Request) {
 
     return NextResponse.json(schedule);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Volleyball World request failed.";
-    console.error("[TBvolley VolleyballWorld API] Error:", error);
+    const message = error instanceof Error ? safeErrorMessage(error) : "Volleyball World request failed.";
+    logApiError("api:tbvolley/volleyballworld/matches/route.ts", error);
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }

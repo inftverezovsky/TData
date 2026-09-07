@@ -1,3 +1,4 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 
 import { requireAdmin, requireSameOriginJsonMutation } from "@backend/auth/adminAuth";
@@ -33,9 +34,9 @@ export async function POST(request: Request) {
       const status = error.code === "TEAM_NOT_FOUND"
         ? 404
         : error.code === "INVALID_TARGET_BINDINGS" ? 400 : 409;
-      return NextResponse.json({ error: error.message, code: error.code }, { status });
+      return NextResponse.json({ error: safeErrorMessage(error), code: error.code }, { status });
     }
-    console.error("[KHL team statistic bindings]", error instanceof Error ? error.message : error);
+    logApiError("api:results/khl/bindings/team-stats/route.ts", error);
     return NextResponse.json({ error: "Failed to confirm KHL team statistic bindings." }, { status: 500 });
   }
 }

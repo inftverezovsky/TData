@@ -1,5 +1,6 @@
+import { apiErrorResponse, logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@backend/auth/adminAuth";
+import { requireAdmin, requireSameOriginJsonMutation } from "@backend/auth/adminAuth";
 import {
   exportIdentitySnapshot,
   importIdentitySnapshot,
@@ -10,19 +11,24 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 export async function GET(request: Request) {
-  const unauthorized = await authorizeIdentitySync(request);
-  if (unauthorized) return unauthorized;
+  try {
+    const unauthorized = await authorizeIdentitySync(request);
+    if (unauthorized) return unauthorized;
 
-  const snapshot = await exportIdentitySnapshot();
-  return NextResponse.json(snapshot, {
-    headers: {
-      "Cache-Control": "no-store",
-    },
-  });
+    const snapshot = await exportIdentitySnapshot();
+    return NextResponse.json(snapshot, {
+      headers: {
+        "Cache-Control": "no-store",
+      },
+    });
+  } catch (error) {
+    logApiError("api:admin-settings/identity-sync/route.ts", error);
+    return apiErrorResponse(error);
+  }
 }
 
 export async function POST(request: Request) {
-  const unauthorized = await authorizeIdentitySync(request);
+  const unauthorized = await authorizeIdentitySync(request, true);
   if (unauthorized) return unauthorized;
 
   try {
@@ -36,13 +42,16 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : "Identity sync failed" },
+      { ok: false, error: error instanceof Error ? safeErrorMessage(error) : "Identity sync failed" },
       { status: 400 }
     );
   }
 }
 
-async function authorizeIdentitySync(request: Request) {
+async function authorizeIdentitySync(request: Request, mutation = false) {
+  // Сервисный bearer-token не использует browser cookies; сессия браузера дополнительно требует Origin.
   if (verifyIdentitySyncRequest(request)) return null;
-  return requireAdmin(request);
+  const unauthorized = await requireAdmin(request);
+  if (unauthorized) return unauthorized;
+  return mutation ? requireSameOriginJsonMutation(request) : null;
 }

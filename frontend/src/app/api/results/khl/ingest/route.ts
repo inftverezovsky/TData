@@ -1,3 +1,4 @@
+import { safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 
 import { requireAdmin, requireSameOriginJsonMutation } from "@backend/auth/adminAuth";
@@ -68,7 +69,7 @@ export async function POST(request: Request) {
       validation: result.normalized.validation,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
+    const message = error instanceof Error ? safeErrorMessage(error) : "Unknown error";
     console.error("[KHL ingest]", message);
     if (error instanceof KhlRepositoryError || error instanceof KhlSchemaError) {
       return NextResponse.json({ error: message }, { status: 422 });

@@ -1,3 +1,4 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 import { prisma } from "@backend/db/db";
 import { emptyValidIfNoItems, classifyParserError } from "@backend/proxy/parserErrors";
@@ -39,8 +40,8 @@ export async function GET(request: Request) {
       errorClass: data.errorClass || emptyValidIfNoItems([events.length]),
     });
   } catch (error: any) {
-    const errorClass = classifyParserError({ message: error.message });
-    console.error("[VLR Events API] Error:", error);
-    return NextResponse.json({ ok: false, error: error.message, errorClass }, { status: 500 });
+    const errorClass = classifyParserError({ message: safeErrorMessage(error) });
+    logApiError("api:valorant/vlr/events/route.ts", error);
+    return NextResponse.json({ ok: false, error: safeErrorMessage(error), errorClass }, { status: 500 });
   }
 }

@@ -2,6 +2,9 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { readJsonResponse } from "@/services/responseSchema";
+import { decodeAdminMapping, decodeSavedAdminMapping, decodeAdminPreview, decodeAdminSend, decodeMarkedMatches } from "./uploadResponse";
+import { useAuthenticatedRequest } from './AdminSessionProvider';
 import { buildAdminServiceUrl } from '@backend/adminUpload/adminServiceUrl';
 import { appendShapkaOverridesSearchParam } from '@backend/adminUpload/shapkaOverrides';
 import { toPhpString } from '@backend/adminUpload/utils';
@@ -22,22 +25,12 @@ interface Settings {
   requestMode: string;
 }
 
-interface PreviewData {
-  phpArray: any;
-  serialized: string;
-  postBody: string;
-  readyMatchesCount: number;
-  skippedMatches: any[];
-  warnings: string[];
-}
+type PreviewData = ReturnType<typeof decodeAdminPreview>;
 
 function buildSelectedIdsQuery(selectedMatchIds: string[]) {
   return selectedMatchIds.map((id) => encodeURIComponent(id)).join(',');
 }
 
-function getFriendlyErrorMessage(error: unknown, fallback: string) {
-  return typeof error === 'string' && error.trim() ? error : fallback;
-}
 
 export default function AdminUploadPanel({ 
   tournamentId, 
@@ -55,6 +48,7 @@ export default function AdminUploadPanel({
   shapkaIdBySelectionId?: Record<string, string>;
 }) {
   const router = useRouter();
+  const authenticatedFetch = useAuthenticatedRequest();
   const [mapping, setMapping] = useState<AdminMapping>({ adminShapkaId: '', adminShapkaName: '' });
   const settings = initialSettings;
   const [preview, setPreview] = useState<PreviewData | null>(null);
@@ -94,18 +88,7 @@ export default function AdminUploadPanel({
       credentials: 'same-origin',
     });
 
-    const mappingData = await mappingRes.json().catch(() => null);
-
-    if (!mappingRes.ok) {
-      setResult({
-        type: 'error',
-        text: getFriendlyErrorMessage(
-          mappingData?.error,
-          'Ошибка загрузки данных админки'
-        ),
-      });
-      return;
-    }
+    const mappingData = await readJsonResponse(mappingRes, decodeAdminMapping, "Ошибка загрузки данных админки");
 
     setMapping({
       adminShapkaId: mappingData.adminShapkaId || '',
@@ -129,14 +112,14 @@ export default function AdminUploadPanel({
         credentials: 'same-origin',
         body: JSON.stringify({ disciplineSlug, selectedMatchIds, shapkaIdBySelectionId }),
       });
-      const data = await res.json();
+      const data = await readJsonResponse(res, decodeAdminPreview, "Ошибка превью");
       if (data.ok) {
         setPreview(data);
       } else {
-        setResult({ type: 'error', text: data.error || 'Ошибка превью' });
+        setResult({ type: 'error', text: 'Ошибка превью' });
       }
     } catch (e) {
-      setResult({ type: 'error', text: 'Ошибка превью' });
+      setResult({ type: 'error', text: e instanceof Error ? e.message : 'Ошибка превью' });
     } finally {
       setActionLoading(false);
     }
@@ -147,7 +130,7 @@ export default function AdminUploadPanel({
       try {
         await loadAdminData();
       } catch (e) {
-        console.error('Failed to fetch admin data', e);
+        setResult({ type: 'error', text: e instanceof Error ? e.message : 'Ошибка загрузки данных админки' });
       } finally {
         setLoading(false);
       }
@@ -180,19 +163,15 @@ export default function AdminUploadPanel({
           sourceTournamentName: tournamentName
         }),
       });
-      if (res.ok) {
+      await readJsonResponse(res, decodeSavedAdminMapping, "Ошибка сохранения ID");
         setLastSavedId(mapping.adminShapkaId);
         setIsEditing(false);
         setPreview(null);
         setResult({ type: 'success', text: 'ID шапки сохранён.' });
         dispatchAdminMappingUpdated({ tournamentId, disciplineSlug });
         router.refresh();
-      } else {
-        const data = await res.json().catch(() => null);
-        setResult({ type: 'error', text: data?.error || 'Ошибка сохранения ID' });
-      }
     } catch (e) {
-      setResult({ type: 'error', text: 'Ошибка сохранения ID' });
+      setResult({ type: 'error', text: e instanceof Error ? e.message : 'Ошибка сохранения ID' });
     } finally {
       setActionLoading(false);
     }
@@ -203,13 +182,13 @@ export default function AdminUploadPanel({
     setActionLoading(true);
     setResult(null);
     try {
-      const res = await fetch(`/api/${disciplineSlug}/tournament/${tournamentId}/admin-fixt-send`, {
+      const res = await authenticatedFetch(`/api/${disciplineSlug}/tournament/${tournamentId}/admin-fixt-send`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
         body: JSON.stringify({ disciplineSlug, selectedMatchIds, shapkaIdBySelectionId }),
       });
-      const data = await res.json();
+      const data = await readJsonResponse(res, decodeAdminSend, "Ошибка отправки");
       if (data.ok) {
         setResult({ 
           type: 'success', 
@@ -232,7 +211,7 @@ export default function AdminUploadPanel({
         });
       }
     } catch (e) {
-      setResult({ type: 'error', text: 'Сетевая ошибка при отправке' });
+      setResult({ type: 'error', text: e instanceof Error ? e.message : 'Сетевая ошибка при отправке' });
     } finally {
       setActionLoading(false);
     }
@@ -254,7 +233,7 @@ export default function AdminUploadPanel({
       credentials: 'same-origin',
       body: JSON.stringify({ selectedMatchIds, shapkaIdBySelectionId, confirmed: true }),
     });
-    const data = await res.json();
+    const data = await readJsonResponse(res, decodeMarkedMatches, "Не удалось отметить матчи как залитые");
     if (!data.ok) {
       throw new Error(data.error || 'Не удалось отметить матчи как залитые');
     }
@@ -262,7 +241,7 @@ export default function AdminUploadPanel({
     dispatchTournamentDataUpdated({ tournamentId, disciplineSlug });
     router.refresh();
     setPreview(null);
-    return data.markedMatchesCount as number;
+    return data.markedMatchesCount;
   }
 
   const handleServiceUpload = async () => {

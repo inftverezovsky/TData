@@ -1,3 +1,4 @@
+import { safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from 'next/server';
 import { prisma } from '@backend/db/db';
 
@@ -24,6 +25,6 @@ export async function GET(
 
     return NextResponse.json({ ok: true, logs });
   } catch (error: any) {
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: false, error: safeErrorMessage(error) }, { status: 500 });
   }
 }

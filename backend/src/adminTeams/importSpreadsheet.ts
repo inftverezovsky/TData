@@ -78,9 +78,9 @@ export type AdminTeamImportLayout = {
 };
 
 export function inferAdminTeamImportLayout(rows: unknown[][]): AdminTeamImportLayout | null {
-  const normalizedRows = rows
-    .map((row) => Array.isArray(row) ? row : [])
-    .filter((row) => rowHasValues(row));
+  // Сначала ищем явные заголовки; при их отсутствии оцениваем колонки ID и имён по образцу строк.
+  // Сохраняем индексы пустых строк: найденный dataStartRow применяется к исходному листу.
+  const normalizedRows = rows.map((row) => Array.isArray(row) ? row : []);
 
   if (normalizedRows.length === 0) return null;
 
@@ -128,6 +128,7 @@ export function inferAdminTeamImportLayout(rows: unknown[][]): AdminTeamImportLa
 }
 
 export function parseAdminTeamImportRows(rows: unknown[][]) {
+  // Применяем найденную схему к строкам, сохраняем имена на обоих языках и считаем пропуски.
   const layout = inferAdminTeamImportLayout(rows);
   const records: Array<{
     platformId: string;

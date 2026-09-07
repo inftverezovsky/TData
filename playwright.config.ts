@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { requireTestDatabaseUrl } from "./scripts/helpers/testDatabase";
 
 const port = Number(process.env.PLAYWRIGHT_PORT ?? process.env.PORT ?? 3012);
 const baseURL = `http://127.0.0.1:${port}`;
@@ -7,10 +8,31 @@ const webServerEnv: Record<string, string> = {
   NODE_OPTIONS: "--openssl-legacy-provider",
   ADMIN_PASSWORD: "63016",
   ADMIN_SESSION_SECRET: "e2e-session-secret",
+  // Тестовый origin использует HTTP loopback; production HTTPS по умолчанию оставляет cookie Secure.
+  ADMIN_COOKIE_SECURE: "false",
+  // Smoke-тесты не наследуют рабочую БД из локального .env.
+  DATABASE_URL: process.env.DATABASE_URL
+    ? requireTestDatabaseUrl(process.env.DATABASE_URL)
+    : "postgresql://127.0.0.1:1/tdata_test_unavailable?schema=public&connect_timeout=1",
+  TLINE_ENABLED: "0",
+  TLINE_SCHEDULER_READY: "0",
+  KHL_RESULTS_AUTO_SYNC_ENABLED: "0",
 };
 
-if (process.env.DATABASE_URL) {
-  webServerEnv.DATABASE_URL = process.env.DATABASE_URL;
+// Только отдельный DB E2E использует локальный mock Admin API для проверки отправки.
+if (["1", "true"].includes(process.env.RUN_DB_E2E || "")) {
+  requireTestDatabaseUrl(process.env.DATABASE_URL);
+  Object.assign(webServerEnv, {
+    ADMIN_UPLOAD_ALLOWED_HOSTS: "127.0.0.1",
+    ADMIN_UPLOAD_ALLOW_PRIVATE_HOSTS: "1",
+    ADMIN_UPLOAD_ALLOW_INSECURE_HTTP: "1",
+    ADMIN_UPLOAD_ALLOW_ANY_PUBLIC_HOST: "0",
+    EXTERNAL_PLATFORM_ALLOWED_HOSTS: "",
+    // Локальный mock не должен получать авторизацию или mTLS из рабочей .env.
+    ADMIN_AUTH_MODE: "none",
+    ADMIN_MTLS_ENABLED: "false",
+    ADMIN_AUTH_ALLOW_NONE: "1",
+  });
 }
 
 export default defineConfig({

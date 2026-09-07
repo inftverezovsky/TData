@@ -1,3 +1,4 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 
 import { requireAdmin, requireSameOriginJsonMutation } from "@backend/auth/adminAuth";
@@ -30,11 +31,11 @@ export async function POST(request: Request) {
   } catch (error) {
     if (error instanceof KhlBindingConflictError) {
       return NextResponse.json(
-        { error: error.message, code: error.code },
+        { error: safeErrorMessage(error), code: error.code },
         { status: error.code === "MATCH_NOT_FOUND" ? 404 : error.code === "INVALID_BINDING" ? 400 : 409 }
       );
     }
-    console.error("[KHL match binding]", error instanceof Error ? error.message : error);
+    logApiError("api:results/khl/bindings/match/route.ts", error);
     return NextResponse.json({ error: "Failed to save KHL match binding." }, { status: 500 });
   }
 }

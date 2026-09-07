@@ -1,5 +1,6 @@
 import { getOrCreateDiscipline } from "@backend/config/disciplines";
 import { prisma } from "@backend/db/db";
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { dedupeTournamentMatches } from "@backend/matches/dedupe";
 import { getNormalizer } from "@backend/normalizers/registry";
 import { importBeachVolleyRuTournament } from "@backend/sources/tbvolley/beach.volley.ru/importTournament";
@@ -66,6 +67,11 @@ export type ImportTournamentDispatchResult = {
   status?: number;
 };
 
+/**
+ * Единая точка входа API импорта: привести входные поля → определить дисциплину →
+ * передать запрос адаптеру выбранного источника → вернуть результат и HTTP-статус.
+ * Формат страницы и правила извлечения матчей остаются внутри соответствующего адаптера.
+ */
 export async function dispatchTournamentImport(
   disciplineSlug: string,
   body: ImportTournamentRequestBody,
@@ -84,9 +90,10 @@ export async function dispatchTournamentImport(
   try {
     discipline = await getOrCreateDiscipline(slug);
   } catch (err) {
+    logApiError("tournament-import-discipline", err);
     return {
-      body: { error: err instanceof Error ? err.message : "Неподдерживаемая игровая дисциплина" },
-      status: 400,
+      body: { error: safeErrorMessage(err, "Не удалось подготовить дисциплину для импорта.") },
+      status: 500,
     };
   }
 
@@ -315,11 +322,12 @@ async function importLiquipediaTournament(input: {
     normalizer = getNormalizer(input.slug);
   } catch (err) {
     return {
-      body: { error: err instanceof Error ? err.message : "Неподдерживаемая игровая дисциплина" },
+      body: { error: safeErrorMessage(err, "Неподдерживаемая игровая дисциплина") },
       status: 400,
     };
   }
 
+  // Запись запуска появляется до сетевых запросов: история хранит и успешные, и неудачные попытки.
   const tournamentImport = await prisma.tournamentImport.create({
     data: {
       disciplineId: input.disciplineId,
@@ -353,6 +361,7 @@ async function importLiquipediaTournament(input: {
       },
     });
 
+    // Ответ читается из БД после сохранения, чтобы API показывал принятый снимок, а не сырые кандидаты.
     const fullTournament = await prisma.tournament.findUnique({
       where: { id: tournament.id },
       include: { participants: true, matches: true, lastImport: true },
@@ -373,7 +382,7 @@ async function importLiquipediaTournament(input: {
     };
   } catch (error) {
     const userFacingError = toLiquipediaUserFacingError(error);
-    console.error(error);
+    logApiError("tournament-import-liquipedia", error);
     await prisma.tournamentImport.update({
       where: { id: tournamentImport.id },
       data: {
@@ -400,7 +409,9 @@ function sourceError(
   status: number,
   includeUserMessage = false,
 ): ImportTournamentDispatchResult {
-  const message = error instanceof Error ? error.message : fallback;
+  // Adapter может вернуть исключение с HTTP-телом или аргументами Prisma; наружу передаём только безопасный текст.
+  logApiError("tournament-import-source", error);
+  const message = safeErrorMessage(error, fallback);
   return {
     body: includeUserMessage ? { error: message, userMessage: message } : { error: message },
     status,

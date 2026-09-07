@@ -38,6 +38,19 @@ test("inferAdminTeamImportLayout recognizes explicit headers", () => {
   assert.equal(layout?.source, "header");
 });
 
+test("blank spreadsheet rows do not shift the header or become imported teams", () => {
+  const result = parseAdminTeamImportRows([
+    [],
+    [null, null],
+    ["Platform ID", "Player Name"],
+    [101, "Fixture Team"],
+  ]);
+  assert.equal(result.layout?.headerRowIndex, 2);
+  assert.equal(result.layout?.dataStartRow, 3);
+  assert.equal(result.records.length, 1);
+  assert.equal(result.records[0].platformId, "101");
+});
+
 test("parseAdminTeamImportRows keeps Russian and English admin names", () => {
   const result = parseAdminTeamImportRows([
     ["849 245,00", "Абдулазиз Аль Абдулла", "Abdulaziz Al Abdulla"],

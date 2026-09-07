@@ -1,6 +1,7 @@
+import { safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from 'next/server';
 import { prisma } from '@backend/db/db';
-import { requireAdmin } from '@backend/auth/adminAuth';
+import { requireAdmin, requireSameOriginJsonMutation } from '@backend/auth/adminAuth';
 import { getAdminAuthConfigStatus } from '@backend/adminUpload/adminHttpClient';
 import { resolveAdminSettings } from '@backend/adminUpload/resolveAdminSettings';
 import { queueIdentitySync } from '@backend/sync/identitySync';
@@ -27,7 +28,7 @@ export async function GET(
 
     return NextResponse.json(merged);
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: safeErrorMessage(error) }, { status: 500 });
   }
 }
 
@@ -38,6 +39,10 @@ export async function POST(
   const { disciplineSlug } = await params;
   const unauthorized = await requireAdmin(request);
   if (unauthorized) return unauthorized;
+
+  // После сессии проверяем Origin и JSON-формат; только затем разрешаем изменение интеграции.
+  const unsafeMutation = requireSameOriginJsonMutation(request);
+  if (unsafeMutation) return unsafeMutation;
 
   try {
     const body = await request.json();
@@ -80,6 +85,6 @@ export async function POST(
     const identitySync = queueIdentitySync(`admin-settings:${disciplineSlug}`);
     return NextResponse.json({ ...settings, identitySync });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: safeErrorMessage(error) }, { status: 500 });
   }
 }

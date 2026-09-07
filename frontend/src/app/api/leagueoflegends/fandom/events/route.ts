@@ -1,3 +1,4 @@
+import { safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 import { prisma } from "@backend/db/db";
 import { classifyFandomError, fetchFandomTournamentCargoEvents, makeFandomPageUrl, searchFandomTournamentPages } from "@backend/sources/tdata/fandom/client";
@@ -41,7 +42,7 @@ export async function GET() {
     const errorClass = classifyFandomError(error);
     const message = errorClass === "rate_limited"
       ? "Fandom временно ограничил список турниров."
-      : error instanceof Error ? error.message : "Не удалось загрузить Fandom турниры.";
+      : error instanceof Error ? safeErrorMessage(error) : "Не удалось загрузить Fandom турниры.";
     return NextResponse.json({ ok: false, error: message, userMessage: message, errorClass }, { status: errorClass === "rate_limited" ? 429 : 500 });
   }
 }

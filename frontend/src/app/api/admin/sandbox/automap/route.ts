@@ -1,3 +1,4 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 import {
   buildSandboxAutoMappingPreviewFromParsed,
@@ -77,10 +78,10 @@ export async function POST(request: Request) {
   } catch (error: any) {
     const status = getSpreadsheetSourceErrorStatus(error);
     if (status >= 500) {
-      console.error("Sandbox automap error:", error);
+      logApiError("api:admin/sandbox/automap/route.ts", error);
     }
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Не удалось выполнить dry-run автомапинга." },
+      { error: error instanceof Error ? safeErrorMessage(error) : "Не удалось выполнить dry-run автомапинга." },
       { status }
     );
   }

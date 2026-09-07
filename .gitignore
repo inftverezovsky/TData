@@ -8,11 +8,11 @@ test-results/
 playwright-report/
 blob-report/
 .codex-logs/
+.codex-deploy-*/
 .env
-.env.local
-.env.development
-.env.production
-.env.*.local
+.env.*
+!.env.example
+!.env.*.example
 .DS_Store
 *.log
 npm-debug.log*
@@ -30,6 +30,7 @@ User/
 /TData/
 hltv_debug_error.png
 *.tsbuildinfo
+.tesseract-cache/
 
 # IDE files
 .vscode/
@@ -47,8 +48,11 @@ certs/*
 *.key
 *.p12
 *.pfx
-.env
-.env.local
-.env.production
-.env.development
-.env.*.local
+*.dump
+*.sql.gz
+*.zip
+*.tar
+*.tar.gz
+.deploy-backups/
+.deploy.lock
+.deploy-image.env

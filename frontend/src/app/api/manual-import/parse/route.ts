@@ -1,3 +1,4 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 import { parseManualMatchesWithAi } from "@backend/manualImport/aiParser";
 import { getManualImportDiscipline } from "@backend/manualImport/config";
@@ -56,12 +57,13 @@ export async function POST(request: Request) {
         mappingMs,
         totalMs: Date.now() - totalStartedAt,
       },
-      error: parsed.error,
+      // Fallback возвращает результат локального разбора, но техническая диагностика AI не входит в публичный контракт.
+      error: parsed.error ? "Не удалось распознать все матчи. Проверьте результат или повторите импорт." : undefined,
     });
   } catch (error) {
-    console.error("[Manual Import Parse] Error:", error);
+    logApiError("api:manual-import/parse/route.ts", error);
     return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : "Manual parse failed" },
+      { ok: false, error: error instanceof Error ? safeErrorMessage(error) : "Manual parse failed" },
       { status: 500 }
     );
   }

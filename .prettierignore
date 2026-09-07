@@ -1,0 +1,5 @@
+# Raw parser fixtures and historical database migrations must remain byte-stable.
+tests/fixtures/
+backend/prisma/migrations/
+data/
+package-lock.json

@@ -7,7 +7,8 @@ const globalForPrisma = globalThis as unknown as {
 
 function createPrismaClient() {
   return new PrismaClient({
-    log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
+    // Prisma может включить аргументы запроса в error log. Безопасные границы логируют только класс ошибки.
+    log: [],
     datasources: {
       db: {
         url: process.env.DATABASE_URL,

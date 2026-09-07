@@ -36,7 +36,8 @@ export function selectManualImportImageHashes(
       duplicateCount++;
       continue;
     }
-    if (usedHashes.size + acceptedHashes.length >= maxImages) {
+    // usedHashes уже включает принятые в этом проходе изображения: каждое занимает ровно одно место.
+    if (usedHashes.size >= maxImages) {
       overflowCount++;
       continue;
     }

@@ -1,3 +1,4 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 
 import { requireAdmin, requireSameOriginJsonMutation } from "@backend/auth/adminAuth";
@@ -81,11 +82,11 @@ export async function POST(request: Request) {
   } catch (error) {
     if (error instanceof KhlDeliveryBlockedError) {
       return NextResponse.json(
-        { error: error.message, issues: error.issues },
+        { error: safeErrorMessage(error), issues: error.issues },
         { status: 409 }
       );
     }
-    console.error("[KHL delivery staging]", error instanceof Error ? error.message : error);
+    logApiError("api:results/khl/delivery/stage/route.ts", error);
     return NextResponse.json({ error: "Failed to stage KHL delivery." }, { status: 500 });
   }
 }

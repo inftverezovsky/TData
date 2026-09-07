@@ -16,6 +16,12 @@ export class KhlDeliveryBlockedError extends Error {
   }
 }
 
+/**
+ * Подготовить запись доставки по просмотренному preview: сверить ревизию и хеш →
+ * заблокировать строку матча → повторно проверить актуальность → создать или вернуть запись.
+ * Идемпотентный ключ защищает от дублирования одной нагрузки. Эта функция сохраняет PENDING,
+ * а сетевой отправки результата во внешний Admin здесь нет.
+ */
 export async function stageKhlAdminDelivery(
   prisma: PrismaClient,
   input: {

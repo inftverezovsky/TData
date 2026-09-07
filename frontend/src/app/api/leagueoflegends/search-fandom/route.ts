@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { safeErrorMessage } from "@backend/http/apiResponse";
 import { searchFandomTournamentPages, classifyFandomError } from "@backend/sources/tdata/fandom/client";
 import { prisma } from "@backend/db/db";
 import crypto from "crypto";
@@ -29,7 +30,7 @@ function toFandomUserMessage(errorClass: string, error: unknown) {
   if (errorClass === "rate_limited") return "Fandom временно ограничил запросы. Подождите пару минут и повторите.";
   if (errorClass === "non_json") return "Fandom вернул некорректный ответ.";
   if (errorClass === "network_error") return "Не удалось подключиться к Fandom.";
-  return error instanceof Error ? error.message : "Не удалось выполнить поиск Fandom.";
+  return safeErrorMessage(error, "Не удалось выполнить поиск Fandom.");
 }
 
 async function logFandomRequest(data: {

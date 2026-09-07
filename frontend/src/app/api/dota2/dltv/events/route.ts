@@ -1,3 +1,4 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 import { prisma } from "@backend/db/db";
 import { runDltv } from "@backend/sources/tdata/dltv/queue";
@@ -45,11 +46,11 @@ export async function GET(request: Request) {
       errorClass: data.errorClass || emptyValidIfNoItems([events.length]),
     });
   } catch (error: any) {
-    const errorClass = normalizeDltvErrorClass(error.errorClass, error.message);
-    console.error("[DLTV Events API] Error:", error);
+    const errorClass = normalizeDltvErrorClass(error.errorClass, safeErrorMessage(error));
+    logApiError("api:dota2/dltv/events/route.ts", error);
     return NextResponse.json({
       ok: false,
-      error: getDltvErrorMessage(errorClass, error.message),
+      error: getDltvErrorMessage(errorClass, safeErrorMessage(error)),
       errorClass,
     }, { status: 500 });
   }

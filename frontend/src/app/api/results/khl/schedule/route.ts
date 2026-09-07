@@ -1,3 +1,4 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 
 import { requireAdmin } from "@backend/auth/adminAuth";
@@ -31,9 +32,9 @@ export async function GET(request: Request) {
     const events = await new KhlApiClient().listEvents({ stageId, from, to });
     return NextResponse.json({ stageId, from: from.toISOString(), to: to.toISOString(), events });
   } catch (error) {
-    console.error("[KHL schedule]", error instanceof Error ? error.message : error);
+    logApiError("api:results/khl/schedule/route.ts", error);
     return NextResponse.json(
-      { error: error instanceof KhlApiError ? error.message : "Failed to load KHL schedule." },
+      { error: error instanceof KhlApiError ? safeErrorMessage(error) : "Failed to load KHL schedule." },
       { status: 502 }
     );
   }

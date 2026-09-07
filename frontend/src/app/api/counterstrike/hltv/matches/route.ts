@@ -1,3 +1,4 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 import { prisma } from "@backend/db/db";
 import { runHltvScript } from "@backend/sources/tdata/hltv/scraper";
@@ -92,11 +93,11 @@ export async function GET(request: Request) {
       errorClass: data.errorClass || emptyValidIfNoItems([hltvMatches.length]),
     });
   } catch (error: any) {
-    const errorClass = classifyParserError({ message: error.message });
-    console.error('[HLTV Scrape Route] Error:', error);
+    const errorClass = classifyParserError({ message: safeErrorMessage(error) });
+    logApiError("api:counterstrike/hltv/matches/route.ts", error);
     return NextResponse.json({ 
       ok: false, 
-      error: error.message,
+      error: safeErrorMessage(error),
       errorClass,
     }, { status: 500 });
   }

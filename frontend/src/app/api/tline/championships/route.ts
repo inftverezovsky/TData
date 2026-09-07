@@ -1,3 +1,4 @@
+import { logApiError } from "@backend/http/apiResponse";
 import { prisma } from "@backend/db/db";
 import { apiOk, readJsonBody, requireTLineAccess, tlineErrorResponse } from "@backend/tline/api/http";
 import { objectBody, optionalInteger, optionalText, parseIanaTimezone, parseId, requiredText } from "@backend/tline/api/parsers";
@@ -9,31 +10,36 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
-  const denied = await requireTLineAccess(request);
-  if (denied) return denied;
-  const sportId = new URL(request.url).searchParams.get("sportId") || undefined;
-  const championships = await prisma.tLineChampionship.findMany({
-    where: { deletedAt: null, ...(sportId ? { sportConfigId: sportId } : {}) },
-    orderBy: [{ sportConfigId: "asc" }, { name: "asc" }],
-    include: { globalHeader: { select: { id: true, adminShapkaId: true, name: true, active: true } } },
-  });
-  return apiOk(championships.map((championship) => ({
-    id: championship.id,
-    sportId: championship.sportConfigId,
-    name: championship.name,
-    season: championship.season,
-    sourceProvider: championship.sourceProvider,
-    sourceUrl: championship.sourceUrl,
-    sourceTimezone: championship.sourceTimezone,
-    globalHeaderId: championship.globalHeaderId,
-    globalHeader: championship.globalHeader,
-    adminChampionshipId: championship.adminChampionshipId,
-    adminChampionshipName: championship.adminChampionshipName,
-    active: championship.active,
-    autoEnabled: championship.autoEnabled,
-    allowedTimeDriftMinutes: championship.allowedTimeDriftMinutes,
-    candidateMatchWindowMinutes: championship.candidateMatchWindowMinutes,
-  })));
+  try {
+    const denied = await requireTLineAccess(request);
+    if (denied) return denied;
+    const sportId = new URL(request.url).searchParams.get("sportId") || undefined;
+    const championships = await prisma.tLineChampionship.findMany({
+      where: { deletedAt: null, ...(sportId ? { sportConfigId: sportId } : {}) },
+      orderBy: [{ sportConfigId: "asc" }, { name: "asc" }],
+      include: { globalHeader: { select: { id: true, adminShapkaId: true, name: true, active: true } } },
+    });
+    return apiOk(championships.map((championship) => ({
+      id: championship.id,
+      sportId: championship.sportConfigId,
+      name: championship.name,
+      season: championship.season,
+      sourceProvider: championship.sourceProvider,
+      sourceUrl: championship.sourceUrl,
+      sourceTimezone: championship.sourceTimezone,
+      globalHeaderId: championship.globalHeaderId,
+      globalHeader: championship.globalHeader,
+      adminChampionshipId: championship.adminChampionshipId,
+      adminChampionshipName: championship.adminChampionshipName,
+      active: championship.active,
+      autoEnabled: championship.autoEnabled,
+      allowedTimeDriftMinutes: championship.allowedTimeDriftMinutes,
+      candidateMatchWindowMinutes: championship.candidateMatchWindowMinutes,
+    })));
+  } catch (error) {
+    logApiError("api:tline/championships/route.ts", error);
+    return tlineErrorResponse(error);
+  }
 }
 
 export async function POST(request: Request) {

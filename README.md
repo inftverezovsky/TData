@@ -1,318 +1,212 @@
 <div align="center">
 
-# 🏟️ TData
+# TData
 
-### Единый операторский центр турнирных данных
+**Рабочее место для импорта и проверки спортивных данных**
 
-Поиск и импорт турниров, нормализация расписаний, сопоставление команд,
-подготовка Admin/FIxt payload и отдельный контур результатов КХЛ.
+Поиск турниров · Расписания · Сопоставление команд · Подготовка и отправка в Admin
 
-[![Next.js](https://img.shields.io/badge/Next.js-16.3.1-000000?style=for-the-badge&logo=nextdotjs&logoColor=white)](https://nextjs.org/)
-[![React](https://img.shields.io/badge/React-19-149ECA?style=for-the-badge&logo=react&logoColor=white)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
-
-[Production](https://www.tdata.info/) ·
-[Health](https://www.tdata.info/api/health) ·
-[KHL Results](https://www.tdata.info/results/khl) ·
-[TLine runbook](docs/TLINE.md)
+[Сайт проекта](https://www.tdata.info/) · [Архитектура](docs/ARCHITECTURE.md) · [Путеводитель по коду](docs/CODE_GUIDE.md) · [Проверки](docs/TESTING.md)
 
 </div>
 
 ---
 
-## Что такое TData
+TData собирает турнирные данные из разных источников и помогает оператору подготовить их к загрузке во внешнюю систему. В одном интерфейсе можно найти турнир, проверить расписание, сопоставить участников с внутренними ID и просмотреть результат перед отправкой.
 
-TData объединяет несколько операторских сценариев в одном Next.js-приложении:
-
-- получает турнирные данные из внешних спортивных источников;
-- приводит разные форматы матчей и участников к общей модели;
-- сохраняет исходные снимки, диагностические данные и нормализованные сущности;
-- помогает сопоставлять команды и игроков с Admin ID;
-- формирует и проверяет payload перед отправкой во внешнюю систему;
-- ведёт отдельный fail-closed процесс сбора и подготовки результатов КХЛ.
-
-Проект рассчитан на ручную работу оператора, автоматические фоновые задачи и
-воспроизводимое развёртывание через Docker Compose.
+**Основной процесс:** источник → импорт → проверка матчей → сопоставление ID → предпросмотр → подтверждённая отправка.
 
 ## Возможности
 
-| Контур | Что поддерживается |
-|---|---|
-| **Cyber** | Dota 2, Counter-Strike, League of Legends и Valorant: поиск, импорт, расписания, маппинг и экспорт |
-| **KHL Results** | Сбор завершённых матчей, официальный протокол, команды и игроки, статистика, bindings, preview, diff и staging |
-| **TBvolley** | VolleyballWorld, beach.volley.ru, German Beach Tour, CSVP, Austrian Beach Tour, CBV Brasil и Italy Federvolley |
-| **TableT** | Поиск и импорт турниров WTT, категории и пакетная обработка |
-| **Ручной импорт** | Текст, изображения, локальный OCR, пакетная обработка и опциональный AI parser |
-| **Admin integration** | Team mapping, FIxt payload, история отправок, allowlist, Basic/Bearer/API key и mTLS |
-| **Диагностика** | Health API, parser logs, proxy pool, source cache и пользовательские классы ошибок |
+| Раздел                | Задача оператора                                                                                                                                                           |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Cyber**             | Поиск и импорт турниров Dota 2, Counter-Strike, League of Legends и Valorant. Источники: Liquipedia, HLTV, DLTV, Fandom и VLR.                                             |
+| **TBvolley**          | Работа с VolleyballWorld, beach.volley.ru, German Beach Tour, CSVP, Austrian Beach Tour, CBV Brasil и Federvolley. Общие формы поиска и импорт сеток.                      |
+| **TableT**            | Поиск и импорт турниров WTT, выбор категорий и пакетная обработка.                                                                                                         |
+| **Ручной импорт**     | Распознавание текста и скриншотов, очередь без дубликатов, AI и резервный OCR, редактирование матчей и сохранение ID команд.                                               |
+| **TLine**             | Сверка официального расписания с линией Admin, правила по видам спорта и чемпионатам, сопоставления, история проверок и ручные решения. Доступ к Admin — только на чтение. |
+| **Результаты КХЛ**    | Сбор протоколов, статистика команд и игроков, привязки ID, версии данных, предпросмотр и подготовка результата к передаче.                                                 |
+| **Admin и настройки** | Справочники команд, параметры импорта, FIxt payload, явная отправка и история загрузок.                                                                                    |
 
-## KHL Results
+Внешняя отправка требует входа администратора. Импорт и предпросмотр выполняются отдельно от отправки. В контуре КХЛ **staging означает подготовку результата**, а не его автоматическую передачу во внешнюю систему. TLine включается после настройки источников и доступа к Admin: [инструкция TLine](docs/TLINE.md).
 
-Раздел **«Результаты → КХЛ»** — самостоятельный вертикальный модуль:
+## Устройство проекта
 
-- автоматический и ручной ingest расписания и протоколов;
-- хранение raw snapshot и ревизий матча;
-- нормализация командной и индивидуальной статистики;
-- привязки команд, игроков, матча и статистических ID;
-- вкладки «Матчи сегодня», «Статистика игрового дня» и «Архив»;
-- preview канонического Admin payload и SHA-256 hash;
-- diff относительно последней подготовленной версии;
-- идемпотентный staging без скрытой отправки;
-- автоматическая синхронизация через systemd timer;
-- fail-closed поведение при неполных, неоднозначных или отклонённых данных.
-
-Подробная история и правила модуля находятся в [KHL_HANDOFF.md](KHL_HANDOFF.md),
-а настройка фонового таймера — в [deploy/systemd/README.md](deploy/systemd/README.md).
-
-## Архитектура
+Один корневой npm-проект: `frontend/` содержит Next.js-интерфейс и HTTP-маршруты, `backend/` — бизнес-логику, интеграции и хранение. Отдельные npm-проекты или второй HTTP-сервер для backend не нужны.
 
 ```mermaid
 flowchart LR
-    Operator[Оператор] --> UI[Next.js UI]
-    UI --> API[Route handlers]
-    API --> Domain[Backend services]
-
-    Sources[Liquipedia · HLTV · VLR · DLTV · Fandom · TBvolley · WTT]
-    Sources --> Fetch[Fetchers, rate limits, proxy policy]
-    Fetch --> Normalize[Normalizers and deduplication]
-    Normalize --> Domain
-
-    KHL[KHL schedule and protocol API] --> KhlPipeline[KHL ingest and revision pipeline]
-    KhlPipeline --> Domain
-
-    Domain --> DB[(PostgreSQL / Prisma)]
-    Domain --> Cache[(Source and parser cache)]
-    Domain --> Preview[Admin payload preview and diff]
-    Preview --> Delivery[Controlled staging / delivery]
+    Operator[Оператор] --> UI[Next.js: интерфейс]
+    UI --> API[API: доступ и валидация]
+    API --> Services[Backend: сценарии и правила]
+    Sources[Спортивные источники] --> Normalize[Парсинг и нормализация]
+    Services <--> Normalize
+    Services <--> DB[(PostgreSQL / Prisma)]
+    Services --> Preview[Сопоставления и предпросмотр]
+    Preview --> Export[Явная отправка / staging]
 ```
 
-### Основные слои
+```text
+TData/
+├── frontend/
+│   ├── public/                  # Статические файлы
+│   └── src/
+│       ├── app/                 # Страницы и API routes
+│       ├── components/          # Экраны и компоненты по предметным областям
+│       ├── hooks/               # Общая логика состояния React
+│       └── services/            # Браузерные запросы и проверка ответов
+├── backend/
+│   ├── prisma/                  # Схема, миграции и начальные данные
+│   └── src/                     # Источники, нормализаторы и бизнес-правила
+├── tests/                       # Unit, интеграции PostgreSQL, браузерные сценарии
+├── scripts/                     # CLI, фоновые задачи и сопровождение
+├── docs/                        # Архитектура, проверка качества и эксплуатация
+├── deploy/                      # Шаблоны фоновых служб
+├── .env.example                 # Шаблон настроек без рабочих секретов
+├── docker-compose.yml
+└── package.json                 # Единые зависимости и команды
+```
 
-- `frontend/src/app` — страницы App Router и HTTP route handlers;
-- `frontend/src/components` — операторский интерфейс;
-- `backend/src` — доменная логика, источники, нормализаторы и политики;
-- `backend/prisma` — схема PostgreSQL и миграции;
-- `scripts` — CLI, проверки, импорт и автоматизация;
-- `tests` — unit, integration и Playwright E2E проверки.
+**Стек:** Node.js 24 · Next.js 16.3 · React 19 · TypeScript · PostgreSQL 16 · Prisma 5 · Tailwind CSS. Для парсинга используются Cheerio и Playwright, для изображений и OCR — Sharp и Tesseract.js. Версии зависимостей закреплены в [package-lock.json](package-lock.json).
 
-## Технологии
+## Локальный запуск
 
-| Область | Стек |
-|---|---|
-| Web | Next.js 16.3.1, React 19, TypeScript |
-| Data | PostgreSQL 16, Prisma 5 |
-| Parsing | Cheerio, Playwright, source-specific clients |
-| OCR | Tesseract.js, Sharp |
-| UI | Tailwind CSS, Framer Motion, Lucide |
-| Проверки | Node test runner через TSX, Playwright E2E, ESLint, TypeScript |
-| Runtime | Node.js 24, Docker, Docker Compose, nginx |
+Понадобятся **Node.js 24**, npm и PostgreSQL 16. Базу можно запустить через Docker Compose; для полного набора проверок также нужен PowerShell (`powershell.exe` на Windows или `pwsh` на Linux/macOS).
 
-## Быстрый запуск
-
-### Требования
-
-- Node.js 24;
-- npm;
-- PostgreSQL 16 или Docker;
-- Git.
-
-### 1. Получить проект
+### 1. Установить зависимости
 
 ```bash
 git clone https://github.com/inftverezovsky/TData.git
 cd TData
 npm ci
+npx playwright install chromium
 ```
 
-### 2. Создать локальное окружение
+Все дальнейшие команды выполняются из корня `TData`.
 
-Windows PowerShell:
+### 2. Подготовить настройки
+
+Создайте `.env` в корне клона из [.env.example](.env.example), если файла ещё нет. Например, для клона в `C:\projects\TData` полный путь — **`C:\projects\TData\.env`**; на Linux — **`/home/user/projects/TData/.env`**. Этот файл уже исключён из Git.
+
+PowerShell:
 
 ```powershell
-Copy-Item .env.example .env
+if (!(Test-Path .env)) { Copy-Item .env.example .env }
 ```
 
 Linux/macOS:
 
 ```bash
-cp .env.example .env
+test -f .env || cp .env.example .env
 ```
 
-Файл `.env` уже исключён из Git. Не добавляйте в репозиторий реальные пароли,
-токены, ключи, сертификаты и URL с учётными данными.
-
-Минимально проверьте следующие настройки:
+Замените placeholders в локальном `.env`. Для базы из Compose настройки подключения должны совпадать:
 
 ```dotenv
-DATABASE_URL="postgresql://USER:PASSWORD@localhost:5434/tdata?schema=public"
+POSTGRES_USER=tdata
+POSTGRES_PASSWORD=CHANGE_ME_DB_PASSWORD
+POSTGRES_DB=tdata
+POSTGRES_PORT=5434
+DATABASE_URL="postgresql://tdata:CHANGE_ME_DB_PASSWORD@localhost:5434/tdata?schema=public"
+
 LIQUIPEDIA_USER_AGENT="tdata-local/1.0 (contact: you@example.com)"
-ADMIN_PASSWORD="replace-with-a-local-password"
-ADMIN_SESSION_SECRET="replace-with-a-long-random-value"
-ADMIN_UPLOAD_ALLOWED_HOSTS="admin.example.com"
+ADMIN_PASSWORD=CHANGE_ME_ADMIN_PASSWORD
+ADMIN_SESSION_SECRET=CHANGE_ME_LONG_RANDOM_SECRET
+ADMIN_UPLOAD_ALLOWED_HOSTS=admin.example.com
+
+# Локальный HTTP и ручная настройка фоновых задач.
+ADMIN_COOKIE_SECURE=false
+KHL_RESULTS_AUTO_SYNC_ENABLED=0
+TLINE_ENABLED=0
+TLINE_SCHEDULER_READY=0
 ```
 
-Это только безопасные placeholders. Реальные значения должны оставаться в
-локальном `.env` или в secret storage среды развёртывания.
+Пароль в `DATABASE_URL` должен быть URL-кодирован, если содержит специальные символы. Настоящие секреты хранятся в локальном `.env` или хранилище секретов среды развёртывания. Для HTTPS устанавливается `ADMIN_COOKIE_SECURE=true`.
 
-### 3. Подготовить Prisma и запустить приложение
+`ADMIN_UPLOAD_ALLOWED_HOSTS` задаёт разрешённые домены внешней отправки; `admin.example.com` — пример. Для AI-распознавания дополнительно задаётся `ARCCODEX_API_KEY` в том же `.env`. Способы авторизации внешнего Admin API описаны в [политике API](docs/API_POLICY.md).
+
+### 3. Запустить базу и приложение
+
+Для PostgreSQL из Compose:
+
+```bash
+docker compose up -d --wait postgres
+```
+
+Если PostgreSQL уже запущен, укажите его адрес и заранее созданную базу в `DATABASE_URL`. Затем:
 
 ```bash
 npm run prisma:generate
-npm run db:migrate:deploy
-npm run dev
+node --env-file=.env --run db:migrate:deploy
+node --env-file=.env --run db:seed
+node --env-file=.env --run dev
 ```
 
-Приложение будет доступно на `http://localhost:3010`.
+Node.js явно загружает корневой `.env` перед выполнением скрипта из `package.json`. Это также передаёт настройки приложению, которое Next.js запускает из каталога `frontend`.
 
-## Docker Compose
+Seed создаёт или обновляет базовые киберспортивные дисциплины и пилотную конфигурацию волейбола TLine. Его код находится в [backend/prisma/seed.ts](backend/prisma/seed.ts).
 
-Перед запуском заполните `.env`, затем проверьте итоговую конфигурацию:
+Откройте **[http://localhost:3010](http://localhost:3010)**. Для настроек и отправки используйте пароль из `ADMIN_PASSWORD`. Доступная PostgreSQL нужна и для входа: в ней хранится общий лимит попыток.
+
+<details>
+<summary><strong>Запуск всех сервисов в Docker</strong></summary>
+
+После заполнения того же корневого `.env`:
 
 ```bash
 docker compose config -q
-docker compose up -d --build
+docker compose up -d --build --wait
+docker compose exec web npm run db:seed
 docker compose ps
 ```
 
-Локальная проверка контейнера:
+Контейнер `web` применяет существующие миграции при старте. По умолчанию приложение доступно на `127.0.0.1:3010`, PostgreSQL — на `127.0.0.1:5434`. Порты задаются через `WEB_PORT` и `POSTGRES_PORT`; локальный dev-сервер и контейнер `web` не могут одновременно занять один порт.
+
+Развёртывание на сервере, HTTPS, резервное копирование и откат описаны в [инструкции эксплуатации](docs/DEPLOYMENT_PORTAINER.md).
+
+</details>
+
+## Проверки и команды
+
+Быстрая проверка кода без рабочей PostgreSQL:
 
 ```bash
-curl http://127.0.0.1:3010/api/health
-```
-
-Compose публикует web и PostgreSQL только на loopback-интерфейсе. Публичный
-HTTPS в production обслуживается отдельным nginx.
-
-## Команды разработчика
-
-| Команда | Назначение |
-|---|---|
-| `npm run dev` | Локальный Next.js dev server на порту 3010 |
-| `npm run build` | Production-сборка и генерация Prisma Client |
-| `npm run start` | Запуск готовой production-сборки |
-| `npm run typecheck` | Проверка TypeScript без генерации файлов |
-| `npm run lint` | ESLint для всего репозитория |
-| `npm test` | Основной набор TS-тестов |
-| `npm run test:e2e` | Playwright E2E |
-| `npm run prisma:generate` | Обновление Prisma Client |
-| `npm run db:migrate:deploy` | Применение существующих миграций |
-| `npm run sync:khl-results` | Однократный запуск KHL sync runner |
-
-DB-интеграционные KHL-тесты требуют отдельную loopback-базу с именем,
-содержащим `test`, и переменную `TEST_DATABASE_URL`. Никогда не направляйте их
-на production-базу.
-
-## TData CLI
-
-```bash
-npx tsx scripts/tdata-cli.ts help
-```
-
-Доступные операции:
-
-- `db:check` — соединение с PostgreSQL и основные счётчики;
-- `cache:clear` — очистка search cache и parser logs;
-- `proxy:check` — состояние proxy pool;
-- `deploy` — локальный checklist готовности.
-
-## Структура репозитория
-
-```text
-TData/
-├── frontend/
-│   ├── public/
-│   └── src/
-│       ├── app/
-│       │   ├── api/
-│       │   └── results/khl/
-│       └── components/
-│           └── results/khl/
-├── backend/
-│   ├── prisma/
-│   │   └── migrations/
-│   └── src/
-│       ├── results/khl/
-│       ├── sources/
-│       ├── normalizers/
-│       ├── teams/
-│       ├── manualImport/
-│       └── adminUpload/
-├── deploy/systemd/
-├── scripts/
-├── tests/
-│   ├── e2e/
-│   └── fixtures/khl/
-├── .env.example
-├── docker-compose.yml
-├── Dockerfile
-└── package.json
-```
-
-## Безопасность
-
-- все mutation routes KHL защищены admin session и same-origin проверками;
-- исходящие URL проходят host allowlist и SSRF-политику;
-- Admin delivery поддерживает Basic, Bearer, API key и mTLS;
-- секреты читаются только из окружения и не должны попадать в Git;
-- raw snapshots и rejected revisions сохраняются для диагностики;
-- неполный binding или неоднозначный матч блокирует payload целиком;
-- автоматические проверки используют только явно изолированную тестовую БД.
-
-## Проверка качества
-
-Базовый локальный gate:
-
-```bash
-npm run typecheck
-npm run lint
-npm test
+npm run check
 npm run build
 ```
 
-Расширенный E2E gate запускается отдельно, когда доступны браузеры и безопасная
-тестовая база:
+| Команда                             | Назначение                                                                           |
+| ----------------------------------- | ------------------------------------------------------------------------------------ |
+| `npm run dev`                       | Dev-сервер на порту 3010; для настроек из корневого `.env` используйте вариант выше. |
+| `npm run build`                     | Генерация Prisma Client и production-сборка Next.js.                                 |
+| `npm run start`                     | Запуск готовой сборки; порт задаётся через `PORT` или аргумент `-p`.                 |
+| `npm run check`                     | Prisma Client, TypeScript, строгий ESLint и unit/API-тесты без БД.                   |
+| `npm run test:integration`          | Интеграционные тесты на отдельной PostgreSQL.                                        |
+| `npm run test:e2e:prod`             | Браузерные проверки готовой production-сборки.                                       |
+| `npm run test:e2e:db`               | Проверка FIxt с тестовой БД и локальным mock Admin API.                              |
+| `npm run test:frontend:coverage`    | Покрытие выбранных frontend-моделей и сервисов.                                      |
+| `npm run test:normalizers:coverage` | Покрытие нормализаторов турнирных данных.                                            |
+| `npm run test:tline:coverage`       | Покрытие выбранных модулей TLine.                                                    |
+| `npm run test:all`                  | Полный локальный набор после подготовки тестовой среды.                              |
+| `npm run format:check -- README.md` | Проверка форматирования указанного файла.                                            |
 
-```bash
-npm run test:e2e
-npm run test:e2e:db
-```
+Для DB/E2E-проверок подготовьте **отдельную локальную тестовую базу**, миграции, seed и переменные `TEST_DATABASE_URL` / `DATABASE_URL` по [инструкции тестирования](docs/TESTING.md). Рабочую базу для этих сценариев использовать нельзя.
 
-## Как убедиться, что GitHub показывает актуальную версию
+Порог 80% применяется к выбранным модулям в командах coverage, а не ко всему проекту. Зафиксированные результаты проверок и границы аудита приведены в [отчёте от 07.09.2026](docs/AUDIT_2026-09-07.md).
 
-GitHub показывает рядом с каждым файлом или каталогом **последний коммит,
-который менял именно этот путь**. Поэтому `last week` у папки не означает, что
-ветка устарела.
+## Документация
 
-Проверять нужно SHA вершины `main`:
+| Документ                                                      | Когда открыть                                                                  |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| [Архитектура](docs/ARCHITECTURE.md)                           | Понять границы frontend/backend, обработку данных и ответственность каталогов. |
+| [Путеводитель по коду](docs/CODE_GUIDE.md)                    | Найти точки входа и основные алгоритмы.                                        |
+| [Frontend](frontend/README.md) · [Backend](backend/README.md) | Разобраться в конкретном слое приложения.                                      |
+| [Проверка качества](docs/TESTING.md)                          | Запустить unit, DB, E2E и coverage в подходящем окружении.                     |
+| [Политика API](docs/API_POLICY.md)                            | Настроить сессии, внешние запросы и ограничения доступа.                       |
+| [TLine](docs/TLINE.md)                                        | Настроить сверку линии и фоновые проверки.                                     |
+| [Результаты КХЛ](KHL_HANDOFF.md)                              | Изучить версии, статистику, привязки и staging.                                |
+| [Фоновые службы КХЛ](deploy/systemd/README.md)                | Настроить systemd timer для синхронизации.                                     |
+| [Развёртывание](docs/DEPLOYMENT_PORTAINER.md)                 | Подготовить конфигурацию сервера и порядок выкладки.                           |
+| [Отчёт аудита](docs/AUDIT_2026-09-07.md)                      | Посмотреть исправления, проверенные сценарии и эксплуатационные ограничения.   |
 
-```bash
-git fetch origin main
-git status --short --branch
-git rev-parse HEAD
-git rev-parse origin/main
-```
-
-Оба SHA должны совпадать, а статус должен показывать `main...origin/main` без
-локальных изменений.
-
-## Сохранение в GitHub
-
-Проектный save-agent проверяет корень репозитория, настраивает правильный
-`origin`, создаёт коммит и отправляет его в `main`:
-
-```powershell
-npm run git:save -- -Message "docs: update project documentation"
-```
-
-Используется репозиторий:
-[`inftverezovsky/TData`](https://github.com/inftverezovsky/TData).
-
----
-
-<div align="center">
-
-**TData** · Tournament data should be traceable, reviewable and safe to deliver.
-
-</div>
+GitHub Actions настроен на проверку качества и сборку Docker-артефакта. Фактические запуски доступны во вкладке [Actions](https://github.com/inftverezovsky/TData/actions); публикация кода в GitHub сама по себе не обновляет сервер.

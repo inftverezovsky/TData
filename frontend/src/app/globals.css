@@ -66,9 +66,9 @@ body {
 /* ===== GLOBAL PANEL OVERRIDE =====
    Keep panel surfaces solid and readable on the neutral page background. */
 
-/* Settings & discipline page section blocks */
-section.rounded-3xl,
-section[class*="rounded-3xl"] {
+/* Светлые секции по умолчанию; явно тёмные панели сохраняют фон, необходимый для контраста белого текста. */
+section.rounded-3xl:not([data-panel-theme="dark"]),
+section[class*="rounded-3xl"]:not([data-panel-theme="dark"]) {
   background: rgba(255, 255, 255, 0.98) !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;

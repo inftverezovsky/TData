@@ -27,7 +27,7 @@ export function getHltvSearchErrorMessage(errorClass?: string | null, fallback?:
     case "empty_valid":
       return "По этому запросу HLTV не вернул турниры.";
     default:
-      if (fallback && !isInternalHltvError(fallback)) return fallback;
+      // Неизвестный текст нужен только для классификации: он может содержать адреса и данные запроса.
       return "Не удалось выполнить поиск HLTV. Проверьте прокси и повторите запрос.";
   }
 }
@@ -36,8 +36,4 @@ export function normalizeHltvErrorClass(errorClass?: string | null, fallback?: s
   if (errorClass) return normalizeParserErrorClass(errorClass);
   if (fallback) return classifyParserError({ message: fallback });
   return "unknown";
-}
-
-function isInternalHltvError(message: string) {
-  return /page\.goto|call log|chrome-error:\/\/chromewebdata|net::ERR_|waiting until|HLTV request timed out|Proxy might be too slow|HLTV scraper failed|Proxy might be blocked|Target page, context or browser has been closed|browser closed before/i.test(message);
 }

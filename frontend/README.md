@@ -1,9 +1,62 @@
-# Frontend
+# Frontend TData
 
-Next.js application surface for TData.
+Интерфейс администратора на Next.js App Router. Команды запускаются из корня репозитория: отдельный `frontend/package.json` не требуется.
 
-- `src/app` contains pages, layouts, loading/error boundaries, and thin API adapter routes.
-- `src/components` contains React UI. Components can fetch app endpoints and use browser-safe helpers.
-- `public` contains static assets served by Next.js.
+## Карта слоёв
 
-Do not put Prisma, filesystem access, raw external API clients, credentials, or long-running parser logic here. Put that in `backend/src` and call it through an API route or server component.
+| Каталог | Ответственность |
+| --- | --- |
+| `src/app` | Страницы, layouts, состояния загрузки/ошибок и тонкие HTTP-адаптеры `api/**/route.ts`. |
+| `src/components` | Экраны и компоненты, сгруппированные по предметной области. |
+| `src/hooks` | Общий жизненный цикл React: загрузка, редактирование, сохранение и обработка ошибок. |
+| `src/services` | Браузерные запросы к API приложения и проверка ответов. |
+| `public` | Статические изображения, иконки и другие публичные файлы. |
+
+В `components` выделены области `manualImport`, `tournament`, `matches`, `admin`, `settings`, `tline`, `results/khl` и формы источников (`hltv`, `liquipedia`, `tbvolley`, `tablet` и другие). `layout` отвечает за оболочку приложения, `ui` — за общие элементы.
+
+Страница или компонент с `"use client"` включает свои обычные импорты в браузерный граф. Здесь допустимы чистые функции и `import type`; Prisma, файловая система, серверные секреты и длительные парсеры должны оставаться в `backend/src`. Серверный `TournamentWorkspacePage.tsx` читает данные на сервере и передаёт подготовленные значения интерфейсу. Общая папка `components` сама по себе не означает, что все её файлы исполняются в браузере.
+
+## Как читать ручной импорт
+
+Входная точка — `src/components/manualImport/ManualImportWorkbench.tsx`. Русские комментарии описывают этапы и причины решений. Сценарий проходит следующие шаги:
+
+1. Пользователь выбирает дисциплину, загружает справочник команд и добавляет текст или скриншоты.
+2. Очередь проверяет хеши, удаляет повторы и соблюдает общий лимит изображений. Отклонённые previews освобождаются.
+3. AI обрабатывает изображения с ограничением параллелизма. Ключ кэша учитывает дисциплину, изображение и текстовое пояснение. OCR запускается как резервный сценарий.
+4. Результаты объединяются, дубли матчей удаляются, подбираются ID команд. Сохранённые ручные ID защищены от случайной правки.
+5. Пользователь проверяет таблицу и выбор строк, формирует предпросмотр и отдельно инициирует отправку. Правки сбрасывают устаревший предпросмотр.
+
+| Модуль в `manualImport/` | Что в нём искать |
+| --- | --- |
+| `types.ts` | Контракты матчей, сопоставлений, очереди, предпросмотра и сообщений. |
+| `matchModel.ts` | Чистые преобразования выбора, ID и индексов таблицы. |
+| `imageQueueModel.ts` | Отбор одного файла на каждый принятый хеш и список отклонённых previews. |
+| `recognitionModel.ts` | Подписи и отображаемые этапы распознавания. |
+| `browserFiles.ts` | Уменьшение изображений, хеширование и буфер обмена. |
+| `recognitionRuntime.ts` | Пул задач, отмена и временный кэш вкладки. |
+| `useManualImportState.ts` | Состояние экрана и жизненный цикл отменяемого распознавания. |
+| `useManualImportImages.ts`, `useManualImportAiBatch.ts`, `useManualImportRecognition.ts` | Очередь файлов, пакетный AI и текстовый/OCR сценарии. |
+| `useManualImportMapping.ts`, `useManualImportTable.ts`, `useManualImportDelivery.ts` | Сохранение ID, операции таблицы и предпросмотр/отправка. |
+| `api.ts`, `response.ts` | Запросы распознавания и проверка данных до изменения UI. |
+| `ManualImportTeamSource.tsx` | Импорт справочника команд со своим состоянием запроса. |
+| `ManualImportImageQueue.tsx` | Отображение очереди и статусов скриншотов. |
+| `ManualImportRecognitionProgress.tsx` | Прогресс текущего распознавания и отмена. |
+| `ManualImportMatchTable.tsx` | Таблица, выбор матчей и действия над сопоставлениями. |
+
+Для настроек TableT/TBvolley общие `useGlobalSettings` и `services/globalSettings` различают сетевую ошибку, ошибку HTTP и подтверждённый успех. Неуспешная загрузка не разрешает записывать defaults поверх неизвестных серверных значений; неуспешное сохранение оставляет введённые значения доступными для повторной попытки.
+
+## Сопоставления, поиск и защищённая отправка
+
+`tournament/TeamMappingPanel.tsx` собирает таблицу из модулей `teamMapping/`: контроллер `useTeamMapping`, чистая модель, валидаторы ответов, предпросмотр и combobox справочника. Combobox поддерживает стрелки, Enter и Escape; поля таблицы имеют доступные названия.
+
+Формы источников TBvolley используют `TournamentSearchForm`: конфигурация задаёт подписи, варианты фильтра и callbacks. Источники сохраняют собственные URL, параметры и группировку; `searchResponse.ts` проверяет поля карточек и сводки. Полные матчи загружаются при импорте отдельно.
+
+`AdminSessionProvider` обслуживает отправку ручного импорта и турнирной панели. Только HTTP 401 открывает форму входа; после успешного входа повторяется тот же запрос один раз. Отмена, переход на другую страницу и повторный 401 завершают ожидание. Ошибки 403/429/5xx не вызывают автоматический повтор внешней отправки. Пароль не сохраняется в browser storage.
+
+## Проверка изменений
+
+Из корня репозитория: `npm run dev`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run build`, `npm run test:e2e`.
+
+Целевые регрессии находятся в `tests/manualImportFrontend.test.ts`, `tests/frontendServices.test.ts`, `tests/frontendResponseValidation.test.ts`, `tests/teamMappingFrontend.test.ts`, `tests/tbvolleyFrontend.test.ts` и `tests/authenticatedRequest.test.ts`. Браузерные сценарии ошибок настроек, login/retry и AI/OCR находятся в `tests/e2e/settings-recovery.spec.ts`, `tests/e2e/admin-send-recovery.spec.ts` и `tests/e2e/app-smoke.spec.ts`.
+
+При дальнейшем развитии сначала выделяйте чистую модель и самостоятельные секции существующего экрана, затем меняйте поведение с регрессионным тестом. Не создавайте пустые каталоги ради схемы.

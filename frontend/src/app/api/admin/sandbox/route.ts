@@ -1,5 +1,6 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@backend/auth/adminAuth";
+import { requireAdmin, requireSameOriginJsonMutation } from "@backend/auth/adminAuth";
 import { getNormalizer, hasNormalizer } from "@backend/normalizers/registry";
 
 export const dynamic = "force-dynamic";
@@ -7,6 +8,10 @@ export const dynamic = "force-dynamic";
 export async function POST(request: Request) {
   const unauthorized = await requireAdmin(request);
   if (unauthorized) return unauthorized;
+
+  // Запускаем парсер лишь для авторизованного запроса из интерфейса своего сайта.
+  const unsafeMutation = requireSameOriginJsonMutation(request);
+  if (unsafeMutation) return unsafeMutation;
 
   try {
     const { disciplineSlug, wikitext } = await request.json();
@@ -29,7 +34,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, result });
   } catch (error: any) {
-    console.error("[Sandbox API Error]:", error);
-    return NextResponse.json({ error: error.message || "Ошибка парсинга" }, { status: 500 });
+    logApiError("api:admin/sandbox/route.ts", error);
+    return NextResponse.json({ error: safeErrorMessage(error) || "Ошибка парсинга" }, { status: 500 });
   }
 }

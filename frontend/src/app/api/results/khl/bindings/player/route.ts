@@ -1,3 +1,4 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 
 import { requireAdmin, requireSameOriginJsonMutation } from "@backend/auth/adminAuth";
@@ -39,9 +40,9 @@ export async function POST(request: Request) {
       const status = error.code === "MATCH_NOT_FOUND" || error.code === "PLAYER_NOT_FOUND"
         ? 404
         : error.code === "INVALID_BINDING" ? 400 : 409;
-      return NextResponse.json({ error: error.message, code: error.code }, { status });
+      return NextResponse.json({ error: safeErrorMessage(error), code: error.code }, { status });
     }
-    console.error("[KHL player binding]", error instanceof Error ? error.message : error);
+    logApiError("api:results/khl/bindings/player/route.ts", error);
     return NextResponse.json({ error: "Failed to save KHL player binding." }, { status: 500 });
   }
 }

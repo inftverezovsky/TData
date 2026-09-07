@@ -1,3 +1,4 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 import { getManualImportDiscipline, resolveManualImportDisciplineSlug } from "@backend/manualImport/config";
 import {
@@ -59,9 +60,9 @@ export async function POST(request: Request) {
       ...result,
     });
   } catch (error) {
-    console.error("[Manual Import Team Mappings] Error:", error);
+    logApiError("api:manual-import/team-mappings/route.ts", error);
     return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : "Manual team mappings save failed" },
+      { ok: false, error: error instanceof Error ? safeErrorMessage(error) : "Manual team mappings save failed" },
       { status: 500 }
     );
   }

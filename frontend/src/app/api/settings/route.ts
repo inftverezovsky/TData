@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@backend/auth/adminAuth";
+import { requireAdmin, requireSameOriginJsonMutation } from "@backend/auth/adminAuth";
 import { prisma } from "@backend/db/db";
+import { isSecretSetting, prepareGlobalSettingEntries } from "@backend/settings/globalSettings";
+import { apiErrorResponse, ApiRequestError, logApiError } from "@backend/http/apiResponse";
+import { readJsonRequest } from "@backend/http/requestBody";
 
 export const dynamic = "force-dynamic";
 
@@ -25,15 +28,20 @@ export async function POST(request: Request) {
   const unauthorized = await requireAdmin(request);
   if (unauthorized) return unauthorized;
 
-  try {
-    const data = await request.json();
-    const { key, value } = data;
+  // Отсекаем запросы с чужого origin до чтения и сохранения настройки.
+  const unsafeMutation = requireSameOriginJsonMutation(request);
+  if (unsafeMutation) return unsafeMutation;
 
-    if (!key) return NextResponse.json({ error: "Key is required" }, { status: 400 });
-    if (isSecretSetting(key) && String(value) === "") {
+  try {
+    const data = await readJsonRequest(request);
+    if (!data || typeof data !== "object" || !("key" in data) || !("value" in data) || typeof data.key !== "string") {
+      throw new ApiRequestError("INVALID_SETTINGS", 400, "Key and value are required.");
+    }
+    const entries = await prepareGlobalSettingEntries({ [data.key]: data.value });
+    if (entries.length === 0) {
       return NextResponse.json({ success: true, skipped: true });
     }
-
+    const { key, value } = entries[0];
     await prisma.globalSettings.upsert({
       where: { key },
       update: { value },
@@ -42,10 +50,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    return NextResponse.json({ error: "Failed to update settings" }, { status: 500 });
+    logApiError("settings-write", error);
+    return apiErrorResponse(error, "Failed to update settings.");
   }
-}
-
-function isSecretSetting(key: string) {
-  return /password|secret|token|api[_-]?key/i.test(key);
 }

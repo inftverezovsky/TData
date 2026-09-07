@@ -1,3 +1,4 @@
+import { logApiError } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 
 import { requireAdmin } from "@backend/auth/adminAuth";
@@ -19,7 +20,7 @@ export async function GET(request: Request) {
   try {
     return NextResponse.json(await buildKhlAdminPreview(prisma, value));
   } catch (error) {
-    console.error("[KHL preview]", error instanceof Error ? error.message : error);
+    logApiError("api:results/khl/preview/route.ts", error);
     return NextResponse.json({ error: "Failed to build KHL Admin preview." }, { status: 500 });
   }
 }

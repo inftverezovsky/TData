@@ -112,6 +112,11 @@ type SyncOptions = {
   ) => Promise<IngestResult>;
 };
 
+/**
+ * Ограничить период датой начала проекта → прочитать расписание окнами → отобрать
+ * уникальные завершённые игры → проверить подробный протокол → сохранить ревизии.
+ * Ошибки отдельных окон и игр попадают в отчёт; импорт остальных результатов продолжается.
+ */
 export async function syncKhlResults(options: SyncOptions): Promise<KhlResultsSyncSummary> {
   const startedAt = validDate(options.now || new Date(), "sync start");
   const requestedFrom = validDate(options.from, "sync range start");
@@ -199,6 +204,7 @@ export async function syncKhlResults(options: SyncOptions): Promise<KhlResultsSy
     }
   }
 
+  // Сначала собираем кандидатов, затем одним пакетным чтением исключаем недавно обновлённые игры.
   eventCounters.eligible = candidates.length;
   const recentlyFetched = await recentlyFetchedGameIds(
     options.prisma,
@@ -216,6 +222,7 @@ export async function syncKhlResults(options: SyncOptions): Promise<KhlResultsSy
         apiEventId: event.apiEventId,
         stageId: event.stageId,
       });
+      // Доверия к расписанию недостаточно: протокол обязан совпасть по игре, этапу, периоду и статусу.
       const inspected = inspectDetail(detail.event);
       if (
         inspected.khlGameId !== event.khlGameId

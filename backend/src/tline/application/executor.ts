@@ -13,6 +13,12 @@ export interface TLineExecutorDependencies {
   verifyLease?: (transaction: Prisma.TransactionClient) => Promise<void>;
 }
 
+/**
+ * Выполнить проверку линии по чемпионатам: получить свежий источник → сопоставить
+ * команды → прочитать Admin → сравнить матчи → сохранить доказательства и прогресс.
+ * Завершённые чемпионаты при повторном запуске пропускаются; отмена проверяется между этапами.
+ * signal и verifyLease не дают потерявшему задачу worker записать новый снимок доказательств.
+ */
 export async function executeTLineRun(
   client: PrismaClient,
   runId: string,
@@ -144,6 +150,7 @@ async function executeChampionship(
     where: { championshipId: championship.id },
     include: { mapping: { include: { adminTeam: { select: { platformId: true } } } } },
   });
+  // В сравнение допускаются только подтверждённые состояния сопоставления, а не совпадение имён на лету.
   const adminIdBySourceExternalId = new Map(storedTeams.flatMap((team) => {
     const externalId = team.externalId;
     const adminId = team.mapping
@@ -168,6 +175,7 @@ async function executeChampionship(
     ? championship.globalHeader.adminShapkaId
     : null;
   const adminChampionshipId = championship.adminChampionshipId;
+  // Без полного контекста Admin сохраняем свежий источник как PARTIAL: сравнение ещё не состоялось.
   if (!admin || !adminSportId || !adminShapkaId || !adminChampionshipId || tolerance === null || candidateWindow === null) {
     const sourceOnlyReason = !admin
       ? "ADMIN_LINE_NOT_CONFIGURED"
@@ -235,6 +243,7 @@ async function executeChampionship(
   });
 
   assertExecutionActive(dependencies.signal);
+  // Снимки, пары и решения фиксируются вместе; владение задачей проверяется внутри этой же транзакции.
   await client.$transaction(async (transaction) => {
     if (dependencies.verifyLease) await dependencies.verifyLease(transaction);
     const sourceRows = await persistSourceSnapshots(transaction, runChampionship.id, sourceMatches);
@@ -492,6 +501,7 @@ async function persistAdminSnapshots(
   return rows;
 }
 
+// Один внешний ID может встретиться несколько раз. Очередь сохраняет все вхождения, не затирая дубликаты.
 function groupSnapshotIds(rows: Array<{ key: string; id: string }>) {
   return rows.reduce<Map<string, string[]>>((map, row) => {
     const next = new Map(map);
@@ -577,6 +587,7 @@ async function logStage(
     error?: unknown;
   },
 ) {
+  // Метрика вспомогательна: ошибка её записи не должна отменять уже сохранённые результаты сравнения.
   await client.parserRequestLog.create({
     data: {
       source: input.source,

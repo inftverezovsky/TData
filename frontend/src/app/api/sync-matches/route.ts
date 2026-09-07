@@ -1,14 +1,19 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
+import net from "node:net";
 import { NextResponse } from "next/server";
+import { requireAdmin, requireSameOriginJsonMutation } from "@backend/auth/adminAuth";
 import { prisma } from "@backend/db/db";
 import { dedupeTournamentMatches } from "@backend/matches/dedupe";
 import { buildTeamMappingLookup, findTeamMapping } from "@backend/teams/mappingLookup";
-import { validateOutboundUrl } from "@backend/http/outboundPolicy";
-
-const SYNC_TIMEOUT_MS = 15000;
-const MAX_ERROR_BYTES = 4096;
+import { resolveOutboundTarget } from "@backend/http/outboundPolicy";
+import { sendPinnedAdminRequest } from "@backend/adminUpload/pinnedTransport";
 
 export async function POST(request: Request) {
-  // API remains callable directly; password gate is UI-only for settings visibility.
+  // Legacy-отправка имеет ту же границу доступа, что и остальные внешние send endpoints.
+  const unauthorized = await requireAdmin(request);
+  if (unauthorized) return unauthorized;
+  const unsafeMutation = requireSameOriginJsonMutation(request);
+  if (unsafeMutation) return unsafeMutation;
 
   try {
     const { matchIds, disciplineSlug } = await request.json();
@@ -63,7 +68,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "External Platform URL not configured in settings" }, { status: 400 });
     }
 
-    if (!(await isAllowedExternalUrl(targetUrlSetting.value))) {
+    const target = await resolveAllowedExternalUrl(targetUrlSetting.value);
+    if (!target) {
       return NextResponse.json({ error: "External Platform URL is not allowed" }, { status: 400 });
     }
 
@@ -121,22 +127,25 @@ export async function POST(request: Request) {
       }, { status: 400 });
     }
 
-    // 5. Send to external platform
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), SYNC_TIMEOUT_MS);
-    const response = await fetch(targetUrlSetting.value, {
+    // 5. JSON и ключ этой интеграции отправляются на проверенный IP, сохраняя исходное имя для Host/TLS.
+    const body = JSON.stringify({ matches: payload });
+    const { url, address } = target;
+    const response = await sendPinnedAdminRequest(url.protocol === "https:" ? "https:" : "http:", {
       method: "POST",
+      hostname: address,
+      port: url.port || (url.protocol === "https:" ? 443 : 80),
+      path: url.pathname + url.search,
+      servername: net.isIP(url.hostname.replace(/^\[|\]$/g, "")) ? undefined : url.hostname,
       headers: {
         "Content-Type": "application/json",
         "Authorization": `Bearer ${targetApiKeySetting?.value || ""}`,
+        "Host": url.host,
+        "Content-Length": Buffer.byteLength(body),
       },
-      body: JSON.stringify({ matches: payload }),
-      signal: controller.signal,
-    }).finally(() => clearTimeout(timeout));
+    }, body);
 
-    if (!response.ok) {
-      const errorText = (await response.text()).slice(0, MAX_ERROR_BYTES);
-      throw new Error(`External platform returned error: ${errorText}`);
+    if (response.status === "failed") {
+      return NextResponse.json({ error: response.errorMessage || "External synchronization failed." }, { status: 500 });
     }
 
     // 6. Mark matches as synced
@@ -146,15 +155,15 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json({ success: true, count: payload.length, skippedMatches });
-  } catch (error: any) {
-    console.error("Sync Error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (error: unknown) {
+    logApiError("api:sync-matches/route.ts", error);
+    return NextResponse.json({ error: safeErrorMessage(error) }, { status: 500 });
   }
 }
 
-async function isAllowedExternalUrl(rawUrl: string) {
+async function resolveAllowedExternalUrl(rawUrl: string) {
   try {
-    await validateOutboundUrl(rawUrl, {
+    return await resolveOutboundTarget(rawUrl, {
       policyName: "External Platform",
       allowedHostsEnv: [process.env.EXTERNAL_PLATFORM_ALLOWED_HOSTS],
       allowInsecureHttpEnv: process.env.EXTERNAL_PLATFORM_ALLOW_INSECURE_HTTP,
@@ -162,8 +171,7 @@ async function isAllowedExternalUrl(rawUrl: string) {
       allowAnyPublicHostEnv: process.env.EXTERNAL_PLATFORM_ALLOW_ANY_PUBLIC_HOST,
       requireAllowedHostsInProduction: false,
     });
-    return true;
   } catch {
-    return false;
+    return null;
   }
 }

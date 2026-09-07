@@ -1,20 +1,22 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import { NextResponse } from "next/server";
-import { prisma } from "@backend/db/db";
+import { readAdminCredential, verifyAdminCredential } from "./credentials";
+import { apiErrorResponse, ApiRequestError, logApiError } from "../http/apiResponse";
 
 const ADMIN_SESSION_COOKIE = "tdata_admin_session";
 const SESSION_TTL_SECONDS = 12 * 60 * 60;
-const SESSION_SIGNATURE_VERSION = "settings-password-v2";
+const SESSION_SIGNATURE_VERSION = "settings-password-v3";
 
 export async function verifyAdminPassword(password: string) {
-  const configuredPassword = await getConfiguredAdminPassword();
-  if (!configuredPassword) return false;
-
-  return safeEqual(password, configuredPassword);
+  return Boolean(await verifyAdminCredential(password));
 }
 
-export async function createAdminSessionResponse(payload: Record<string, unknown> = { ok: true }) {
-  const configuredPassword = await getConfiguredAdminPassword();
+export async function createAdminSessionResponse(
+  payload: Record<string, unknown> = { ok: true },
+  verifiedSessionBinding?: string,
+) {
+  // Login передаёт именно проверенную версию секрета: параллельная смена пароля не выдаст новую сессию старому паролю.
+  const configuredPassword = verifiedSessionBinding ?? (await readAdminCredential())?.value;
   if (!configuredPassword) {
     return NextResponse.json({ error: "Admin password is not configured." }, { status: 503 });
   }
@@ -26,7 +28,8 @@ export async function createAdminSessionResponse(payload: Record<string, unknown
 
   const response = NextResponse.json(payload);
   const issuedAt = Date.now();
-  const token = `${issuedAt}.${signSession(issuedAt, sessionSecret)}`;
+  // Выдаём только подпись и время: пароль остаётся на сервере, а его смена отзывает старые сессии.
+  const token = `${issuedAt}.${signSession(issuedAt, sessionSecret, configuredPassword)}`;
 
   response.cookies.set(ADMIN_SESSION_COOKIE, token, {
     httpOnly: true,
@@ -40,15 +43,21 @@ export async function createAdminSessionResponse(payload: Record<string, unknown
 }
 
 export async function requireAdmin(request: Request) {
-  if (await hasValidAdminSession(request)) return null;
-
-  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    if (await hasValidAdminSession(request)) return null;
+    return apiErrorResponse(new ApiRequestError("AUTH_REQUIRED", 401, "Unauthorized"));
+  } catch (error) {
+    logApiError("admin-session-validation", error);
+    return apiErrorResponse(error, "Authentication is temporarily unavailable.", 503);
+  }
 }
 
 export async function hasValidAdminSession(request: Request) {
   const token = getCookie(request.headers.get("cookie") || "", ADMIN_SESSION_COOKIE);
   if (!token) return false;
 
+  // Сначала отсеиваем повреждённый/просроченный cookie, затем сверяем HMAC с текущими настройками.
+  if (!/^\d{13}\.[a-f0-9]{64}$/.test(token)) return false;
   const [issuedAtRaw, signature] = token.split(".");
   const issuedAt = Number(issuedAtRaw);
   if (!Number.isFinite(issuedAt) || !signature) return false;
@@ -56,13 +65,13 @@ export async function hasValidAdminSession(request: Request) {
   const ageMs = Date.now() - issuedAt;
   if (ageMs < 0 || ageMs > SESSION_TTL_SECONDS * 1000) return false;
 
-  const configuredPassword = await getConfiguredAdminPassword();
+  const configuredPassword = (await readAdminCredential())?.value;
   if (!configuredPassword) return false;
 
   const sessionSecret = getSessionSecret(configuredPassword);
   if (!sessionSecret) return false;
 
-  return safeEqual(signature, signSession(issuedAt, sessionSecret));
+  return safeEqual(signature, signSession(issuedAt, sessionSecret, configuredPassword));
 }
 
 export function requireSameOriginJsonMutation(request: Request) {
@@ -73,19 +82,25 @@ export function requireSameOriginJsonMutation(request: Request) {
 }
 
 export function requireSameOriginMutation(request: Request, allowedContentTypes: readonly string[]) {
-  const origin = normalizeOrigin(request.headers.get("origin"));
-  const allowedOrigins = requestOrigins(request);
-  if (!origin || !allowedOrigins.has(origin)) {
-    return NextResponse.json({ error: "Forbidden request origin." }, { status: 403 });
-  }
+  // До чтения тела проверяем источник запроса; затем разрешаем только ожидаемый формат данных.
+  const forbidden = requireSameOriginRequest(request);
+  if (forbidden) return forbidden;
 
   const contentType = request.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase();
   if (!contentType || !allowedContentTypes.includes(contentType)) {
-    return NextResponse.json(
-      { error: `Content-Type must be one of: ${allowedContentTypes.join(", ")}.` },
-      { status: 415 }
-    );
+    return apiErrorResponse(new ApiRequestError("INVALID_CONTENT_TYPE", 415,
+      `Content-Type must be one of: ${allowedContentTypes.join(", ")}.`));
   }
+  return null;
+}
+
+export function requireSameOriginRequest(request: Request) {
+  const origin = normalizeOrigin(request.headers.get("origin"));
+  const allowedOrigins = requestOrigins(request);
+  if (!origin || !allowedOrigins.has(origin)) {
+    return apiErrorResponse(new ApiRequestError("FORBIDDEN_ORIGIN", 403, "Forbidden request origin."));
+  }
+
   return null;
 }
 
@@ -101,21 +116,10 @@ export function createAdminLogoutResponse() {
   return response;
 }
 
-async function getConfiguredAdminPassword() {
-  if (process.env.ADMIN_PASSWORD) return process.env.ADMIN_PASSWORD;
-
-  const setting = await prisma.globalSettings.findUnique({
-    where: { key: "admin_password" },
-    select: { value: true },
-  });
-
-  if (setting?.value) return setting.value;
-
-  return process.env.NODE_ENV === "production" ? null : "63016";
-}
-
-function signSession(issuedAt: number, secret: string) {
-  return createHmac("sha256", secret).update(`${SESSION_SIGNATURE_VERSION}:${issuedAt}`).digest("hex");
+function signSession(issuedAt: number, secret: string, configuredPassword: string) {
+  return createHmac("sha256", secret)
+    .update(JSON.stringify([SESSION_SIGNATURE_VERSION, issuedAt, configuredPassword]))
+    .digest("hex");
 }
 
 function safeEqual(a: string, b: string) {
@@ -153,16 +157,32 @@ function getSessionSecret(configuredPassword: string) {
 
 function requestOrigins(request: Request) {
   const origins = new Set<string>();
-  const requestOrigin = normalizeOrigin(request.url);
+  const host = request.headers.get("host");
+  // NextRequest нормализует loopback в localhost. Host хранит реальный authority HTTP-запроса,
+  // с которым браузер сравнивает Origin; внутренний alias сервера не становится дополнительным разрешённым origin.
+  const requestOrigin = host === null
+    ? normalizeOrigin(request.url)
+    : normalizeHostOrigin(host, new URL(request.url).protocol);
   if (requestOrigin) origins.add(requestOrigin);
+
+  // Пересылаемый внешний authority разрешаем только за явно настроенным доверенным прокси.
+  if (process.env.TRUST_PROXY_HEADERS !== "1" && process.env.TRUST_PROXY_HEADERS !== "true") {
+    return origins;
+  }
 
   const forwardedHost = request.headers.get("x-forwarded-host")?.split(",", 1)[0].trim();
   const forwardedProtocol = request.headers.get("x-forwarded-proto")?.split(",", 1)[0].trim();
   if (forwardedHost && (forwardedProtocol === "http" || forwardedProtocol === "https")) {
-    const forwardedOrigin = normalizeOrigin(`${forwardedProtocol}://${forwardedHost}`);
+    const forwardedOrigin = normalizeHostOrigin(forwardedHost, `${forwardedProtocol}:`);
     if (forwardedOrigin) origins.add(forwardedOrigin);
   }
   return origins;
+}
+
+function normalizeHostOrigin(host: string, protocol: string) {
+  // Host содержит только имя/IP и необязательный порт, без userinfo, пути, списка или управляющих символов.
+  if (!/^(?:[a-z0-9.-]+|\[[a-f0-9:.]+\])(?::\d{1,5})?$/i.test(host)) return null;
+  return normalizeOrigin(`${protocol}//${host}`);
 }
 
 function normalizeOrigin(value: string | null) {

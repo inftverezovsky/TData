@@ -1,4 +1,5 @@
 import { readSheet } from "read-excel-file/node";
+import { ApiRequestError } from "../http/apiResponse";
 
 export const MAX_ADMIN_TEAM_SOURCE_BYTES = 10 * 1024 * 1024;
 const REMOTE_FETCH_TIMEOUT_MS = 15000;
@@ -20,6 +21,7 @@ export type AdminTeamSpreadsheetSourceTimings = {
 };
 
 const GOOGLE_SHEETS_CACHE_TTL_MS = 10 * 60 * 1000;
+const MAX_GOOGLE_SHEETS_CACHE_ENTRIES = 16;
 const googleSheetsRowsCache = new Map<
   string,
   {
@@ -33,6 +35,7 @@ export async function readAdminTeamRowsFromSpreadsheetSource(input: {
   file?: File | null;
   url?: string | null;
 }): Promise<AdminTeamSpreadsheetSource> {
+  // Принимаем ровно один источник, ограничиваем объём и лишь затем запускаем Excel-парсер.
   const startedAt = performance.now();
   const file = input.file || null;
   const url = typeof input.url === "string" ? input.url.trim() : "";
@@ -52,6 +55,9 @@ export async function readAdminTeamRowsFromSpreadsheetSource(input: {
   let readBytesMs = 0;
 
   if (file) {
+    if (!(file instanceof File)) {
+      throw createSpreadsheetSourceError("Поле file должно содержать Excel-файл.", 400);
+    }
     if (file.size > MAX_ADMIN_TEAM_SOURCE_BYTES) {
       throw createSpreadsheetSourceError("File is too large", 413);
     }
@@ -85,13 +91,13 @@ export async function readAdminTeamRowsFromSpreadsheetSource(input: {
       };
     }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), REMOTE_FETCH_TIMEOUT_MS);
     const fetchStartedAt = performance.now();
-    const response = await fetch(fetchUrl, { signal: controller.signal }).finally(() => clearTimeout(timeout));
+    // Дедлайн действует до конца чтения тела, включая медленную передачу после HTTP-заголовков.
+    const response = await fetch(fetchUrl, { signal: AbortSignal.timeout(REMOTE_FETCH_TIMEOUT_MS) });
     fetchMs = performance.now() - fetchStartedAt;
 
     if (!response.ok) {
+      await response.body?.cancel();
       throw createSpreadsheetSourceError(
         response.status === 403 || response.status === 404
           ? "Google Sheets не отдаёт таблицу. Проверьте, что ссылка открыта для просмотра всем, у кого есть ссылка."
@@ -102,17 +108,13 @@ export async function readAdminTeamRowsFromSpreadsheetSource(input: {
 
     const contentLength = Number(response.headers.get("content-length"));
     if (Number.isFinite(contentLength) && contentLength > MAX_ADMIN_TEAM_SOURCE_BYTES) {
+      await response.body?.cancel();
       throw createSpreadsheetSourceError("Remote file is too large", 413);
     }
 
     const readBytesStartedAt = performance.now();
-    const bytes = await response.arrayBuffer();
+    buffer = await readLimitedSpreadsheetBody(response);
     readBytesMs = performance.now() - readBytesStartedAt;
-    if (bytes.byteLength > MAX_ADMIN_TEAM_SOURCE_BYTES) {
-      throw createSpreadsheetSourceError("Remote file is too large", 413);
-    }
-
-    buffer = Buffer.from(bytes);
     if (looksLikeHtml(buffer, response.headers.get("content-type"))) {
       throw createSpreadsheetSourceError(
         "Google Sheets вернул HTML-страницу вместо Excel. Откройте доступ к таблице по ссылке или используйте прямой Excel-файл.",
@@ -137,6 +139,15 @@ export async function readAdminTeamRowsFromSpreadsheetSource(input: {
   if (sourceType === "url") {
     const fetchUrl = toGoogleSheetsExportUrl(url);
     if (fetchUrl) {
+      // TTL ограничивает свежесть, а число записей — рост памяти при множестве разных таблиц.
+      for (const [key, value] of googleSheetsRowsCache) {
+        if (value.expiresAt <= Date.now()) googleSheetsRowsCache.delete(key);
+      }
+      while (googleSheetsRowsCache.size >= MAX_GOOGLE_SHEETS_CACHE_ENTRIES) {
+        const oldestKey = googleSheetsRowsCache.keys().next().value;
+        if (oldestKey === undefined) break;
+        googleSheetsRowsCache.delete(oldestKey);
+      }
       googleSheetsRowsCache.set(fetchUrl, {
         expiresAt: Date.now() + GOOGLE_SHEETS_CACHE_TTL_MS,
         rows,
@@ -158,6 +169,29 @@ export async function readAdminTeamRowsFromSpreadsheetSource(input: {
       total: performance.now() - startedAt,
     },
   };
+}
+
+async function readLimitedSpreadsheetBody(response: Response) {
+  const reader = response.body?.getReader();
+  if (!reader) return Buffer.alloc(0);
+  const chunks: Uint8Array[] = [];
+  let byteLength = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      byteLength += value.byteLength;
+      // Content-Length может отсутствовать или быть неверным: считаем реальные байты каждого блока.
+      if (byteLength > MAX_ADMIN_TEAM_SOURCE_BYTES) {
+        await reader.cancel();
+        throw createSpreadsheetSourceError("Remote file is too large", 413);
+      }
+      chunks.push(value);
+    }
+    return Buffer.concat(chunks, byteLength);
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 export function toGoogleSheetsExportUrl(rawUrl: string) {
@@ -193,7 +227,5 @@ export function getSpreadsheetSourceErrorStatus(error: unknown) {
 }
 
 function createSpreadsheetSourceError(message: string, status: number) {
-  const error = new Error(message) as Error & { status: number };
-  error.status = status;
-  return error;
+  return new ApiRequestError("INVALID_SPREADSHEET_SOURCE", status, message);
 }

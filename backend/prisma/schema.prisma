@@ -224,6 +224,15 @@ model GlobalSettings {
   value String @db.Text
 }
 
+model AdminLoginRateLimit {
+  key             String   @id @db.VarChar(64)
+  attempts        Int
+  windowStartedAt DateTime
+  expiresAt       DateTime
+
+  @@index([expiresAt])
+}
+
 model ProxyPool {
   id            String    @id @default(cuid())
   url           String    @unique

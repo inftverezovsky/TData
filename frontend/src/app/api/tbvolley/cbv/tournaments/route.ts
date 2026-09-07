@@ -1,3 +1,4 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 import { searchCBVTournaments } from "@backend/sources/tbvolley/CBV";
 
@@ -14,8 +15,8 @@ export async function GET(request: Request) {
 
     return NextResponse.json(tournaments);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "CBV tournament search failed.";
-    console.error("[TBvolley CBV tournaments API] Error:", error);
+    const message = error instanceof Error ? safeErrorMessage(error) : "CBV tournament search failed.";
+    logApiError("api:tbvolley/cbv/tournaments/route.ts", error);
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }

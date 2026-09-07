@@ -1,5 +1,6 @@
+import { apiErrorResponse, logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@backend/auth/adminAuth";
+import { requireAdmin, requireSameOriginJsonMutation, requireSameOriginRequest } from "@backend/auth/adminAuth";
 import {
   deleteProxyPoolByAction,
   deleteProxyPoolById,
@@ -10,18 +11,27 @@ import {
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
+  try {
+    const unauthorized = await requireAdmin(request);
+    if (unauthorized) return unauthorized;
 
-  return NextResponse.json(
-    { proxies: await listProxyPool() },
-    { headers: { "Cache-Control": "no-store" } }
-  );
+    return NextResponse.json(
+      { proxies: await listProxyPool() },
+      { headers: { "Cache-Control": "no-store" } }
+    );
+  } catch (error) {
+    logApiError("api:admin-settings/proxy-pool/route.ts", error);
+    return apiErrorResponse(error);
+  }
 }
 
 export async function POST(request: Request) {
   const unauthorized = await requireAdmin(request);
   if (unauthorized) return unauthorized;
+
+  // Не читаем список прокси, пока не подтверждены сессия, origin и формат запроса.
+  const unsafeMutation = requireSameOriginJsonMutation(request);
+  if (unsafeMutation) return unsafeMutation;
 
   try {
     const { urls } = await request.json();
@@ -38,24 +48,32 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true, count });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: safeErrorMessage(error) }, { status: 500 });
   }
 }
 
 export async function DELETE(request: Request) {
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
+  try {
+    const unauthorized = await requireAdmin(request);
+    if (unauthorized) return unauthorized;
+    // DELETE с query-параметрами не требует тела, но обязан происходить с origin приложения.
+    const forbidden = requireSameOriginRequest(request);
+    if (forbidden) return forbidden;
 
-  const { searchParams } = new URL(request.url);
-  const id = searchParams.get("id");
-  const all = searchParams.get("all") === "true";
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+    const all = searchParams.get("all") === "true";
 
-  if (all) {
-    const deleted = await deleteProxyPoolByAction("clear-all");
-    return NextResponse.json({ ok: true, count: deleted.count });
+    if (all) {
+      const deleted = await deleteProxyPoolByAction("clear-all");
+      return NextResponse.json({ ok: true, count: deleted.count });
+    }
+
+    if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 });
+    await deleteProxyPoolById(id);
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    logApiError("api:admin-settings/proxy-pool/route.ts", error);
+    return apiErrorResponse(error);
   }
-
-  if (!id) return NextResponse.json({ error: "ID required" }, { status: 400 });
-  await deleteProxyPoolById(id);
-  return NextResponse.json({ ok: true });
 }

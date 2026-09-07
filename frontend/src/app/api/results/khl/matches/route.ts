@@ -1,3 +1,4 @@
+import { apiErrorResponse, logApiError } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 
 import { requireAdmin } from "@backend/auth/adminAuth";
@@ -11,83 +12,88 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
-  const unauthorized = await requireAdmin(request);
-  if (unauthorized) return unauthorized;
+  try {
+    const unauthorized = await requireAdmin(request);
+    if (unauthorized) return unauthorized;
 
-  const url = new URL(request.url);
-  const stageId = optionalExternalId(url.searchParams.get("stageId"));
-  const limit = Math.min(optionalPositiveInteger(url.searchParams.get("limit")) || 50, 100);
-  const offset = Math.min(optionalNonNegativeInteger(url.searchParams.get("offset")) || 0, 10_000);
-  if (url.searchParams.has("stageId") && !stageId) {
-    return NextResponse.json({ error: "stageId must be a positive decimal string." }, { status: 400 });
-  }
+    const url = new URL(request.url);
+    const stageId = optionalExternalId(url.searchParams.get("stageId"));
+    const limit = Math.min(optionalPositiveInteger(url.searchParams.get("limit")) || 50, 100);
+    const offset = Math.min(optionalNonNegativeInteger(url.searchParams.get("offset")) || 0, 10_000);
+    if (url.searchParams.has("stageId") && !stageId) {
+      return NextResponse.json({ error: "stageId must be a positive decimal string." }, { status: 400 });
+    }
 
-  const where = {
-    startsAt: { gte: KHL_RESULTS_CUTOFF },
-    ...(stageId ? { stageId } : {}),
-  };
-  const [matches, latestSnapshot, total, automation] = await Promise.all([
-    prisma.khlMatch.findMany({
-      where,
-      orderBy: [{ startsAt: "desc" }, { khlGameId: "desc" }],
-      skip: offset,
-      take: limit,
-      include: {
-        homeTeam: true,
-        awayTeam: true,
-        activeRevision: {
-          select: {
-            id: true,
-            revisionNumber: true,
-            normalizedHash: true,
-            state: true,
-            validationIssues: true,
-            createdAt: true,
-            normalizedJson: true,
+    const where = {
+      startsAt: { gte: KHL_RESULTS_CUTOFF },
+      ...(stageId ? { stageId } : {}),
+    };
+    const [matches, latestSnapshot, total, automation] = await Promise.all([
+      prisma.khlMatch.findMany({
+        where,
+        orderBy: [{ startsAt: "desc" }, { khlGameId: "desc" }],
+        skip: offset,
+        take: limit,
+        include: {
+          homeTeam: true,
+          awayTeam: true,
+          activeRevision: {
+            select: {
+              id: true,
+              revisionNumber: true,
+              normalizedHash: true,
+              state: true,
+              validationIssues: true,
+              createdAt: true,
+              normalizedJson: true,
+            },
           },
-        },
-        revisions: {
-          orderBy: { revisionNumber: "desc" },
-          take: 1,
-          select: {
-            id: true,
-            revisionNumber: true,
-            normalizedHash: true,
-            state: true,
-            validationIssues: true,
-            createdAt: true,
-            normalizedJson: true,
+          revisions: {
+            orderBy: { revisionNumber: "desc" },
+            take: 1,
+            select: {
+              id: true,
+              revisionNumber: true,
+              normalizedHash: true,
+              state: true,
+              validationIssues: true,
+              createdAt: true,
+              normalizedJson: true,
+            },
           },
+          _count: { select: { revisions: true, participants: true } },
         },
-        _count: { select: { revisions: true, participants: true } },
+      }),
+      prisma.khlRawSnapshot.findFirst({
+        where: { match: { is: { startsAt: { gte: KHL_RESULTS_CUTOFF } } } },
+        orderBy: { lastFetchedAt: "desc" },
+        select: { lastFetchedAt: true },
+      }),
+      prisma.khlMatch.count({ where }),
+      getKhlResultsAutomationStatus(
+        prisma,
+        process.env.KHL_RESULTS_AUTO_SYNC_ENABLED === "1"
+      ),
+    ]);
+    return NextResponse.json({
+      automation: {
+        ...automation,
+        cutoff: KHL_RESULTS_CUTOFF.toISOString(),
+        intervalMinutes: automaticSyncIntervalMinutes(),
+        lastFetchedAt: latestSnapshot?.lastFetchedAt || null,
       },
-    }),
-    prisma.khlRawSnapshot.findFirst({
-      where: { match: { is: { startsAt: { gte: KHL_RESULTS_CUTOFF } } } },
-      orderBy: { lastFetchedAt: "desc" },
-      select: { lastFetchedAt: true },
-    }),
-    prisma.khlMatch.count({ where }),
-    getKhlResultsAutomationStatus(
-      prisma,
-      process.env.KHL_RESULTS_AUTO_SYNC_ENABLED === "1"
-    ),
-  ]);
-  return NextResponse.json({
-    automation: {
-      ...automation,
-      cutoff: KHL_RESULTS_CUTOFF.toISOString(),
-      intervalMinutes: automaticSyncIntervalMinutes(),
-      lastFetchedAt: latestSnapshot?.lastFetchedAt || null,
-    },
-    pagination: {
-      offset,
-      limit,
-      total,
-      hasMore: offset + matches.length < total,
-    },
-    matches: matches.map(buildKhlMatchResponseItem),
-  });
+      pagination: {
+        offset,
+        limit,
+        total,
+        hasMore: offset + matches.length < total,
+      },
+      matches: matches.map(buildKhlMatchResponseItem),
+    });
+  } catch (error) {
+    logApiError("api:results/khl/matches/route.ts", error);
+    return apiErrorResponse(error);
+  }
 }
 
 type MatchRevisionViewInput = {

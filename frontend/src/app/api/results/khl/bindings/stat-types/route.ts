@@ -1,3 +1,4 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 
 import { requireAdmin, requireSameOriginJsonMutation } from "@backend/auth/adminAuth";
@@ -31,9 +32,9 @@ export async function POST(request: Request) {
   } catch (error) {
     if (error instanceof KhlTargetBindingError) {
       const status = error.code === "INVALID_TARGET_BINDINGS" ? 400 : 409;
-      return NextResponse.json({ error: error.message, code: error.code }, { status });
+      return NextResponse.json({ error: safeErrorMessage(error), code: error.code }, { status });
     }
-    console.error("[KHL stat type bindings]", error instanceof Error ? error.message : error);
+    logApiError("api:results/khl/bindings/stat-types/route.ts", error);
     return NextResponse.json({ error: "Failed to confirm KHL stat type bindings." }, { status: 500 });
   }
 }

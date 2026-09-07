@@ -1,122 +1,97 @@
-import { prisma } from "../backend/src/db/db";
-import { exec } from "child_process";
-import { promisify } from "util";
+import { PrismaClient } from "@prisma/client";
 
-const execAsync = promisify(exec);
+async function checkDb(prisma: PrismaClient) {
+  console.log("Checking database connection...");
+  const startedAt = Date.now();
+  const disciplineCount = await prisma.discipline.count();
+  const tournamentCount = await prisma.tournament.count();
+  const matchCount = await prisma.tournamentMatch.count();
+  const proxyCount = await prisma.proxyPool.count();
 
-async function checkDb() {
-  console.log("⚙️ Checking database connection...");
-  const start = Date.now();
-  try {
-    const disciplineCount = await prisma.discipline.count();
-    const tournamentCount = await prisma.tournament.count();
-    const matchCount = await prisma.tournamentMatch.count();
-    const proxyCount = await prisma.proxyPool.count();
-    const duration = Date.now() - start;
-
-    console.log(`\n✅ Database is connected! (Latency: ${duration}ms)`);
-    console.log(`📊 Statistics:`);
-    console.log(`   - Game Disciplines: ${disciplineCount}`);
-    console.log(`   - Ingested Tournaments: ${tournamentCount}`);
-    console.log(`   - Saved Tournament Matches: ${matchCount}`);
-    console.log(`   - Registered Proxies: ${proxyCount}`);
-  } catch (error) {
-    console.error("❌ Database connection error:", error);
-  }
+  console.log(`Database connected. Statistics collected in ${Date.now() - startedAt}ms.`);
+  console.log(`  Disciplines: ${disciplineCount}`);
+  console.log(`  Tournaments: ${tournamentCount}`);
+  console.log(`  Tournament matches: ${matchCount}`);
+  console.log(`  Proxies: ${proxyCount}`);
 }
 
-async function clearCache() {
-  console.log("🧹 Clearing cached search requests and temporary snapshot logs...");
-  try {
-    const searchDel = await prisma.searchRequest.deleteMany();
-    const logDel = await prisma.parserRequestLog.deleteMany();
-    console.log(`\n✅ Cache cleared successfully!`);
-    console.log(`   - Deleted ${searchDel.count} cached search entries`);
-    console.log(`   - Deleted ${logDel.count} proxy/parser logs`);
-  } catch (error) {
-    console.error("❌ Error clearing cache:", error);
-  }
+async function clearCache(prisma: PrismaClient) {
+  console.log("Clearing all cached search requests and parser logs...");
+  const searchDel = await prisma.searchRequest.deleteMany();
+  const logDel = await prisma.parserRequestLog.deleteMany();
+  console.log(`Deleted ${searchDel.count} search entries and ${logDel.count} parser logs.`);
 }
 
-async function verifyProxies() {
-  console.log("📡 Diagnosing Proxy Pool Health...");
-  try {
-    const proxies = await prisma.proxyPool.findMany();
-    if (proxies.length === 0) {
-      console.log("⚠️ No proxies found in database. Use scripts to populate.");
-      return;
-    }
-
-    console.log(`\n🔍 Found ${proxies.length} proxies. Diagnostic summary:`);
-    let active = 0;
-    let inactive = 0;
-    
-    for (const p of proxies) {
-      if (p.isActive) {
-        active++;
-        console.log(`   [ACTIVE]  ${p.protocol}://...${p.host.slice(-8)}:${p.port} (Successes: ${p.successCount}, Fails: ${p.failCount})`);
-      } else {
-        inactive++;
-        console.log(`   [BLOCKED] ${p.protocol}://...${p.host.slice(-8)}:${p.port} (Error: ${p.lastError || "None"})`);
-      }
-    }
-    
-    console.log(`\n📈 Summary: Active: ${active}, Blocked/Cooldown: ${inactive}`);
-  } catch (error) {
-    console.error("❌ Error checking proxies:", error);
+async function summarizeProxies(prisma: PrismaClient) {
+  // Это сохранённая статистика пула; функция не выполняет сетевую проверку каждого прокси.
+  const proxies = await prisma.proxyPool.findMany({
+    select: { isActive: true, successCount: true, failCount: true },
+  });
+  if (proxies.length === 0) {
+    console.log("No proxies found in the database.");
+    return;
   }
+
+  console.log(`Stored proxy statistics (${proxies.length} entries):`);
+  for (const [index, proxy] of proxies.entries()) {
+    const status = proxy.isActive ? "ACTIVE" : "BLOCKED";
+    console.log(`  [${status}] Proxy #${index + 1}: successes=${proxy.successCount}, failures=${proxy.failCount}`);
+  }
+  const active = proxies.filter((proxy) => proxy.isActive).length;
+  console.log(`Active: ${active}; blocked/cooldown: ${proxies.length - active}.`);
+}
+
+function showDeploymentChecklist() {
+  console.log(`Deployment checklist only; readiness is not verified.
+No deployment or server checks were executed.
+  1. Follow docs/DEPLOYMENT_PORTAINER.md for the target environment.
+  2. Inventory the target containers, Compose projects, ports and disk space.
+  3. Verify the backup, deployment configuration and required runtime settings.
+  4. Run the documented validation and confirm the application's health afterward.
+This CLI does not perform these steps or start a deployment.`);
+  process.exitCode = 1;
 }
 
 function showHelp() {
-  console.log(`
-🚀 TDATA DEVELOPER CONTROL CLI
-===============================
+  console.log(`TDATA DEVELOPER CLI
 Usage: npx tsx scripts/tdata-cli.ts [command]
 
-Available Commands:
-  db:check        Verify PostgreSQL database connection and list schema metrics.
-  cache:clear     Purge old search requests and parser logs to release disk space.
-  proxy:check     View status, latency, and success/fail counts for all proxies.
-  deploy          Trigger production backup setup and deployment checks.
-  help            Display this command list.
-`);
+Available commands:
+  db:check        Verify the database connection and count stored records.
+  cache:clear     Delete all cached search requests and parser logs.
+  proxy:check     View stored proxy status and success/failure counts.
+  deploy          Print an unverified deployment checklist (exit code 1).
+  help            Display this command list.`);
 }
 
 async function main() {
-  const args = process.argv.slice(2);
-  const command = args[0] || "help";
-
-  switch (command) {
-    case "db:check":
-      await checkDb();
-      break;
-    case "cache:clear":
-      await clearCache();
-      break;
-    case "proxy:check":
-      await verifyProxies();
-      break;
-    case "deploy":
-      console.log("🚢 Initializing secure backup scripts and testing deploy ports...");
-      try {
-        console.log("   - Portainer API checklist... Pass");
-        console.log("   - Deploy compose file integrity... Pass");
-        console.log("\n✅ Ready for deployment! Run git push to trigger SSH pipelines.");
-      } catch (err) {
-        console.error("❌ Deploy checklist failed:", err);
-      }
-      break;
-    case "help":
-    default:
-      showHelp();
-      break;
+  const command = process.argv[2] || "help";
+  if (["help", "--help", "-h"].includes(command)) {
+    showHelp();
+    return;
   }
-  
-  await prisma.$disconnect();
+  if (command === "deploy") {
+    showDeploymentChecklist();
+    return;
+  }
+  if (!["db:check", "cache:clear", "proxy:check"].includes(command)) {
+    console.error("Unknown command. Run 'npx tsx scripts/tdata-cli.ts help' for usage.");
+    process.exitCode = 1;
+    return;
+  }
+
+  // Клиент нужен только командам БД. Отключаем сырой вывод Prisma: ошибки могут содержать данные подключения.
+  const prisma = new PrismaClient({ log: [] });
+  try {
+    if (command === "db:check") await checkDb(prisma);
+    else if (command === "cache:clear") await clearCache(prisma);
+    else await summarizeProxies(prisma);
+  } finally {
+    await prisma.$disconnect();
+  }
 }
 
-main().catch(async (err) => {
-  console.error(err);
-  await prisma.$disconnect();
-  process.exit(1);
+void main().catch(() => {
+  console.error("CLI command failed. Check the local database configuration and availability; no success is confirmed.");
+  process.exitCode = 1;
 });

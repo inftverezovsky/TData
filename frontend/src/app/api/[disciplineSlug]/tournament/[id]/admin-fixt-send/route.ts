@@ -1,6 +1,8 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { createHash } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { NextResponse } from 'next/server';
+import { requireAdmin, requireSameOriginJsonMutation } from '@backend/auth/adminAuth';
 import { prisma } from '@backend/db/db';
 import { buildFixtPayload } from '@backend/adminUpload/buildFixtPayload';
 import { toAdminFixtPayloadEnvelope } from '@backend/adminUpload/fixtPayloadFormat';
@@ -13,7 +15,11 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string; disciplineSlug: string }> }
 ) {
-  // API remains callable directly; password gate is UI-only for settings visibility.
+  // Сначала доступ, затем payload и внешний вызов: 401 не оставляет записей и допускает повтор после входа.
+  const unauthorized = await requireAdmin(request);
+  if (unauthorized) return unauthorized;
+  const invalidMutation = requireSameOriginJsonMutation(request);
+  if (invalidMutation) return invalidMutation;
 
   const { disciplineSlug: routeDisciplineSlug, id } = await params;
   try {
@@ -170,7 +176,7 @@ export async function POST(
       error: sendResult.status === 'failed' ? (sendResult.errorMessage || "Ошибка при отправке данных в платформу") : undefined
     });
   } catch (error: any) {
-    console.error('Send error:', error);
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    logApiError("api:[disciplineSlug]/tournament/[id]/admin-fixt-send/route.ts", error);
+    return NextResponse.json({ ok: false, error: safeErrorMessage(error) }, { status: 500 });
   }
 }

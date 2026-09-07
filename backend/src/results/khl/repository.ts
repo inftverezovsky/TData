@@ -53,6 +53,11 @@ export class KhlRepositoryError extends Error {
   }
 }
 
+/**
+ * Разобрать и проверить протокол → вычислить хеши сырого и нормализованного содержимого →
+ * сохранить снимок, ревизию и проекцию матча в одной транзакции.
+ * Повторный тот же ответ переиспользуется; версия парсера и правил входит в историю обработки.
+ */
 export async function ingestKhlEventDetail(
   prisma: PrismaClient,
   input: IngestInput
@@ -160,6 +165,7 @@ async function ingestTransaction(
       },
     });
   }
+  // При смене идентичности матча старые привязки Admin нужно подтвердить заново.
   const bindingIdentityChanged = !match.activeRevisionId
     || match.apiEventId !== matchData.apiEventId
     || match.sourceMatchId !== matchData.sourceMatchId

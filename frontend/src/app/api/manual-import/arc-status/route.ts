@@ -1,3 +1,4 @@
+import { safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 import { ARCCODEX_RESPONSES_URL, MANUAL_IMPORT_AI_TIMEOUT_MS, MANUAL_IMPORT_MODEL } from "@backend/manualImport/config";
 
@@ -36,7 +37,8 @@ export async function GET() {
       }),
     });
 
-    const bodyText = await response.text();
+    // Статус проверки определяется HTTP-кодом; техническое тело может содержать сведения о ключе или аккаунте.
+    await response.body?.cancel();
     const latencyMs = Date.now() - startedAt;
 
     if (!response.ok) {
@@ -45,7 +47,7 @@ export async function GET() {
         status: "api_error",
         httpStatus: response.status,
         latencyMs,
-        message: bodyText.slice(0, 500) || "ArcCodex вернул ошибку.",
+        message: "ArcCodex вернул ошибку. Проверьте настройки доступа и повторите запрос.",
       }, { status: 502 });
     }
 
@@ -59,7 +61,7 @@ export async function GET() {
     return NextResponse.json({
       ok: false,
       status: "request_failed",
-      message: error instanceof Error ? error.message : "Проверка ArcCodex не удалась.",
+      message: error instanceof Error ? safeErrorMessage(error) : "Проверка ArcCodex не удалась.",
     }, { status: 502 });
   }
 }

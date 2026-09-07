@@ -260,7 +260,9 @@ test("Federvolley helpers resolve source ids", () => {
   assert.equal(buildFedervolleySourceTitle("Campionato Italiano Assoluto - Finale - Caorle", "men", "assoluto", "66744", "11518"), "Campionato Italiano Assoluto - Finale - Caorle — Men [FIPAV:assoluto:66744:11518]");
 });
 
-test("Federvolley filters drop completed tournaments and matches", () => {
+test("Federvolley filters drop completed tournaments and matches", (context) => {
+  // Парсер сам определяет статус по текущей дате; она должна совпадать с датой последующей фильтрации.
+  context.mock.timers.enable({ apis: ["Date"], now: new Date("2026-06-11T00:00:00.000Z") });
   const html = `
     <div class="torneitable-summary-row-1 container-fluid">
       <div class="row">

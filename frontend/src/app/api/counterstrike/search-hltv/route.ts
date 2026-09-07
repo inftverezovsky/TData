@@ -1,3 +1,4 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 import { runHltvScript } from "@backend/sources/tdata/hltv/scraper";
 import { filterHltvEventsByQuery } from "@backend/sources/tdata/hltv/searchFallback";
@@ -23,7 +24,7 @@ export async function GET(request: Request) {
     if (results.length === 0) {
       fallbackData = await runHltvScript("events", undefined, { noCache: force }).catch((error) => ({
         ok: false,
-        warning: error instanceof Error ? error.message : "HLTV events fallback failed.",
+        warning: safeErrorMessage(error, "HLTV events fallback failed."),
       }));
       if (Array.isArray(fallbackData.events)) {
         results = filterHltvEventsByQuery(fallbackData.events, query);
@@ -40,13 +41,13 @@ export async function GET(request: Request) {
       errorClass: results.length > 0 ? null : data.errorClass || emptyValidIfNoItems([results.length]),
     });
   } catch (error: any) {
-    const errorClass = normalizeHltvErrorClass(error.errorClass, error.message);
-    const userMessage = getHltvSearchErrorMessage(errorClass, error.message);
-    console.error('[HLTV Search API] Error:', error);
+    const errorClass = normalizeHltvErrorClass(error.errorClass, safeErrorMessage(error));
+    const userMessage = getHltvSearchErrorMessage(errorClass, safeErrorMessage(error));
+    logApiError("api:counterstrike/search-hltv/route.ts", error);
     return NextResponse.json({
       ok: false,
       error: userMessage,
-      debugError: error.message,
+      debugError: safeErrorMessage(error),
       errorClass,
       userMessage,
     }, { status: 500 });

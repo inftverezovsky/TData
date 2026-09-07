@@ -1,4 +1,6 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from 'next/server';
+import { requireAdmin, requireSameOriginJsonMutation } from '@backend/auth/adminAuth';
 import { getAdminFixtPayloadHead, toAdminFixtPayloadEnvelope } from '@backend/adminUpload/fixtPayloadFormat';
 import { phpSerialize } from '@backend/adminUpload/phpSerialize';
 import { resolveAdminSettings } from '@backend/adminUpload/resolveAdminSettings';
@@ -6,7 +8,11 @@ import { sendFixtPayload } from '@backend/adminUpload/sendFixtPayload';
 import { prisma } from '@backend/db/db';
 
 export async function POST(request: Request) {
-  // API remains callable directly; password gate is UI-only for settings visibility.
+  // Повтор после 401 безопасен: до этих проверок не выполняются запросы во внешний Admin.
+  const unauthorized = await requireAdmin(request);
+  if (unauthorized) return unauthorized;
+  const invalidMutation = requireSameOriginJsonMutation(request);
+  if (invalidMutation) return invalidMutation;
 
   try {
     const { payload } = await request.json();
@@ -86,7 +92,7 @@ export async function POST(request: Request) {
     });
 
   } catch (error: any) {
-    console.error('[HLTV Admin Send] Error:', error);
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    logApiError("api:counterstrike/hltv/admin-send/route.ts", error);
+    return NextResponse.json({ ok: false, error: safeErrorMessage(error) }, { status: 500 });
   }
 }

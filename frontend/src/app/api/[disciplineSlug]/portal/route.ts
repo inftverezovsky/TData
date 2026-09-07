@@ -1,3 +1,4 @@
+import { logApiError } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 import { fetchDisciplinePortal } from "@backend/sources/tdata/liquipedia/portal";
 import { prisma } from "@backend/db/db";
@@ -29,7 +30,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ disc
       },
       select: { id: true, sourceUrl: true }
     }).catch(err => {
-      console.error("[Portal API] DB Error 1:", err.message);
+      logApiError("portal-tournaments", err);
       return [];
     });
 
@@ -43,7 +44,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ disc
         where: { tournamentId: { in: dbIds } },
         _count: { id: true, syncedAt: true }
       }).catch(err => {
-        console.error("[Portal API] MatchStats Error:", err.message);
+        logApiError("portal-match-stats", err);
         return [];
       }) : Promise.resolve([]),
 
@@ -63,7 +64,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ disc
         select: { tournamentId: true },
         distinct: ['tournamentId']
       }).catch(err => {
-        console.error("[Portal API] Placeholders Error:", err.message);
+        logApiError("portal-placeholders", err);
         return [];
       }) : Promise.resolve([])
     ]);
@@ -90,7 +91,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ disc
     return NextResponse.json({ ...data, tournaments: enrichedTournaments });
   } catch (err: any) {
     const userFacingError = toLiquipediaUserFacingError(err);
-    console.error(`[Portal API] Error:`, err);
+    logApiError("api:[disciplineSlug]/portal/route.ts", err);
     return NextResponse.json(
       { error: userFacingError.userMessage, userMessage: userFacingError.userMessage, errorClass: userFacingError.errorClass },
       { status: getLiquipediaResponseStatus(userFacingError.errorClass) }

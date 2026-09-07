@@ -1,3 +1,4 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 
 import { requireAdmin } from "@backend/auth/adminAuth";
@@ -14,9 +15,9 @@ export async function GET(request: Request) {
     const stages = await new KhlApiClient().listStages();
     return NextResponse.json({ stages });
   } catch (error) {
-    console.error("[KHL stages]", error instanceof Error ? error.message : error);
+    logApiError("api:results/khl/stages/route.ts", error);
     return NextResponse.json(
-      { error: error instanceof KhlApiError ? error.message : "Failed to load KHL stages." },
+      { error: error instanceof KhlApiError ? safeErrorMessage(error) : "Failed to load KHL stages." },
       { status: 502 }
     );
   }

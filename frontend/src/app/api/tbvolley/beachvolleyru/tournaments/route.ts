@@ -1,3 +1,4 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 import { searchBeachVolleyRuTournaments } from "@backend/sources/tbvolley/beach.volley.ru";
 
@@ -15,8 +16,8 @@ export async function GET(request: Request) {
 
     return NextResponse.json(tournaments);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "beach.volley.ru tournament search failed.";
-    console.error("[TBvolley beach.volley.ru tournaments API] Error:", error);
+    const message = error instanceof Error ? safeErrorMessage(error) : "beach.volley.ru tournament search failed.";
+    logApiError("api:tbvolley/beachvolleyru/tournaments/route.ts", error);
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }

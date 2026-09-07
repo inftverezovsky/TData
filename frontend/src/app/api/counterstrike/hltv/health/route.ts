@@ -1,3 +1,4 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 import { runHltvScript } from "@backend/sources/tdata/hltv/scraper";
 import { classifyParserError } from "@backend/proxy/parserErrors";
@@ -21,12 +22,12 @@ export async function GET(request: Request) {
       errorClass: data.errorClass || null,
     });
   } catch (error: any) {
-    const errorClass = classifyParserError({ message: error.message });
-    console.error('[HLTV Health API] Error:', error);
+    const errorClass = classifyParserError({ message: safeErrorMessage(error) });
+    logApiError("api:counterstrike/hltv/health/route.ts", error);
     return NextResponse.json({ 
       ok: false, 
       status: 'error', 
-      error: error.message,
+      error: safeErrorMessage(error),
       errorClass,
       isCloudflare: errorClass === "cloudflare_block"
     }, { status: 500 });

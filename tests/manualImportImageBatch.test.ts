@@ -27,6 +27,26 @@ test("selectManualImportImageHashes enforces max queue size", () => {
   assert.equal(result.overflowCount, 1);
 });
 
+test("selectManualImportImageHashes accepts all twenty unique images into an empty queue", () => {
+  const incoming = Array.from({ length: MANUAL_IMPORT_MAX_IMAGES }, (_, index) => `image-${index}`);
+
+  const result = selectManualImportImageHashes([], incoming);
+
+  assert.deepEqual(result.acceptedHashes, incoming);
+  assert.equal(result.overflowCount, 0);
+  assert.equal(result.duplicateCount, 0);
+});
+
+test("selectManualImportImageHashes fills remaining places before reporting overflow", () => {
+  const current = Array.from({ length: 5 }, (_, index) => `current-${index}`);
+  const incoming = Array.from({ length: 17 }, (_, index) => `image-${index}`);
+
+  const result = selectManualImportImageHashes(current, incoming);
+
+  assert.deepEqual(result.acceptedHashes, incoming.slice(0, 15));
+  assert.equal(result.overflowCount, 2);
+});
+
 test("selectManualImportImageHashes skips duplicate pasted images", () => {
   const result = selectManualImportImageHashes(["existing"], ["existing", "fresh", "fresh"]);
 

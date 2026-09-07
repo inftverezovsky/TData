@@ -1,3 +1,4 @@
+import { logApiError } from "@backend/http/apiResponse";
 import { prisma } from "@backend/db/db";
 import { normalizeAdminExternalId } from "@backend/tline/admin/directory";
 import { apiOk, readJsonBody, requireTLineAccess, tlineErrorResponse } from "@backend/tline/api/http";
@@ -7,33 +8,38 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
-  const denied = await requireTLineAccess(request);
-  if (denied) return denied;
-  const sportId = new URL(request.url).searchParams.get("sportId") || undefined;
-  const headers = await prisma.tLineGlobalHeader.findMany({
-    where: sportId ? { sportConfigId: sportId } : undefined,
-    include: {
-      sportConfig: { include: { discipline: { select: { name: true, slug: true } } } },
-      championships: {
-        where: { deletedAt: null },
-        select: { id: true, name: true, active: true },
-        orderBy: { name: "asc" },
+  try {
+    const denied = await requireTLineAccess(request);
+    if (denied) return denied;
+    const sportId = new URL(request.url).searchParams.get("sportId") || undefined;
+    const headers = await prisma.tLineGlobalHeader.findMany({
+      where: sportId ? { sportConfigId: sportId } : undefined,
+      include: {
+        sportConfig: { include: { discipline: { select: { name: true, slug: true } } } },
+        championships: {
+          where: { deletedAt: null },
+          select: { id: true, name: true, active: true },
+          orderBy: { name: "asc" },
+        },
+        _count: { select: { adminTeams: true } },
       },
-      _count: { select: { adminTeams: true } },
-    },
-    orderBy: [{ sportConfigId: "asc" }, { name: "asc" }, { adminShapkaId: "asc" }],
-  });
-  return apiOk(headers.map((header) => ({
-    id: header.id,
-    sportId: header.sportConfigId,
-    sportName: header.sportConfig.discipline.name,
-    sportSlug: header.sportConfig.discipline.slug,
-    adminShapkaId: header.adminShapkaId,
-    name: header.name,
-    active: header.active,
-    championships: header.championships,
-    teamCount: header._count.adminTeams,
-  })));
+      orderBy: [{ sportConfigId: "asc" }, { name: "asc" }, { adminShapkaId: "asc" }],
+    });
+    return apiOk(headers.map((header) => ({
+      id: header.id,
+      sportId: header.sportConfigId,
+      sportName: header.sportConfig.discipline.name,
+      sportSlug: header.sportConfig.discipline.slug,
+      adminShapkaId: header.adminShapkaId,
+      name: header.name,
+      active: header.active,
+      championships: header.championships,
+      teamCount: header._count.adminTeams,
+    })));
+  } catch (error) {
+    logApiError("api:tline/global-headers/route.ts", error);
+    return tlineErrorResponse(error);
+  }
 }
 
 export async function POST(request: Request) {

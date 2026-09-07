@@ -1,66 +1,33 @@
-import { NextResponse } from "next/server";
-import { createAdminSessionResponse, verifyAdminPassword } from "@backend/auth/adminAuth";
+import { createAdminSessionResponse, requireSameOriginJsonMutation } from "@backend/auth/adminAuth";
+import { verifyAdminCredential } from "@backend/auth/credentials";
+import { clearLoginAttempts, reserveLoginAttempt } from "@backend/auth/loginRateLimit";
 import { getClientRateLimitKey } from "@backend/http/clientIp";
+import { apiErrorResponse, ApiRequestError, logApiError } from "@backend/http/apiResponse";
+import { readJsonRequest } from "@backend/http/requestBody";
 
 export const dynamic = "force-dynamic";
 
-const MAX_LOGIN_ATTEMPTS = 8;
-const LOGIN_WINDOW_MS = 10 * 60 * 1000;
-
-type LoginAttempt = {
-  count: number;
-  firstAttemptAt: number;
-};
-
-const attempts = new Map<string, LoginAttempt>();
-
 export async function POST(request: Request) {
+  const unsafeRequest = requireSameOriginJsonMutation(request);
+  if (unsafeRequest) return unsafeRequest;
   try {
-    const key = getClientKey(request);
-    const limited = isRateLimited(key);
-    if (limited) {
-      return NextResponse.json({ error: "Too many login attempts" }, { status: 429 });
+    // Резервируем попытку в общей БД до разбора тела и дорогой проверки пароля.
+    const key = getClientRateLimitKey(request, "admin-login");
+    const limit = await reserveLoginAttempt(key);
+    if (!limit.allowed) {
+      const response = apiErrorResponse(new ApiRequestError("RATE_LIMITED", 429, "Too many login attempts"));
+      response.headers.set("Retry-After", String(limit.retryAfterSeconds));
+      return response;
     }
-
-    const body = await request.json();
-    const password = typeof body.password === "string" ? body.password : "";
-
-    if (!(await verifyAdminPassword(password))) {
-      recordFailedAttempt(key);
-      return NextResponse.json({ error: "Invalid password" }, { status: 401 });
-    }
-
-    attempts.delete(key);
-    return createAdminSessionResponse({ ok: true });
-  } catch {
-    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+    const body = await readJsonRequest(request, 4096);
+    const password = body && typeof body === "object" && "password" in body && typeof body.password === "string"
+      ? body.password : "";
+    const credential = await verifyAdminCredential(password);
+    if (!credential) return apiErrorResponse(new ApiRequestError("INVALID_CREDENTIALS", 401, "Invalid password"));
+    await clearLoginAttempts(key);
+    return createAdminSessionResponse({ ok: true }, credential.sessionBinding);
+  } catch (error) {
+    if (!(error instanceof ApiRequestError)) logApiError("admin-login", error);
+    return apiErrorResponse(error, "Authentication is temporarily unavailable.", 503);
   }
-}
-
-function isRateLimited(key: string) {
-  const current = attempts.get(key);
-  if (!current) return false;
-
-  if (Date.now() - current.firstAttemptAt > LOGIN_WINDOW_MS) {
-    attempts.delete(key);
-    return false;
-  }
-
-  return current.count >= MAX_LOGIN_ATTEMPTS;
-}
-
-function recordFailedAttempt(key: string) {
-  const now = Date.now();
-  const current = attempts.get(key);
-
-  if (!current || now - current.firstAttemptAt > LOGIN_WINDOW_MS) {
-    attempts.set(key, { count: 1, firstAttemptAt: now });
-    return;
-  }
-
-  current.count += 1;
-}
-
-function getClientKey(request: Request) {
-  return getClientRateLimitKey(request, "admin-login");
 }

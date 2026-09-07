@@ -27,6 +27,7 @@ export function apiError(code: string, message: string, status: number, details?
 export async function requireTLineAccess(request: Request, mutation = false) {
   const unauthorized = await requireAdmin(request);
   if (unauthorized) {
+    if (unauthorized.status >= 500) return apiError("AUTH_UNAVAILABLE", "Authentication is temporarily unavailable.", 503);
     return apiError("UNAUTHORIZED", "Authentication is required.", 401);
   }
   if (!mutation) return null;
@@ -41,6 +42,7 @@ export async function requireTLineAccess(request: Request, mutation = false) {
 
 export async function requireTLineFormAccess(request: Request) {
   const unauthorized = await requireAdmin(request);
+  if (unauthorized && unauthorized.status >= 500) return apiError("AUTH_UNAVAILABLE", "Authentication is temporarily unavailable.", 503);
   if (unauthorized) return apiError("UNAUTHORIZED", "Authentication is required.", 401);
   const invalidMutation = requireSameOriginMutation(request, ["multipart/form-data"]);
   if (!invalidMutation) return null;

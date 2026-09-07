@@ -68,3 +68,10 @@ test("Liquipedia user-facing errors hide raw 429 HTML", () => {
     },
   );
 });
+
+test("unknown source errors never echo unclassified technical details", () => {
+  const sensitive = "synthetic-sensitive-request-value";
+  assert.ok(!getHltvSearchErrorMessage(null, sensitive).includes(sensitive));
+  assert.ok(!getLiquipediaUserMessage(null, sensitive).includes(sensitive));
+  assert.ok(!toLiquipediaUserFacingError(new Error(sensitive)).userMessage.includes(sensitive));
+});

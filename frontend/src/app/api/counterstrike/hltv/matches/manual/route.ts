@@ -1,5 +1,6 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@backend/auth/adminAuth";
+import { requireAdmin, requireSameOriginJsonMutation } from "@backend/auth/adminAuth";
 import { prisma } from "@backend/db/db";
 import { getTeamAliasKey, getTeamMappingLookupKeys } from "@backend/teams/canonicalize";
 import { normalizeTeamName } from "@backend/teams/teams";
@@ -7,6 +8,8 @@ import { normalizeTeamName } from "@backend/teams/teams";
 export async function POST(req: Request) {
   const unauthorized = await requireAdmin(req);
   if (unauthorized) return unauthorized;
+  const invalidMutation = requireSameOriginJsonMutation(req);
+  if (invalidMutation) return invalidMutation;
 
   try {
     const { matches: rawMatches } = await req.json();
@@ -84,7 +87,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, matches });
   } catch (error: any) {
-    console.error('[HLTV Manual API] Error:', error);
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    logApiError("api:counterstrike/hltv/matches/manual/route.ts", error);
+    return NextResponse.json({ ok: false, error: safeErrorMessage(error) }, { status: 500 });
   }
 }

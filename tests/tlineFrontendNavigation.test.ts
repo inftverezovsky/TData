@@ -27,10 +27,9 @@ test("help content is split into the two product-passport tabs", () => {
 });
 
 test("TLine Settings exposes Shapka-scoped import and inline mapping controls", () => {
-  const source = readFileSync(
-    path.join(process.cwd(), "frontend", "src", "components", "tline", "TLineSettingsWorkspace.tsx"),
-    "utf8",
-  );
+  const source = ["TLineSettingsWorkspace.tsx", "settings/ImportScheduleForms.tsx", "settings/MappingTable.tsx"]
+    .map((file) => readFileSync(path.join(process.cwd(), "frontend", "src", "components", "tline", file), "utf8"))
+    .join("\n");
   assert.match(source, /Синхронизировать команды источника/);
   assert.match(source, /Глобальные шапки/);
   assert.match(source, /Справочник будет доступен всем чемпионатам/);

@@ -1,3 +1,4 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from 'next/server';
 import { prisma } from '@backend/db/db';
 import { buildFixtPayload } from '@backend/adminUpload/buildFixtPayload';
@@ -69,7 +70,7 @@ export async function POST(
       skippedMatches: buildResult.skippedMatches,
     });
   } catch (error: any) {
-    console.error('Mark uploaded error:', error);
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    logApiError("api:[disciplineSlug]/tournament/[id]/admin-fixt-mark-uploaded/route.ts", error);
+    return NextResponse.json({ ok: false, error: safeErrorMessage(error) }, { status: 500 });
   }
 }

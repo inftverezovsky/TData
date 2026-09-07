@@ -1,87 +1,25 @@
 param(
-  [string]$HostName = "82.147.67.231",
-  [string]$User = "root",
-  [string]$KeyPath = "$env:USERPROFILE\.ssh\tdata_vps_82_147_67_231",
-  [string]$RemoteDir = "/root/tdata",
-  [string]$Service = "web",
-  [string]$HealthUrl = "https://www.tdata.info/api/health",
-  [int]$HealthTimeoutSeconds = 90
+  [ValidatePattern('^[a-zA-Z0-9][a-zA-Z0-9.-]*$')][string]$HostName = '82.147.67.231',
+  [ValidatePattern('^[a-z_][a-z0-9_-]*$')][string]$User = 'root',
+  [string]$KeyPath = "$env:USERPROFILE\.ssh\codex_deploy_ed25519",
+  [ValidateSet('/root/tdata')][string]$RemoteDir = '/root/tdata',
+  [ValidateSet('web')][string]$Service = 'web',
+  [ValidatePattern('^[a-z0-9][a-z0-9./:_-]*@sha256:[a-f0-9]{64}$')][string]$Image,
+  [ValidateRange(10,600)][int]$HealthTimeoutSeconds = 90,
+  [switch]$Apply
 )
+$ErrorActionPreference = 'Stop'
 
-$ErrorActionPreference = "Stop"
+# План доступен без SSH; Apply — отдельное явное действие оператора.
+if (-not $Image) { throw 'Pass -Image with the immutable registry digest (repository@sha256:...).'}
+Write-Host "TData deploy plan: ${User}@${HostName} ${RemoteDir}, compose=tdata, web+tline-worker, loopback3010."
+Write-Host 'Inventory -> ownership -> migration preflight -> verified DB backup -> recreate -> health -> image rollback on failure.'
+if (-not $Apply) { Write-Host 'Dry run. No connection or changes. Pass -Apply to execute this plan.'; return }
+if (-not (Test-Path -LiteralPath $KeyPath -PathType Leaf)) { throw 'SSH key is missing. Pass -KeyPath to an existing private key.' }
 
-if (-not (Get-Command ssh -ErrorAction SilentlyContinue)) {
-  Write-Error "OpenSSH client is not available in PATH."
-}
-
-if (-not (Test-Path -LiteralPath $KeyPath)) {
-  Write-Error "SSH key not found at $KeyPath. Create the key or pass -KeyPath."
-}
-
-$sshTarget = "${User}@${HostName}"
-$sshOptions = @(
-  "-i", $KeyPath,
-  "-o", "BatchMode=yes",
-  "-o", "StrictHostKeyChecking=accept-new"
-)
-
-$remoteScript = @"
-set -eu
-cd "$RemoteDir"
-echo "=== REMOTE DISK SPACE ==="
-df -h /
-echo "=== PULLING IMAGE ==="
-docker compose pull "$Service"
-echo "=== RECREATING SERVICE ==="
-docker compose up -d --no-deps --no-build --force-recreate "$Service"
-echo "=== SERVICE STATUS ==="
-docker compose ps "$Service"
-echo "=== SERVICE IMAGE ==="
-cid=`$(docker compose ps -q "$Service")
-docker inspect --format='{{.Image}}' "`$cid"
-"@
-
-Write-Host "==> Connecting to $sshTarget with key auth..." -ForegroundColor Yellow
-$remoteScript | ssh @sshOptions $sshTarget "bash -s"
-
-if ($LASTEXITCODE -ne 0) {
-  Write-Error "Remote SSH deployment failed."
-}
-
-Write-Host ""
-Write-Host "==> Verifying production health: $HealthUrl" -ForegroundColor Yellow
-$deadline = (Get-Date).AddSeconds($HealthTimeoutSeconds)
-$lastHealthError = $null
-$health = $null
-
-while ((Get-Date) -lt $deadline) {
-  try {
-    $health = Invoke-RestMethod -Uri $HealthUrl -TimeoutSec 10
-    if ($health.ok -eq $true) {
-      break
-    }
-    $lastHealthError = "Health endpoint returned ok=$($health.ok)."
-  } catch {
-    $lastHealthError = $_.Exception.Message
-  }
-
-  Start-Sleep -Seconds 3
-}
-
-if (-not $health) {
-  Write-Error "Production health check did not respond within ${HealthTimeoutSeconds}s. Last error: $lastHealthError"
-}
-
-$healthJson = $health | ConvertTo-Json -Depth 10
-Write-Host $healthJson
-
-if ($health.ok -ne $true) {
-  Write-Host ""
-  Write-Host "==> Health check failed. Fetching recent remote logs..." -ForegroundColor Yellow
-  $logCommand = "cd ""$RemoteDir"" && docker compose logs --tail=120 ""$Service"""
-  ssh @sshOptions $sshTarget $logCommand
-  Write-Error "Production health check did not return ok=true."
-}
-
-Write-Host ""
-Write-Host "==> Production health is ok." -ForegroundColor Green
+$template = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'deploy/remote-redeploy.sh') -Raw
+$remoteScript = "TDATA_DEPLOY_DIR='$RemoteDir'`nTDATA_DEPLOY_IMAGE='$Image'`nTDATA_DEPLOY_TIMEOUT='$HealthTimeoutSeconds'`n$template"
+$sshOptions = @('-i', $KeyPath, '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=yes', '-o', 'ConnectTimeout=15')
+$remoteScript.Replace("`r`n", "`n") | & ssh @sshOptions "${User}@${HostName}" 'bash -s'
+if ($LASTEXITCODE -ne 0) { throw 'TData deployment failed. Review the reported stage; no success is claimed.' }
+Write-Host 'TData deployment passed the local service health check.'

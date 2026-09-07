@@ -1,6 +1,31 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { validateOutboundUrl } from "../backend/src/http/outboundPolicy";
+import { isPrivateAddress, resolveHostAddresses, validateOutboundUrl } from "../backend/src/http/outboundPolicy";
+
+test("outbound address policy blocks local and special-use representations", () => {
+  const blocked = [
+    "::", "0:0:0:0:0:0:0:1", "::ffff:127.0.0.1", "::ffff:7f00:1",
+    "::ffff:169.254.169.254", "::ffff:10.0.0.1", "fe90::1", "febf::1", "ff02::1",
+    "100.64.0.1", "100.127.255.254", "198.18.0.1", "224.0.0.1", "255.255.255.255",
+  ];
+  for (const address of blocked) assert.equal(isPrivateAddress(address), true, address);
+});
+
+test("outbound address policy keeps ordinary public IPv4 and IPv6 destinations usable", () => {
+  for (const address of ["8.8.8.8", "1.1.1.1", "192.0.8.1", "2606:4700:4700::1111", "::ffff:8.8.8.8"]) {
+    assert.equal(isPrivateAddress(address), false, address);
+  }
+});
+
+test("IPv6 URL literals are checked directly without treating brackets as a DNS name", async () => {
+  assert.deepEqual(await resolveHostAddresses("[::ffff:7f00:1]"), ["::ffff:7f00:1"]);
+  await withEnv({ NODE_ENV: "production" }, async () => {
+    await assert.rejects(
+      () => validateOutboundUrl("https://[::ffff:7f00:1]/api", { policyName: "Test" }),
+      /private address/,
+    );
+  });
+});
 
 test("validateOutboundUrl rejects production HTTP unless explicitly allowed", async () => {
   await withEnv({ NODE_ENV: "production" }, async () => {

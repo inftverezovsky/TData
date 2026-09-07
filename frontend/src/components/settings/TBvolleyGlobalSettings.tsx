@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useGlobalSettings } from "@/hooks/useGlobalSettings";
+import { SettingsRequestError } from "./SettingsRequestError";
 import { BEACH_VOLLEYBALL_ADMIN_SPORT_ID } from "@backend/sources/tbvolley/config";
 
 const DEFAULT_SETTINGS = {
@@ -38,41 +40,20 @@ export default function TBvolleyGlobalSettings() {
   const [isFedervolleyOpen, setIsFedervolleyOpen] = useState(false);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    fetch("/api/settings/global")
-      .then((res) => res.json())
-      .then((data) => {
-        if (Object.keys(data).length > 0) {
-          setSettings((prev) => normalizeSettings({ ...prev, ...data }));
-        }
-      })
-      .finally(() => setLoading(false));
-  }, []);
+  const { settings, setSettings, loading, loaded, saving, error, retryLoad, save } = useGlobalSettings(DEFAULT_SETTINGS, normalizeSettings);
 
   const handleSave = async () => {
-    setSaving(true);
-    try {
-      await fetch("/api/settings/global", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(normalizeSettings(settings)),
-      });
-      setIsEditing(false);
-    } catch {
-      alert("Ошибка при сохранении");
-    } finally {
-      setSaving(false);
-    }
+    // Выходим из редактирования только после подтверждения сервера; при ошибке введённые значения остаются на месте.
+    if (await save()) setIsEditing(false);
   };
 
   if (loading) return <div className="h-20 animate-pulse rounded-3xl bg-slate-100" />;
 
+  if (!loaded) return <SettingsRequestError message={error || "Не удалось загрузить настройки."} onRetry={retryLoad} />;
+
   return (
     <div className="space-y-8">
+      {error && <SettingsRequestError message={error} />}
       <section className="premium-card overflow-hidden transition-all duration-500">
         <div
           className="flex cursor-pointer items-center justify-between p-8 transition-colors hover:bg-slate-50/50"

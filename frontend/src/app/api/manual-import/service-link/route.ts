@@ -1,3 +1,4 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 import { buildAdminServiceUrl } from "@backend/adminUpload/adminServiceUrl";
 import { toAdminFixtPayloadEnvelope } from "@backend/adminUpload/fixtPayloadFormat";
@@ -63,9 +64,9 @@ export async function POST(request: Request) {
       readyMatchesCount: buildResult.readyMatchesCount,
     });
   } catch (error) {
-    console.error("[Manual Import Service Link] Error:", error);
+    logApiError("api:manual-import/service-link/route.ts", error);
     return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : "Manual service link failed" },
+      { ok: false, error: error instanceof Error ? safeErrorMessage(error) : "Manual service link failed" },
       { status: 500 }
     );
   }

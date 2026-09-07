@@ -1,3 +1,4 @@
+import { logApiError } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 import { prisma } from "@backend/db/db";
 import { getOrCreateDiscipline } from "@backend/config/disciplines";
@@ -37,7 +38,7 @@ export async function POST(
     const identitySync = queueIdentitySync(`discipline-platform-id:${slug}`);
     return NextResponse.json({ success: true, identitySync });
   } catch (error) {
-    console.error(error);
+    logApiError("api:disciplines/[disciplineSlug]/platform-id/route.ts", error);
     return NextResponse.json({ error: "Failed to update discipline" }, { status: 500 });
   }
 }

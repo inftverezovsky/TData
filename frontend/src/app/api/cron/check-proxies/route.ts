@@ -1,15 +1,13 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@backend/auth/adminAuth";
+import { requireAdmin, requireSameOriginRequest } from "@backend/auth/adminAuth";
 import { prisma } from "@backend/db/db";
-import { HttpsProxyAgent } from "https-proxy-agent";
-import { SocksProxyAgent } from "socks-proxy-agent";
+import { probeProxyConnection, ProxyProbeError } from "@backend/proxy/healthProbe";
+import { apiErrorResponse, logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 
 // Force Next.js to not cache this route
 export const dynamic = "force-dynamic";
 
 const CONCURRENCY_LIMIT = 5; // Check 5 proxies in parallel at a time
-const TEST_TIMEOUT_MS = 6000; // 6 seconds timeout for proxy test
-const TEST_URL = "https://httpbin.org/ip"; // Light and fast test target
 
 export async function GET(request: Request) {
   const configuredSecret = process.env.CRON_PROXY_CHECK_SECRET;
@@ -22,6 +20,8 @@ export async function GET(request: Request) {
   } else {
     const unauthorized = await requireAdmin(request);
     if (unauthorized) return unauthorized;
+    const forbidden = requireSameOriginRequest(request);
+    if (forbidden) return forbidden;
   }
 
   try {
@@ -47,31 +47,9 @@ export async function GET(request: Request) {
       
       await Promise.all(
         chunk.map(async (proxy) => {
-          const startTime = Date.now();
-          let agent: HttpsProxyAgent<string> | SocksProxyAgent | null = null;
-          
           try {
-            // Determine agent type based on protocol
-            if (proxy.url.startsWith("socks")) {
-              agent = new SocksProxyAgent(proxy.url);
-            } else {
-              agent = new HttpsProxyAgent(proxy.url);
-            }
-
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), TEST_TIMEOUT_MS);
-
-            const res = await fetch(TEST_URL, {
-              agent: agent as any, // dynamic agent inject
-              signal: controller.signal,
-              headers: {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36"
-              }
-            } as any).finally(() => clearTimeout(timeoutId));
-
-            if (!res.ok) throw new Error(`HTTP status ${res.status}`);
-
-            const latency = Date.now() - startTime;
+            // Реальный CONNECT/SOCKS transport; direct fallback не допускается.
+            const { latencyMs: latency } = await probeProxyConnection(proxy.url);
             
             // Proxy is healthy!
             await prisma.proxyPool.update({
@@ -89,7 +67,7 @@ export async function GET(request: Request) {
             results.succeeded++;
             results.details.push(`[PASS] ${proxy.host}:${proxy.port} - ${latency}ms`);
           } catch (err) {
-            const errorMessage = err instanceof Error ? err.message : String(err);
+            const errorMessage = err instanceof ProxyProbeError ? err.message : safeErrorMessage(err, "Proxy check failed.");
             const newFailCount = proxy.failCount + 1;
             const shouldDeactivate = newFailCount >= 3;
 
@@ -122,7 +100,7 @@ export async function GET(request: Request) {
     });
 
   } catch (error) {
-    console.error("[Cron Proxy Checker] Fatal error:", error);
-    return NextResponse.json({ error: "Fatal proxy checker error" }, { status: 500 });
+    logApiError("[Cron Proxy Checker] Fatal error", error);
+    return apiErrorResponse(error, "Fatal proxy checker error");
   }
 }

@@ -1,3 +1,4 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 import { searchTwelveNdrOevvTournaments } from "@backend/sources/tbvolley/TwelveNdr";
 
@@ -14,8 +15,8 @@ export async function GET(request: Request) {
 
     return NextResponse.json(tournaments);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "12ndr ÖVV tournament search failed.";
-    console.error("[TBvolley 12ndr OEVV tournaments API] Error:", error);
+    const message = error instanceof Error ? safeErrorMessage(error) : "12ndr ÖVV tournament search failed.";
+    logApiError("api:tbvolley/twelvendroevv/tournaments/route.ts", error);
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }

@@ -1,3 +1,4 @@
+import { logApiError } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 
 import { requireAdmin } from "@backend/auth/adminAuth";
@@ -14,7 +15,7 @@ export async function GET(request: Request) {
   try {
     return NextResponse.json(await getKhlSettingsDirectory(prisma));
   } catch (error) {
-    console.error("[KHL settings directory]", error instanceof Error ? error.message : error);
+    logApiError("api:results/khl/settings/route.ts", error);
     return NextResponse.json({ error: "Failed to load KHL settings." }, { status: 500 });
   }
 }

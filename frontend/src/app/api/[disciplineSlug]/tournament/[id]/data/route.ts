@@ -1,3 +1,4 @@
+import { logApiError } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 import { prisma } from "@backend/db/db";
 import { dedupeTournamentMatches } from "@backend/matches/dedupe";
@@ -29,7 +30,7 @@ export async function GET(
       matches: dedupeTournamentMatches(tournament.matches),
     });
   } catch (error) {
-    console.error("SWR Fetch error:", error);
+    logApiError("api:[disciplineSlug]/tournament/[id]/data/route.ts", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

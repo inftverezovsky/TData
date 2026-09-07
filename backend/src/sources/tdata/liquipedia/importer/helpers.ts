@@ -47,36 +47,15 @@ export async function clearTournamentForceRefreshState(params: {
     }
   }
 
-  let matchesDeleted = 0;
-  let participantsDeleted = 0;
-  if (tournament?.id) {
-    const [matches, participants] = await prisma.$transaction([
-      prisma.tournamentMatch.deleteMany({ where: { tournamentId: tournament.id } }),
-      prisma.tournamentParticipant.deleteMany({ where: { tournamentId: tournament.id } }),
-    ]);
-    matchesDeleted = matches.count;
-    participantsDeleted = participants.count;
-
-    await prisma.tournament.update({
-      where: { id: tournament.id },
-      data: {
-        extractionStatus: "PENDING",
-        normalization: {
-          forceRefresh: true,
-          cacheClearedAt: new Date().toISOString(),
-        } as Prisma.InputJsonValue,
-      },
-    }).catch(() => {});
-  }
-
+  // Force сбрасывает только транспортный кэш; опубликованные данные и raw-снимки сохраняются.
   const pageCacheStats = await Promise.all(
     [...titleVariants].map((title) => clearPageFetchCaches(params.disciplineSlug, title))
   );
 
   return {
     tournamentId: tournament?.id ?? null,
-    matchesDeleted,
-    participantsDeleted,
+    matchesDeleted: 0,
+    participantsDeleted: 0,
     rawSnapshotsDeleted: pageCacheStats.reduce((sum, item) => sum + item.rawSnapshotsDeleted, 0),
     sourceFetchCachesDeleted: pageCacheStats.reduce((sum, item) => sum + item.sourceFetchCachesDeleted, 0),
     fileCachesDeleted: pageCacheStats.reduce((sum, item) => sum + item.fileCachesDeleted, 0),
@@ -85,23 +64,9 @@ export async function clearTournamentForceRefreshState(params: {
 
 export async function clearPageFetchCaches(disciplineSlug: string, title: string) {
   const titleVariants = getTitleVariants(title, null, disciplineSlug);
-  const [rawSnapshotsResult, sourceFetchResults] = await Promise.all([
-    prisma.rawSnapshot.deleteMany({
-      where: {
-        pageTitle: { in: [...titleVariants] },
-        OR: [
-          { disciplineSlug },
-          { disciplineSlug: null },
-        ],
-      },
-    }),
-    Promise.all([...titleVariants].map((variant) => clearSourceFetchCache({
-      source: "liquipedia",
-      disciplineSlug,
-      resourceType: "page",
-      resourceKey: titleKey(variant),
-    }))),
-  ]);
+  const sourceFetchResults = await Promise.all([...titleVariants].map((variant) => clearSourceFetchCache({
+    source: "liquipedia", disciplineSlug, resourceType: "page", resourceKey: titleKey(variant),
+  })));
 
   const fileCachesDeleted = [...titleVariants].reduce(
     (count, variant) => count + clearCachedSearchPageMetadata(disciplineSlug, variant),
@@ -109,7 +74,7 @@ export async function clearPageFetchCaches(disciplineSlug: string, title: string
   );
 
   return {
-    rawSnapshotsDeleted: rawSnapshotsResult.count,
+    rawSnapshotsDeleted: 0,
     sourceFetchCachesDeleted: sourceFetchResults.reduce((sum, result) => sum + result.count, 0),
     fileCachesDeleted,
   };
@@ -131,9 +96,9 @@ export function getTitleVariants(title: string, pageUrl: string | null | undefin
   return variants;
 }
 
-export async function canonicalizeMatchesWithTournamentTeams(matches: any[], tournamentId: string, disciplineSlug: string) {
+export async function canonicalizeMatchesWithTournamentTeams(matches: any[], tournamentId: string, disciplineSlug: string, draftParticipants?: Prisma.TournamentParticipantCreateManyInput[]) {
   const [participants, mappings] = await Promise.all([
-    prisma.tournamentParticipant.findMany({
+    draftParticipants ?? prisma.tournamentParticipant.findMany({
       where: { tournamentId },
       select: { name: true, rawText: true, platformId: true, logoUrl: true },
     }),

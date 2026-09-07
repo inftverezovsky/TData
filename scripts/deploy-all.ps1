@@ -1,48 +1,22 @@
 param(
-  [string]$Username = "inftverezovsky",
-  [string]$Tag = "latest",
-  [string]$SshKeyPath = "$env:USERPROFILE\.ssh\tdata_vps_82_147_67_231",
-  [switch]$Prune
+  [ValidatePattern('^[a-z0-9][a-z0-9_-]+$')][string]$Username = 'inftverezovsky',
+  [ValidatePattern('^[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,127}$')][string]$Tag = 'latest',
+  [string]$SshKeyPath = "$env:USERPROFILE\.ssh\codex_deploy_ed25519",
+  [switch]$Prune,
+  [switch]$Apply
 )
-
-$ErrorActionPreference = "Stop"
-
-# Resolve project root
-$ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
-Set-Location $ProjectRoot
-
-Write-Host ""
-Write-Host "===============================================================" -ForegroundColor Cyan
-  Write-Host "              TDATA FULL DEPLOYMENT PIPELINE                   " -ForegroundColor Cyan
-Write-Host "===============================================================" -ForegroundColor Cyan
-Write-Host ""
-
-# 1. Run local build & push to Docker Hub
-Write-Host "==> Phase 1: Building and pushing Docker image to Docker Hub..." -ForegroundColor Yellow
-& "$PSScriptRoot\build-and-push.ps1" -Username $Username -Tag $Tag
-
-# 2. Run remote SSH Deploy
-Write-Host ""
-Write-Host "==> Phase 2: Connecting to production VPS and pulling latest image..." -ForegroundColor Yellow
-& "$PSScriptRoot\ssh-redeploy.ps1" -KeyPath $SshKeyPath
-
-if ($LASTEXITCODE -ne 0) {
-  Write-Error "Remote SSH deployment phase failed."
+$ErrorActionPreference = 'Stop'
+if ($Prune) { throw '-Prune has been removed: deployment must not delete unrelated Docker resources.' }
+if (-not $Apply) {
+  Write-Host "Dry run: validate -> build -> publish $Username/tdata-web`:$Tag -> deploy its digest to canonical TData."
+  Write-Host 'No Docker or SSH commands run. Pass -Apply to execute.'
+  return
 }
-
-Write-Host ""
-Write-Host "==> Phase 3: Deployment completed successfully!" -ForegroundColor Green
-
-if ($Prune) {
-  Write-Host "==> Prune requested. Cleaning unused local Docker images/build cache..." -ForegroundColor Yellow
-  Write-Host "---------------------------------------------------------------" -ForegroundColor Gray
-  docker system prune -a -f
-} else {
-  Write-Host "==> Skipping Docker prune. Pass -Prune to clean unused local Docker images/build cache." -ForegroundColor Yellow
-}
-
-Write-Host ""
-Write-Host "===============================================================" -ForegroundColor Green
-Write-Host "            SUCCESS! DEPLOYED LIVE ON SERVER!" -ForegroundColor Green
-Write-Host "===============================================================" -ForegroundColor Green
-Write-Host ""
+Push-Location (Join-Path $PSScriptRoot '..')
+try {
+  & npm run check | Out-Host
+  if ($LASTEXITCODE -ne 0) { throw 'Local quality checks failed; publication cancelled.' }
+  $image = & "$PSScriptRoot/build-and-push.ps1" -Username $Username -Tag $Tag -Apply
+  if (-not $image) { throw 'Image publication did not return a digest.' }
+  & "$PSScriptRoot/ssh-redeploy.ps1" -KeyPath $SshKeyPath -Image $image -Apply
+} finally { Pop-Location }

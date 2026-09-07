@@ -1,3 +1,4 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@backend/auth/adminAuth";
 import { prisma } from "@backend/db/db";
@@ -62,11 +63,11 @@ export async function GET(request: Request) {
       recentLogs
     });
   } catch (error) {
-    console.error("[Health Dashboard API] Failure:", error);
+    logApiError("api:admin/health/route.ts", error);
     return NextResponse.json(
       {
         status: "unhealthy",
-        error: error instanceof Error ? error.message : "Database connection lost"
+        error: error instanceof Error ? safeErrorMessage(error) : "Database connection lost"
       },
       { status: 500 }
     );

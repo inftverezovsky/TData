@@ -1,3 +1,4 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from 'next/server';
 import { buildFixtPayload } from '@backend/adminUpload/buildFixtPayload';
 import { toAdminFixtPayloadEnvelope } from '@backend/adminUpload/fixtPayloadFormat';
@@ -37,7 +38,7 @@ export async function POST(
       warnings: buildResult.warnings,
     });
   } catch (error: any) {
-    console.error('API Error:', error);
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    logApiError("api:[disciplineSlug]/tournament/[id]/admin-fixt-preview/route.ts", error);
+    return NextResponse.json({ ok: false, error: safeErrorMessage(error) }, { status: 500 });
   }
 }

@@ -1,3 +1,4 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 import { findClosestPlatformTeam } from "@backend/teams/fuzzyMatch";
 
@@ -40,9 +41,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ results });
   } catch (error) {
-    console.error("[Fuzzy Match API] Error:", error);
+    logApiError("api:team-mapping/fuzzy/route.ts", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Internal Server Error" },
+      { error: error instanceof Error ? safeErrorMessage(error) : "Internal Server Error" },
       { status: 500 }
     );
   }

@@ -1,4 +1,6 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
+import { requireAdmin, requireSameOriginJsonMutation } from "@backend/auth/adminAuth";
 import { toAdminFixtPayloadEnvelope } from "@backend/adminUpload/fixtPayloadFormat";
 import { phpSerialize } from "@backend/adminUpload/phpSerialize";
 import { resolveAdminSettings } from "@backend/adminUpload/resolveAdminSettings";
@@ -10,7 +12,11 @@ import { getManualImportDiscipline, MANUAL_IMPORT_TOURNAMENT_ID, resolveManualIm
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
-  // API remains callable directly; password gate is UI-only for settings visibility.
+  // Любая внешняя отправка проверяет сессию и origin до чтения нагрузки и побочных действий.
+  const unauthorized = await requireAdmin(request);
+  if (unauthorized) return unauthorized;
+  const invalidMutation = requireSameOriginJsonMutation(request);
+  if (invalidMutation) return invalidMutation;
 
   try {
     const body = await request.json().catch(() => ({}));
@@ -112,9 +118,9 @@ export async function POST(request: Request) {
       error: sendResult.status === "failed" ? sendResult.errorMessage || "Ошибка при отправке данных в платформу" : undefined,
     });
   } catch (error) {
-    console.error("[Manual Import Send] Error:", error);
+    logApiError("api:manual-import/send/route.ts", error);
     return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : "Manual send failed" },
+      { ok: false, error: error instanceof Error ? safeErrorMessage(error) : "Manual send failed" },
       { status: 500 }
     );
   }

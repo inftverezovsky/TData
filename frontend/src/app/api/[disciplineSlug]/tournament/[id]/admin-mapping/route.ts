@@ -1,3 +1,4 @@
+import { safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from 'next/server';
 import { findTournamentAdminMapping, upsertTournamentAdminMapping } from '@backend/adminUpload/adminMappingStore';
 import { queueIdentitySync } from '@backend/sync/identitySync';
@@ -12,7 +13,7 @@ export async function GET(
 
     return NextResponse.json(mapping || { tournamentId: id });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: safeErrorMessage(error) }, { status: 500 });
   }
 }
 
@@ -37,6 +38,6 @@ export async function POST(
     const identitySync = queueIdentitySync(`admin-mapping:${disciplineSlug}`);
     return NextResponse.json({ ...mapping, identitySync });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: safeErrorMessage(error) }, { status: 500 });
   }
 }

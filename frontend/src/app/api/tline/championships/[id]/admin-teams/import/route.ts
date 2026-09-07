@@ -1,3 +1,4 @@
+import { safeErrorMessage } from "@backend/http/apiResponse";
 import { parseAdminTeamImportRows } from "@backend/adminTeams/importSpreadsheet";
 import {
   getSpreadsheetSourceErrorStatus,
@@ -48,7 +49,7 @@ export async function POST(request: Request, context: Context) {
       status >= 500 ? "IMPORT_FAILED" : "INVALID_IMPORT_SOURCE",
       status >= 500
         ? "Не удалось импортировать справочник команд."
-        : error instanceof Error ? error.message : "Некорректный источник импорта.",
+        : error instanceof Error ? safeErrorMessage(error) : "Некорректный источник импорта.",
       status,
     );
   }

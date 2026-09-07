@@ -1,3 +1,4 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 import { mapManualMatches } from "@backend/manualImport/buildManualFixtPayload";
 import { getManualImportDiscipline, resolveManualImportDisciplineSlug } from "@backend/manualImport/config";
@@ -51,9 +52,9 @@ export async function POST(request: Request) {
       savedMappings: saveResult.savedMappings,
     });
   } catch (error) {
-    console.error("[Manual Import Automap] Error:", error);
+    logApiError("api:manual-import/automap/route.ts", error);
     return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : "Manual auto-map failed" },
+      { ok: false, error: error instanceof Error ? safeErrorMessage(error) : "Manual auto-map failed" },
       { status: 500 }
     );
   }

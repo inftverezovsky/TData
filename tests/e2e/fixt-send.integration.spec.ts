@@ -2,16 +2,16 @@ import http from "http";
 import { PrismaClient } from "@prisma/client";
 import { expect, test } from "@playwright/test";
 import type { APIRequestContext } from "@playwright/test";
+import { requireTestDatabaseUrl } from "../../scripts/helpers/testDatabase";
 
 const runDbE2E = process.env.RUN_DB_E2E === "1" || process.env.RUN_DB_E2E === "true";
-const databaseUrl = process.env.DATABASE_URL || "";
-const dbLooksExplicitlyTest = /(?:test|e2e)/i.test(databaseUrl);
+// Включённый DB-сценарий обязан остановиться до первого запроса к неверной базе.
+if (runDbE2E) requireTestDatabaseUrl(process.env.DATABASE_URL);
 
 test.describe("FIxt upload integration", () => {
   test.skip(!runDbE2E, "Set RUN_DB_E2E=1 and point DATABASE_URL at a test database.");
-  test.skip(runDbE2E && !dbLooksExplicitlyTest, "DATABASE_URL must explicitly contain test or e2e for DB integration tests.");
 
-  test("builds, sends, logs and blocks duplicate FIxt payloads", async ({ request }, testInfo) => {
+  test("builds, sends, logs and blocks duplicate FIxt payloads", async ({ request, baseURL }, testInfo) => {
     const prisma = new PrismaClient();
     const mock = await startAdminApiMock();
     const suffix = `${Date.now()}-${testInfo.workerIndex}`;
@@ -28,9 +28,9 @@ test.describe("FIxt upload integration", () => {
         apiUrl: mock.url,
       });
 
-      const cookie = await loginAndGetCookie(request);
+      const cookie = await loginAndGetCookie(request, baseURL!);
       const previewAll = await request.post(`/api/${disciplineSlug}/tournament/${tournamentId}/admin-fixt-preview`, {
-        headers: { cookie },
+        headers: { cookie, origin: baseURL! },
         data: { selectedMatchIds: [] },
       });
       await expect(previewAll).toBeOK();
@@ -59,7 +59,7 @@ test.describe("FIxt upload integration", () => {
       });
 
       const previewTbd = await request.post(`/api/${disciplineSlug}/tournament/${tournamentId}/admin-fixt-preview`, {
-        headers: { cookie },
+        headers: { cookie, origin: baseURL! },
         data: { selectedMatchIds: [placeholderMatchId] },
       });
       await expect(previewTbd).toBeOK();
@@ -75,7 +75,7 @@ test.describe("FIxt upload integration", () => {
       });
 
       const previewTbdSide = await request.post(`/api/${disciplineSlug}/tournament/${tournamentId}/admin-fixt-preview`, {
-        headers: { cookie },
+        headers: { cookie, origin: baseURL! },
         data: { selectedMatchIds: [`${placeholderMatchId}::stage`] },
       });
       await expect(previewTbdSide).toBeOK();
@@ -91,7 +91,7 @@ test.describe("FIxt upload integration", () => {
       expect(previewTbdSideJson.serialized).toContain('s:5:"team2";s:0:"";');
 
       const previewLegacyTbdSide = await request.post(`/api/${disciplineSlug}/tournament/${tournamentId}/admin-fixt-preview`, {
-        headers: { cookie },
+        headers: { cookie, origin: baseURL! },
         data: { selectedMatchIds: [`${placeholderMatchId}::teamA`] },
       });
       await expect(previewLegacyTbdSide).toBeOK();
@@ -104,7 +104,7 @@ test.describe("FIxt upload integration", () => {
       });
 
       const sendTbdSide = await request.post(`/api/${disciplineSlug}/tournament/${tournamentId}/admin-fixt-send`, {
-        headers: { cookie },
+        headers: { cookie, origin: baseURL! },
         data: { selectedMatchIds: [`${placeholderMatchId}::stage`] },
       });
       await expect(sendTbdSide).toBeOK();
@@ -122,7 +122,7 @@ test.describe("FIxt upload integration", () => {
       expect(serializedTbd).toContain('s:5:"team2";s:0:"";');
 
       const preview = await request.post(`/api/${disciplineSlug}/tournament/${tournamentId}/admin-fixt-preview`, {
-        headers: { cookie },
+        headers: { cookie, origin: baseURL! },
         data: { selectedMatchIds: [matchId] },
       });
       await expect(preview).toBeOK();
@@ -141,7 +141,7 @@ test.describe("FIxt upload integration", () => {
       expect(previewJson.phpArray[0].match[0].date).toBe("10.05.2026 15:30:00");
 
       const send = await request.post(`/api/${disciplineSlug}/tournament/${tournamentId}/admin-fixt-send`, {
-        headers: { cookie },
+        headers: { cookie, origin: baseURL! },
         data: { selectedMatchIds: [matchId] },
       });
       await expect(send).toBeOK();
@@ -161,7 +161,7 @@ test.describe("FIxt upload integration", () => {
       expect(serialized).toContain("s:5:\"team2\";i:222");
 
       const duplicate = await request.post(`/api/${disciplineSlug}/tournament/${tournamentId}/admin-fixt-send`, {
-        headers: { cookie },
+        headers: { cookie, origin: baseURL! },
         data: { selectedMatchIds: [matchId] },
       });
       expect(duplicate.status()).toBe(409);
@@ -172,7 +172,7 @@ test.describe("FIxt upload integration", () => {
       expect(mock.requests).toHaveLength(2);
 
       const duplicateWithStringForce = await request.post(`/api/${disciplineSlug}/tournament/${tournamentId}/admin-fixt-send`, {
-        headers: { cookie },
+        headers: { cookie, origin: baseURL! },
         data: { selectedMatchIds: [matchId], force: "false" },
       });
       expect(duplicateWithStringForce.status()).toBe(409);
@@ -211,8 +211,9 @@ test.describe("FIxt upload integration", () => {
   });
 });
 
-async function loginAndGetCookie(request: APIRequestContext) {
+async function loginAndGetCookie(request: APIRequestContext, origin: string) {
   const login = await request.post("/api/admin-auth/login", {
+    headers: { origin },
     data: { password: "63016" },
   });
   await expect(login).toBeOK();

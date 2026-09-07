@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import "./globals.css";
 import Navbar, { PlatformTabs } from "@/components/layout/Navbar";
+import { AdminSessionProvider } from "@/components/admin/AdminSessionProvider";
 
 export const metadata: Metadata = {
   title: "TData",
@@ -40,7 +41,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </header>
 
           <main className="mx-auto w-full max-w-[1620px] flex-1 px-4 py-6 md:px-6 md:py-8 animate-in">
-            {children}
+            <AdminSessionProvider>{children}</AdminSessionProvider>
           </main>
           
           <footer className="border-t border-slate-200/20 bg-transparent py-8 text-center text-sm font-medium text-slate-500">

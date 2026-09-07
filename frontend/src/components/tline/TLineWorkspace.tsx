@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { jsonRequest, requestTLine } from "./api";
+import { readCollapsedPreference, writeCollapsedPreference } from "./collapseStorage";
 import { TLineChampionshipDecisionMenu, TLineDecisionMenu, type TLineDecision } from "./TLineDecisionMenu";
 import { TLineHistoryPanel } from "./TLineHistoryPanel";
 import { TLineInfoDialog } from "./TLineInfoDialog";
@@ -388,14 +389,14 @@ function ChampionshipGroup({ championship, busy, onComparisonDecision, onChampio
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
-    setCollapsed(window.localStorage.getItem(storageKey) === "1");
+    setCollapsed(readCollapsedPreference(storageKey));
   }, [storageKey]);
 
-  const toggle = () => setCollapsed((current) => {
-    const next = !current;
-    window.localStorage.setItem(storageKey, next ? "1" : "0");
-    return next;
-  });
+  const toggle = () => {
+    const next = !collapsed;
+    setCollapsed(next);
+    writeCollapsedPreference(storageKey, next);
+  };
   const failed = countChampionshipFailures(championship);
   const tone = championshipTone(championship);
   const groupReason = formatTLineReasons(championship.reasons, championship.status, null);

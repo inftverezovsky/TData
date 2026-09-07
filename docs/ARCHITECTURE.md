@@ -1,77 +1,104 @@
-# TData Architecture
+# Архитектура TData
 
-TData is a tournament operations platform. The codebase is organized around clear runtime boundaries:
+TData — операторская система импорта спортивных данных. Один npm-проект
+содержит Next.js-приложение, серверные доменные модули и фоновые CLI-задачи.
+`frontend/` и `backend/` разделяют ответственность кода; это не два отдельных
+HTTP-сервера и не npm workspaces. Зависимости и команды находятся в корне.
 
-- `frontend/src/app` contains Next.js routes, pages, layouts, and API adapter handlers. API routes should stay thin: validate input, call backend services, and return HTTP responses.
-- `frontend/src/components` contains React UI only. Components may call browser APIs and fetch app endpoints, but should not read Prisma, filesystem, or server-only configuration directly.
-- `backend/src` contains domain logic, integrations, infrastructure services, and pure utilities. Backend modules are imported by API adapters, scripts, tests, and server components.
-- `backend/prisma` owns database schema, migrations, and seed data.
-- `scripts` contains intentional operational tooling such as deploy helpers, audits, imports, and maintenance commands.
-- `tests` mirrors domain behavior and integration surfaces. New cross-module behavior should be covered here before deployment.
+## Как проходит запрос
 
-## Domain Boundaries
-
-- `adminUpload`: FIxt payload formatting, upload policy, admin HTTP client, and admin-specific settings resolution.
-- `adminTeams`: admin team import parsing, spreadsheet loading, and sandbox dry-runs.
-- `teams`: canonicalization, fuzzy matching, mapping lookup, and pure automapping preview.
-- `matches`: schedule display policy, date/time handling, dedupe, quality, and announcement offsets.
-- `sources`: external source clients, parsers, and import adapters. Cyber source adapters live under the `sources/tdata` namespace; volleyball sources live under `sources/tbvolley`.
-- `imports`: tournament import dispatch/orchestration that keeps API routes thin while preserving public route URLs.
-- `normalizers`: Liquipedia wikitext/html normalization by discipline.
-- `settings`, `auth`, `proxy`, `sync`, `http`, `cache`, `db`: infrastructure and platform services.
-
-## Source Layout
-
-```text
-TData/
-  frontend/
-    src/app/
-      api/                 # Thin Next.js HTTP adapters
-    src/components/        # Browser UI and server components
-    public/
-  backend/
-    prisma/
-    src/
-      sources/
-        tdata/
-          liquipedia/
-          hltv/
-          dltv/
-          vlr/
-          fandom/
-        tbvolley/
-          VolleyballWorld/
-          beach.volley.ru/
-          GermanBeachTour/
-          config.ts
-          genderSwitchCache.ts
+```mermaid
+flowchart LR
+    UI[Страница / компонент] --> Route[Next.js route handler]
+    Route --> Guard[Доступ и валидация]
+    Guard --> Service[Backend: сценарий]
+    Service --> Source[Клиент источника]
+    Source --> Normalize[Нормализация]
+    Normalize --> DB[(Prisma / PostgreSQL)]
+    DB --> Preview[Preview и сопоставление]
+    Preview --> Send[Явная отправка / staging]
 ```
 
-Each source folder should keep its source-specific client/parser code close to its import adapter. Shared cross-source helpers stay directly under `backend/src/sources`.
+Внешний источник возвращает данные, нормализатор приводит их к модели TData,
+доменный сервис проверяет инварианты и сохраняет результат. Компонент получает
+готовую модель отображения. Импорт, предварительный просмотр и отправка —
+отдельные операции: успешный импорт сам по себе не означает отправку в Admin.
 
-## Import Aliases
+## Карта каталогов
 
-- `@/*` resolves to `frontend/src/*`.
-- `@backend/*` resolves to `backend/src/*`.
+| Путь | Ответственность | Что сюда не помещать |
+|---|---|---|
+| `frontend/src/app` | Страницы, layouts, границы ошибок и HTTP-адаптеры App Router | Большие парсеры и интеграционные клиенты |
+| `frontend/src/components` | Интерфейс и интерактивные сценарии по предметным областям | Доступ к БД, секретам и серверной файловой системе |
+| `frontend/src/services` | Общие обращения браузера к HTTP API | Прямые внешние вызовы с секретами |
+| `backend/src` | Бизнес-правила, интеграции, хранение и политики | React UI |
+| `backend/prisma` | Схема, миграции и seed | Копии рабочих БД |
+| `scripts` | Явно запускаемые CLI и инструменты сопровождения | Автоматические действия при открытии страницы |
+| `tests/*.test.ts` | Тесты без PostgreSQL, HTTP-адаптеры с подменёнными зависимостями | Зависимость от сегодняшней даты или живого сайта |
+| `tests/integration` | Проверки настоящей БД, транзакций и ограничений | Подключения к рабочей базе |
+| `tests/e2e` | Сценарии desktop/mobile и FIxt с локальным mock API | Реальные внешние отправки |
+| `tests/fixtures` | Воспроизводимые образцы входных данных | Реальные учётные данные |
+| `docs`, `deploy` | Архитектура, инструкции и эксплуатационные шаблоны | Секретные значения окружения |
 
-Frontend UI should use `@backend/*` only for dependency-free types, formatting helpers, and user-facing error mappers. API routes and server components may import backend services freely.
+`.codex-logs/`, `.codex-deploy-*/`, `cache/`, `.next/`, `test-results/` и
+`.tesseract-cache/` — временные локальные материалы, исключённые из Git.
+Временные deployment-снимки и вложенный клон `TData/` исключены из Docker context.
+`data/tessdata/` содержит необходимые OCR-модели и остаётся частью runtime.
 
-## Coupling Rules
+## Доменные модули backend
 
-- UI components must not import Prisma or filesystem modules.
-- API routes should import domain services, not large UI modules.
-- Source parsers must not call admin upload code directly. They produce normalized matches; upload policy decides what can be sent.
-- Automapping algorithms must remain database-free unless the function name explicitly says it applies or saves data.
-- Secrets and external admin endpoints must stay out of tracked source files. Use `.env` or runtime platform settings.
-- Temporary diagnostics belong in ignored folders such as `.codex-logs`, `scratch`, or `test-results`, not in tracked source.
+| Модуль | Назначение |
+|---|---|
+| `sources` | Клиенты, парсеры и адаптеры Cyber, TBvolley, TableT и КХЛ |
+| `imports` | Выбор источника и запуск импорта турнира |
+| `normalizers`, `matches` | Общая модель матчей, даты, расписания, dedupe |
+| `teams`, `adminTeams` | Канонизация имён, сопоставление и импорт справочника Admin |
+| `manualImport` | Текст, изображения, AI/OCR, очереди и ручной FIxt |
+| `adminUpload` | Формирование, проверка и отправка FIxt |
+| `results/khl` | Ревизии, bindings, preview, diff и staging результатов |
+| `tline` | Расписания проверок, jobs, leases, сравнения и решения оператора |
+| `auth`, `http`, `proxy` | Сессии, origin, адреса, прокси и ограничения запросов |
+| `db`, `settings`, `cache`, `sync`, `config` | Инфраструктурные зависимости |
 
-## Cleanup Policy
+Точки входа: [backend/README.md](../backend/README.md),
+[frontend/README.md](../frontend/README.md), [путеводитель по коду](CODE_GUIDE.md).
 
-Remove a file when all of these are true:
+## Границы зависимостей
 
-- it is not imported by `frontend`, `backend`, `tests`, or `scripts`;
-- it is not a Next.js route/page/layout/error/loading entrypoint;
-- it is not referenced by package scripts, deployment scripts, or documentation;
-- typecheck, lint, tests, and build stay green after removal.
+- `@/*` указывает на `frontend/src/*`; `@backend/*` — на `backend/src/*`.
+- Server Components и API routes могут вызывать backend. Директива `"use client"`
+  включает обычные импорты в клиентский граф: допустимы чистые безопасные helpers
+  и `import type`, но не Prisma, auth или server env.
+- HTTP-адаптер проверяет запрос, вызывает сценарий и переводит результат в HTTP.
+  Транзакциями и порядком обработки управляет backend-сервис.
+- Источник не отправляет FIxt. Он предоставляет нормализованные данные;
+  `adminUpload` отдельно решает, допустима ли отправка.
+- Чистые правила не зависят от БД. Мутации хранилища выполняются явно;
+  замена набора матчей и участников должна быть атомарной. Force сбрасывает
+  кэш загрузки, сохраняя ту же проверку качества перед записью.
 
-For admin integrations, never keep real URLs, keys, tokens, certificates, or response bodies in git. Logs may keep counters and statuses, but should avoid raw external API responses.
+## Как развивать структуру
+
+Сохранять группировку по предметной области. Выделять типы, чистые преобразования,
+сетевые операции и самостоятельные UI-блоки, когда у них отдельная причина меняться.
+Не создавать пустые `controllers/`, `models/` или второй `package.json` ради дерева
+папок: серверные адаптеры уже определены соглашениями Next.js.
+
+У крупного сценария сначала покрыть поведение тестом, затем выделить одну
+ответственность. Не переносить все парсеры одновременно и не менять публичные URL
+ради переименования каталогов. Технический долг и результаты проверок перечислены
+в [отчёте аудита](AUDIT_2026-09-07.md).
+
+## Защита внешних действий
+
+Маршруты отправки сначала проверяют сессию и Origin, затем разбирают ограниченное
+тело запроса. Ошибки используют единый безопасный formatter; технические значения
+из исключений не возвращаются клиенту. Пароль из runtime имеет приоритет;
+локальная настройка хранится как salted scrypt hash. Legacy-значение в БД
+обновляется при успешном входе с compare-and-swap, включая вход через env-пароль.
+Лимит попыток хранится в PostgreSQL и действует между worker/process restart.
+
+Сетевой слой проверяет допустимый host и полученные IP, закрепляет проверенный
+адрес в соединении, сохраняя Host/SNI и проверку TLS. Перенаправления отправки
+запрещены. Таймаут и ограничение размера действуют до конца чтения ответа.
+Проверка прокси использует transport с настоящим proxy agent.

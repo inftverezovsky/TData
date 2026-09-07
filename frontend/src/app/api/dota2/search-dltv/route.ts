@@ -1,3 +1,4 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 import { runDltv } from "@backend/sources/tdata/dltv/queue";
 import { getDltvErrorMessage, normalizeDltvErrorClass } from "@backend/sources/tdata/dltv/userFacingErrors";
@@ -28,13 +29,13 @@ export async function GET(request: Request) {
       errorClass: data.errorClass || emptyValidIfNoItems([results.length]),
     });
   } catch (error: any) {
-    const errorClass = normalizeDltvErrorClass(error.errorClass, error.message);
-    const userMessage = getDltvErrorMessage(errorClass, error.message);
-    console.error("[DLTV Search API] Error:", error);
+    const errorClass = normalizeDltvErrorClass(error.errorClass, safeErrorMessage(error));
+    const userMessage = getDltvErrorMessage(errorClass, safeErrorMessage(error));
+    logApiError("api:dota2/search-dltv/route.ts", error);
     return NextResponse.json({
       ok: false,
       error: userMessage,
-      debugError: error.message,
+      debugError: safeErrorMessage(error),
       errorClass,
       userMessage,
     }, { status: 500 });

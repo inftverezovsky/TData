@@ -1,13 +1,15 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { CalendarDays, ExternalLink, Loader2, MapPin, RefreshCw, Search, Trophy, Users } from "lucide-react";
+import { CalendarDays, ExternalLink, MapPin, Trophy, Users } from "lucide-react";
+import { readJsonResponse } from "@/services/responseSchema";
+import { searchDecoders } from "./searchResponse";
+import { TournamentSearchForm } from "./TournamentSearchForm";
 import TBvolleyTournamentBundleButton from "@/components/tbvolley/TBvolleyTournamentBundleButton";
-import type {
-  GermanBeachTourGender,
-  GermanBeachTourTournament,
-  GermanBeachTourTournamentSearch,
-} from "@backend/sources/tbvolley/GermanBeachTour";
+import type { GermanBeachTourGender } from "@backend/sources/tbvolley/GermanBeachTour";
+
+type GermanBeachTourTournamentSearch = ReturnType<typeof searchDecoders.germanbeachtour>;
+type GermanBeachTourTournament = GermanBeachTourTournamentSearch["tournaments"][number];
 
 const BEACH_VOLLEYBALL_SLUG = "beachvolleyball";
 
@@ -60,11 +62,7 @@ export default function GermanBeachTourTournamentSearch() {
           year,
         });
         const response = await fetch(`/api/tbvolley/germanbeachtour/tournaments?${params.toString()}`, { cache: "no-store" });
-        const payload = (await response.json().catch(() => ({}))) as GermanBeachTourTournamentSearch & { error?: string };
-
-        if (!response.ok || !payload.ok) {
-          throw new Error(payload.error || "Не удалось загрузить German Beach Tour");
-        }
+        const payload = await readJsonResponse(response, searchDecoders.germanbeachtour, "Не удалось загрузить German Beach Tour");
 
         return payload;
       }));
@@ -141,42 +139,12 @@ export default function GermanBeachTourTournamentSearch() {
               </p>
             </div>
 
-            <form onSubmit={onSubmit} className="grid gap-3 lg:grid-cols-[minmax(220px,1fr)_120px_52px] lg:items-end">
-              <label className="min-w-0 space-y-1.5">
-                <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Турнир</span>
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-300" />
-                  <input
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    placeholder="Berlin, München, German Beach Tour..."
-                    className="h-10 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 text-sm font-bold text-slate-950 outline-none transition focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100 placeholder:text-slate-300"
-                  />
-                </div>
-              </label>
-
-              <label className="space-y-1.5">
-                <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Год</span>
-                <select
-                  value={year}
-                  onChange={(event) => setYear(event.target.value)}
-                  className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-800 outline-none transition focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100"
-                >
-                  {buildYearOptions().map((option) => (
-                    <option key={option} value={option}>{option}</option>
-                  ))}
-                </select>
-              </label>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="flex h-10 w-full items-center justify-center rounded-xl bg-slate-950 text-white transition hover:bg-emerald-600 active:scale-[0.96] disabled:opacity-50"
-                title="Найти"
-              >
-                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-              </button>
-            </form>
+            <TournamentSearchForm
+              query={{ label: "Турнир", placeholder: "Berlin, München, German Beach Tour...", value: query, onChange: setQuery }}
+              fields={[{ type: "select", label: "Год", value: year, onChange: setYear, options: buildYearOptions().map((value) => ({ value, label: value })) }]}
+              loading={loading}
+              onSubmit={onSubmit}
+            />
           </div>
 
           <aside className="border-t border-slate-200 bg-slate-950 p-4 text-white lg:border-l lg:border-t-0">
@@ -203,7 +171,7 @@ export default function GermanBeachTourTournamentSearch() {
       </div>
 
       {error ? (
-        <section className="rounded-3xl border border-rose-100 bg-rose-50 p-8 text-sm font-bold text-rose-700 shadow-soft">
+        <section role="alert" className="rounded-3xl border border-rose-100 bg-rose-50 p-8 text-sm font-bold text-rose-700 shadow-soft">
           {error}
         </section>
       ) : loading && !data ? (

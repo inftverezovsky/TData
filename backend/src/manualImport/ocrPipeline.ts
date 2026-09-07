@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import type { PSM as TesseractPsm, Worker } from "tesseract.js";
 import { parseManualScheduleText } from "@backend/sources/tdata/hltv/manualTextParser";
+import { isSupportedOcrImage } from "./imageFormat";
 
 export type ManualImportOcrInput = {
   imageDataUrl?: string;
@@ -43,6 +44,11 @@ let ocrWorkerPromise: Promise<Worker> | null = null;
 let ocrQueue: Promise<void> = Promise.resolve();
 const ocrCache = new Map<string, { result: ManualImportOcrResult; expiresAt: number }>();
 
+/**
+ * Проверить изображение и кэш → подготовить варианты контраста → распознать текст →
+ * выбрать вариант, лучше всего похожий на расписание, и сохранить результат в кэше.
+ * Общий Tesseract worker обрабатывается последовательно: параметры вариантов не должны смешиваться.
+ */
 export async function extractManualImportOcr(input: ManualImportOcrInput): Promise<ManualImportOcrResult> {
   const warnings: string[] = [];
   const decoded = decodeImageInput(input, warnings);
@@ -52,6 +58,12 @@ export async function extractManualImportOcr(input: ManualImportOcrInput): Promi
 
   if (decoded.buffer.length > MAX_IMAGE_BYTES) {
     warnings.push(`Изображение слишком большое: ${formatBytes(decoded.buffer.length)}. Максимум: ${formatBytes(MAX_IMAGE_BYTES)}.`);
+    return { text: "", confidence: null, warnings, variants: [] };
+  }
+
+  // До кэша и любого вызова sharp ограничиваем набор декодеров по сигнатуре файла, включая подменённый MIME.
+  if (!isSupportedOcrImage(decoded.buffer)) {
+    warnings.push("Для OCR поддерживаются только изображения PNG, JPEG и WebP.");
     return { text: "", confidence: null, warnings, variants: [] };
   }
 
@@ -67,8 +79,8 @@ export async function extractManualImportOcr(input: ManualImportOcrInput): Promi
   let prepared: PreparedVariant[] = [];
   try {
     prepared = await prepareImageVariants(decoded.buffer);
-  } catch (error) {
-    warnings.push(error instanceof Error ? `Не удалось подготовить изображение: ${error.message}` : "Не удалось подготовить изображение.");
+  } catch {
+    warnings.push("Не удалось подготовить изображение. Проверьте файл и повторите импорт.");
     return { text: "", confidence: null, warnings, variants: [] };
   }
 

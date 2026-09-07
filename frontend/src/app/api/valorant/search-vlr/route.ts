@@ -1,3 +1,4 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 import { emptyValidIfNoItems, classifyParserError } from "@backend/proxy/parserErrors";
 import { runVlrScraper } from "@backend/sources/tdata/vlr/scraper";
@@ -27,13 +28,13 @@ export async function GET(request: Request) {
       errorClass: data.errorClass || emptyValidIfNoItems([results.length]),
     });
   } catch (error: any) {
-    const errorClass = classifyParserError({ message: error.message });
-    const userMessage = getVlrErrorMessage(errorClass, error.message);
-    console.error("[VLR Search API] Error:", error);
+    const errorClass = classifyParserError({ message: safeErrorMessage(error) });
+    const userMessage = getVlrErrorMessage(errorClass, safeErrorMessage(error));
+    logApiError("api:valorant/search-vlr/route.ts", error);
     return NextResponse.json({
       ok: false,
       error: userMessage,
-      debugError: error.message,
+      debugError: safeErrorMessage(error),
       errorClass,
       userMessage,
     }, { status: 500 });

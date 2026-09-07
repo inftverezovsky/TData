@@ -1,3 +1,4 @@
+import { logApiError, safeErrorMessage } from "@backend/http/apiResponse";
 import { NextResponse } from "next/server";
 import { toAdminFixtPayloadEnvelope } from "@backend/adminUpload/fixtPayloadFormat";
 import { phpSerialize } from "@backend/adminUpload/phpSerialize";
@@ -46,9 +47,9 @@ export async function POST(request: Request) {
       mappedMatches: buildResult.mappedMatches,
     });
   } catch (error) {
-    console.error("[Manual Import Preview] Error:", error);
+    logApiError("api:manual-import/preview/route.ts", error);
     return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : "Manual preview failed" },
+      { ok: false, error: error instanceof Error ? safeErrorMessage(error) : "Manual preview failed" },
       { status: 500 }
     );
   }

@@ -44,6 +44,11 @@ import {
   IMPORT_MATCH_FUTURE_WINDOW_DAYS,
 } from "./helpers";
 
+/**
+ * Получить сырой снимок страницы из кэша или источника → нормализовать → обновить
+ * метаданные турнира → вернуть кандидатов участников и матчей общему импортёру.
+ * Запись итогового расписания выполняется в recursive.ts после объединения всех страниц.
+ */
 export async function processSinglePage(params: {
   disciplineId: string;
   disciplineSlug: string;
@@ -55,9 +60,8 @@ export async function processSinglePage(params: {
   importRecordId: string;
   tournamentId?: string;
   force?: boolean;
-  clearMatches?: boolean;
 }) {
-  const { disciplineSlug, apiUrl, pageId, title, pageUrl, normalizer, importRecordId, tournamentId, force, clearMatches = true } = params;
+  const { disciplineSlug, apiUrl, pageId, title, pageUrl, normalizer, importRecordId, tournamentId, force } = params;
 
   try {
     let wikitext = "";
@@ -104,6 +108,7 @@ export async function processSinglePage(params: {
       ? await findSourceFetchCache(cacheInput)
       : null;
 
+    // Свежий сырой снимок можно использовать сразу; устаревший пригоден только для аварийного fallback ниже.
     if (!force && sourceCache?.rawSnapshotId && isSourceCacheFresh(sourceCache)) {
       rawSnapshot = await prisma.rawSnapshot.findUnique({ where: { id: sourceCache.rawSnapshotId } });
       if (rawSnapshot?.rawWikitext) {
@@ -368,6 +373,7 @@ export async function processSinglePage(params: {
     normalized.participants = canonicalizeParticipants(normalized.participants, teamCanonicalizer);
     normalized.matches = normalized.matches.map((match: any) => canonicalizeMatchTeams(match, teamCanonicalizer));
 
+    let participantsToInsert: Prisma.TournamentParticipantCreateManyInput[] = [];
     if (normalized.participants.length > 0) {
       const mappingMap = new Map(disciplineMappings.map((m: any) => [m.liquipediaName.toLowerCase(), m]));
       const aliasMap = new Map<string, any>();
@@ -385,12 +391,10 @@ export async function processSinglePage(params: {
         select: { name: true, platformId: true }
       });
       const partPlatformMap = new Map(
-        force
-          ? []
-          : existingParticipants.filter((ep: any) => ep.platformId).map((ep: any) => [ep.name.toLowerCase(), ep.platformId])
+        existingParticipants.filter((ep: any) => ep.platformId).map((ep: any) => [ep.name.toLowerCase(), ep.platformId])
       );
 
-      const participantsToInsert = normalized.participants.map((p: any) => {
+      participantsToInsert = normalized.participants.map((p: any) => {
         const mapping = mappingMap.get(p.name.toLowerCase()) || aliasMap.get(p.name.toLowerCase());
         const platformId = partPlatformMap.get(p.name.toLowerCase()) || mapping?.platformId || null;
         
@@ -407,19 +411,7 @@ export async function processSinglePage(params: {
         };
       });
 
-      if (clearMatches !== false) {
-        await prisma.$transaction([
-          prisma.tournamentParticipant.deleteMany({ where: { tournamentId: tournament.id } }),
-          ...(participantsToInsert.length > 0
-            ? [prisma.tournamentParticipant.createMany({ data: participantsToInsert, skipDuplicates: true })]
-            : [])
-        ]);
-      } else {
-        if (participantsToInsert.length > 0) {
-          await prisma.tournamentParticipant.createMany({ data: participantsToInsert, skipDuplicates: true });
-        }
-      }
-
+      // Участники остаются кандидатами до общей проверки качества всех страниц.
       for (const p of normalized.participants) {
         if (!mappingMap.has(p.name.toLowerCase())) {
           prisma.teamMapping.upsert({
@@ -429,15 +421,11 @@ export async function processSinglePage(params: {
           }).catch(() => {});
         }
       }
-    } else if (clearMatches !== false) {
-      await prisma.tournamentParticipant.deleteMany({ where: { tournamentId: tournament.id } });
     }
 
     let matchesToInsert: any[] = [];
     if (normalized.matches.length > 0) {
-      const existingMatches = force
-        ? []
-        : await prisma.tournamentMatch.findMany({
+      const existingMatches = await prisma.tournamentMatch.findMany({
             where: { tournamentId: tournament.id },
             select: { matchId: true, platformId: true, lpNumericalId: true, teamAName: true, teamBName: true, matchDate: true, syncedAt: true }
           });
@@ -633,6 +621,7 @@ export async function processSinglePage(params: {
       tournament, 
       normalized, 
       matches: matchesToInsert,
+      participants: participantsToInsert,
       processedMatchIds: normalized.matches.map((m: any) => m.matchId).filter((id: any): id is string => !!id),
       cacheHit,
       cacheLayer,
