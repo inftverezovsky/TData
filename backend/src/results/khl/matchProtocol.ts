@@ -82,7 +82,7 @@ export type KhlMatchProtocolView = {
     qualifiesForAdmin: boolean;
     includedInRegulationAdminTotal: boolean;
   }>;
-  validation: { ok: boolean; issues: string[] };
+  validation: { ok: boolean; issues: string[]; warnings?: string[] };
 };
 
 export function buildKhlMatchProtocolView(
@@ -155,6 +155,7 @@ export function buildKhlMatchProtocolView(
     validation: {
       ok: match.validation.ok,
       issues: [...match.validation.issues],
+      ...(match.validation.warnings?.length ? { warnings: [...match.validation.warnings] } : {}),
     },
   };
 }

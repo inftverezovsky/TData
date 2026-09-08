@@ -13,6 +13,14 @@ function fixture(name: string) {
   ));
 }
 
+test("the operator protocol retains the explanation for a corroborated overtime correction", () => {
+  const normalized = normalizeKhlEventDetail(fixture("shootout-901986.json"));
+  const protocol = buildKhlMatchProtocolView(normalized);
+  assert.equal(protocol.validation.ok, true);
+  assert.deepEqual(protocol.validation.warnings, normalized.validation.warnings);
+  assert.match(protocol.validation.warnings![0], /3:1.*2:2/);
+});
+
 test("builds an operator protocol with team and every listed player stat before Admin mappings", () => {
   const normalized = normalizeKhlEventDetail(fixture("regulation-901973.json"));
   const protocol = buildKhlMatchProtocolView(normalized);

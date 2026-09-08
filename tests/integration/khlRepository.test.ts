@@ -1,5 +1,6 @@
 import { requireTestDatabaseUrl } from "../../scripts/helpers/testDatabase";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
@@ -261,4 +262,60 @@ test("lost sync lease prevents normal ingestion before any database projection i
     assertCanWrite: async () => { throw new Error("test lease lost"); },
   }), /test lease lost/);
   assert.equal(await prisma.khlRawSnapshot.count(), snapshotsBefore);
+});
+
+test("901986 reuses historical raw evidence and preserves a rejected revision when the parser is upgraded", async () => {
+  const rawBody = readFileSync(join(process.cwd(), "tests/fixtures/khl/shootout-901986.json"), "utf8");
+  const input = {
+    rawBody,
+    sourceUrl: "https://khl.api.webcaster.pro/api/khl_mobile/event_v2.json?id=3000083&stage_id=407",
+    expectedIdentity: { khlGameId: "901986", apiEventId: "3000083", stageId: "407" },
+    requireFinished: true,
+  };
+  const seeded = await ingestKhlEventDetail(prisma, { ...input, parserVersion: "khl-mobile-event-v2" });
+  // Model the persisted v2 rejection without retaining an obsolete parser in production code.
+  const old = structuredClone(seeded.normalized);
+  old.teamStats.home.faceoffsWon.segments.OT1 = 3;
+  old.teamStats.home.faceoffsWon.fullMatchTotal = 29;
+  old.teamStats.away.faceoffsWon.segments.OT1 = 1;
+  old.teamStats.away.faceoffsWon.fullMatchTotal = 25;
+  old.validation = { ok: false, issues: [
+    "KHL home faceoffs won source aggregate mismatch: source=28, segments=29. Period segments were retained; validation remains fail-closed.",
+    "KHL away faceoffs won source aggregate mismatch: source=26, segments=25. Period segments were retained; validation remains fail-closed.",
+  ] };
+  const oldHash = createHash("sha256").update(JSON.stringify(old, (_key, value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+    return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)));
+  })).digest("hex");
+  await prisma.$transaction([
+    prisma.khlMatch.update({ where: { id: seeded.match.id }, data: { activeRevisionId: null } }),
+    prisma.khlMatchParticipant.deleteMany({ where: { matchId: seeded.match.id } }),
+    prisma.khlMatchRevision.update({ where: { id: seeded.revision.id }, data: {
+      state: "REJECTED", normalizedJson: JSON.parse(JSON.stringify(old)),
+      normalizedHash: oldHash,
+      validationIssues: old.validation.issues, validatedAt: null,
+    } }),
+  ]);
+
+  const repaired = await ingestKhlEventDetail(prisma, input);
+  assert.equal(repaired.reusedSnapshot, true);
+  assert.equal(repaired.snapshot.id, seeded.snapshot.id);
+  assert.deepEqual(repaired.snapshot.rawBody, Buffer.from(rawBody));
+  assert.equal(repaired.revision.state, "VALIDATED");
+  assert.equal(repaired.revision.parserVersion, "khl-mobile-event-v3");
+  assert.equal(repaired.revision.revisionNumber, 2);
+  assert.equal(repaired.match.activeRevisionId, repaired.revision.id);
+  assert.equal(repaired.normalized.validation.warnings?.length, 1);
+  assert.equal(await prisma.khlMatchParticipant.count({ where: { matchId: repaired.match.id } }), 44);
+  const historical = await prisma.khlMatchRevision.findUniqueOrThrow({ where: { id: seeded.revision.id } });
+  assert.equal(historical.state, "REJECTED");
+  assert.deepEqual(historical.normalizedJson, old);
+  assert.equal(historical.normalizedHash, oldHash);
+  assert.notEqual(historical.normalizedHash, repaired.revision.normalizedHash);
+
+  const repeated = await ingestKhlEventDetail(prisma, input);
+  assert.equal(repeated.reusedRevision, true);
+  assert.equal(repeated.activated, false);
+  assert.equal(repeated.revision.id, repaired.revision.id);
+  assert.equal(await prisma.khlMatchRevision.count({ where: { matchId: repaired.match.id } }), 2);
 });

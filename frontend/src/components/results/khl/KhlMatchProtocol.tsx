@@ -36,6 +36,11 @@ export function KhlMatchProtocol({ protocol, section = "all" }: Props) {
       {(section === "all" || section === "statistics") && (
         <TeamMetrics protocol={protocol} />
       )}
+      {Boolean(protocol.validation.warnings?.length) && (
+        <ul className="rounded-xl bg-amber-50 p-4 text-xs text-amber-900" data-testid="khl-protocol-warnings">
+          {protocol.validation.warnings?.map((warning) => <li key={warning}>• {warning}</li>)}
+        </ul>
+      )}
       {!protocol.validation.ok && (
         <ul className={`rounded-xl p-4 text-xs ${identityWarning ? "bg-amber-50 text-amber-900" : "bg-red-50 text-red-900"}`}>
           {(identityWarning ? khlMissingIdentityLabels(protocol) : protocol.validation.issues).map((issue, index) => (

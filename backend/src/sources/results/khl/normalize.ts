@@ -1,3 +1,5 @@
+import { parseKhlPeriodStats, reconcileKhlOvertimeFaceoffs, type PeriodStats } from "./periodStats";
+
 export type KhlTeamSide = "home" | "away";
 export type KhlMatchStatus = "scheduled" | "live" | "finished" | "cancelled" | "unknown";
 export type KhlSegment = `P${1 | 2 | 3}` | `OT${number}` | "SO";
@@ -98,6 +100,7 @@ export type NormalizedKhlMatch = {
   validation: {
     ok: boolean;
     issues: string[];
+    warnings?: string[];
   };
 };
 
@@ -106,11 +109,6 @@ type NormalizeOptions = {
 };
 
 type RawObject = Record<string, unknown>;
-
-type PeriodStats = Record<string, {
-  shotsOnGoal: KhlScore;
-  faceoffsWon: KhlScore;
-}>;
 
 const REGULATION_SEGMENTS: KhlSegment[] = ["P1", "P2", "P3"];
 
@@ -148,8 +146,15 @@ export function normalizeKhlEventDetail(
   const penalties = parsePenalties(raw.violations, teams, playerIndex, issues);
   applyPlayerPoints(players, goals);
 
-  const periodStats = parsePeriodStats(raw.text_events);
-  const metricSegments = collectMetricSegments(periodStats, goals, penalties);
+  const evidence = parseKhlPeriodStats(asArray(raw.text_events, "KHL text events")
+    .map((event) => asObject(event, "KHL text event")));
+  const metricSegments = collectMetricSegments(evidence.periods, goals, penalties);
+  const { periods: periodStats, warnings } = reconcileKhlOvertimeFaceoffs(
+    evidence, metricSegments, header.status === "finished", { home: homeRaw.vbr, away: awayRaw.vbr }
+  );
+  for (const segment of evidence.conflicts.filter((key) => /^(P|OT)/.test(key))) {
+    issues.push(`KHL ${segment} statistics are conflicting or malformed.`);
+  }
 
   const shotsOnGoal = buildPeriodMetric(periodStats, metricSegments, "shotsOnGoal");
   const faceoffsWon = buildPeriodMetric(periodStats, metricSegments, "faceoffsWon");
@@ -203,6 +208,7 @@ export function normalizeKhlEventDetail(
     validation: {
       ok: issues.length === 0,
       issues,
+      ...(warnings.length > 0 ? { warnings } : {}),
     },
   };
 }
@@ -461,39 +467,6 @@ function incrementPlayer(
 
 function participantKey(side: KhlTeamSide, apiPlayerId: string) {
   return `${side}:${apiPlayerId}`;
-}
-
-function parsePeriodStats(input: unknown): PeriodStats {
-  const result: PeriodStats = {};
-  for (const value of asArray(input, "KHL text events")) {
-    const event = asObject(value, "KHL text event");
-    if (optionalString(event.type) !== "info") continue;
-    const text = optionalString(event.text);
-    if (!text) continue;
-    const segment = segmentFromStatsText(text);
-    if (!segment) continue;
-    const shotsOnGoal = parseMetricPair(text, "Броски в створ");
-    const faceoffsWon = parseMetricPair(text, "Вбрасывания");
-    if (!shotsOnGoal || !faceoffsWon) continue;
-    result[segment] = { shotsOnGoal, faceoffsWon };
-  }
-  return result;
-}
-
-function segmentFromStatsText(text: string): KhlSegment | null {
-  const period = text.match(/^Статистика\s+([123])-го периода:/i);
-  if (period) return `P${Number(period[1])}` as KhlSegment;
-  const overtime = text.match(/^Статистика\s+(\d+)-го овертайма:/i);
-  if (overtime) return `OT${Number(overtime[1])}`;
-  if (/^Статистика\s+овертайма:/i.test(text)) return "OT1";
-  return null;
-}
-
-function parseMetricPair(text: string, label: string): KhlScore | null {
-  const pattern = new RegExp(`${escapeRegExp(label)}:\\s*(\\d+)\\s*-\\s*(\\d+)`, "i");
-  const match = text.match(pattern);
-  if (!match) return null;
-  return { home: Number(match[1]), away: Number(match[2]) };
 }
 
 function collectMetricSegments(
@@ -774,8 +747,4 @@ function requiredExternalId(value: unknown, label: string): string {
     return value.trim();
   }
   throw new KhlSchemaError(`${label} must be a positive safe integer or decimal string.`);
-}
-
-function escapeRegExp(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

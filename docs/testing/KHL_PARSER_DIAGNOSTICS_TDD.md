@@ -43,3 +43,33 @@ First run used a new isolated PostgreSQL database through an SSH tunnel and fail
 The first isolated Linux run reported 9/10 combined repository/queue tests passed. The remaining corrected-source test reused an earlier fixture's unique API event ID; the test now supplies distinct game, API event and source match identifiers. The rerun is required before declaring this database gate passed.
 
 No checkpoint commits were created: the user's requested workflow defers commits until all verification gates pass.
+
+## Single-overtime faceoff correction, 2026-09-08
+
+Game `901986` / API event `3000083`, stage `407`, published OT faceoffs `3:1`,
+while both team aggregates and the final timeline summary reported `28:26`.
+P1–P3 summed to `26:24`, independently confirmed by the after-three summary.
+Thus the single overtime must be `2:2`; its combined faceoff count remains four.
+The trimmed public fixture is `tests/fixtures/khl/shootout-901986.json`.
+
+Parser `khl-mobile-event-v3` permits only this corroborated redistribution:
+finished match, all regulation periods, exactly one overtime across statistics,
+goals and penalties, consistent cumulative summaries, nonnegative safe integer
+residuals, and unchanged combined OT count. Missing evidence or conflicting
+duplicates prevent correction. Conflicting period rows fail validation without
+choosing whichever row happened to occur last. Other validation stays blocking.
+
+The raw snapshot and P1–P3 values remain unchanged. Optional
+`validation.warnings` records the original and derived OT pair and supporting
+totals; the protocol displays this explanation. Re-ingestion reuses raw evidence,
+creates a versioned validated revision, preserves the historical rejection, and
+is idempotent on subsequent loads. No schema migration is needed.
+
+Verification: baseline parser fails four new feature regressions; the updated
+parser passes all 23 new regressions plus nine existing normalization tests.
+`periodStats.ts` coverage is 100% lines/functions and 98.84% branches, with
+80% thresholds enforced. All 41 KHL PostgreSQL integration tests pass on an
+isolated local database; the modified historical-revision test also passes after
+its evidence-hash check was added. The production-build Playwright test
+`tests/e2e/khl-protocol-correction.spec.ts` verifies the displayed warning and
+statistics tab. Typecheck, lint, production build and dependency audit pass.
