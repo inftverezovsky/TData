@@ -1,0 +1,808 @@
+{
+  "id": 3000071,
+  "khl_id": 901983,
+  "match_id": "901983",
+  "stage_id": 407,
+  "outer_stage_id": 1436,
+  "stage_name": "Регулярный чемпионат 2026/2027",
+  "season": "2026/2027",
+  "start_at": 1788703200000,
+  "game_state_key": "finished",
+  "score": "4:5",
+  "scores": {
+    "first_period": "2:0",
+    "second_period": "1:2",
+    "third_period": "1:2",
+    "overtime": "0:1",
+    "bullitt": null
+  },
+  "outer_url": "https://www.khl.ru/game/1436/901983/preview/",
+  "goals": [
+    {
+      "time": 3689,
+      "score": "4:5",
+      "period": 4,
+      "status": "В равенстве",
+      "status_abbr": "рав",
+      "author": {
+        "team_id": 315,
+        "shirt_number": 23,
+        "name": "Яшкин Дмитрий"
+      },
+      "assistants": [
+        {
+          "shirt_number": 27,
+          "name": "Менелл Бреннан"
+        },
+        {
+          "shirt_number": 9,
+          "name": "Чен Дэвид"
+        }
+      ]
+    },
+    {
+      "time": 3152,
+      "score": "4:4",
+      "period": 3,
+      "status": "В большинстве",
+      "status_abbr": "бол",
+      "author": {
+        "team_id": 315,
+        "shirt_number": 7,
+        "name": "Петан Николас"
+      },
+      "assistants": [
+        {
+          "shirt_number": 23,
+          "name": "Яшкин Дмитрий"
+        },
+        {
+          "shirt_number": 27,
+          "name": "Менелл Бреннан"
+        }
+      ]
+    },
+    {
+      "time": 2979,
+      "score": "4:3",
+      "period": 3,
+      "status": "В большинстве",
+      "status_abbr": "бол",
+      "author": {
+        "team_id": 36,
+        "shirt_number": 71,
+        "name": "Белозёров Андрей Ал."
+      },
+      "assistants": [
+        {
+          "shirt_number": 88,
+          "name": "Жафяров Дамир"
+        },
+        {
+          "shirt_number": 97,
+          "name": "Тянулин Артур"
+        }
+      ]
+    },
+    {
+      "time": 2821,
+      "score": "3:3",
+      "period": 3,
+      "status": "В равенстве",
+      "status_abbr": "рав",
+      "author": {
+        "team_id": 315,
+        "shirt_number": 32,
+        "name": "Хрипунов Степан"
+      },
+      "assistants": [
+        {
+          "shirt_number": 2,
+          "name": "Оттенбрайт Тёрнер"
+        }
+      ]
+    },
+    {
+      "time": 2398,
+      "score": "3:2",
+      "period": 2,
+      "status": "В равенстве",
+      "status_abbr": "рав",
+      "author": {
+        "team_id": 315,
+        "shirt_number": 2,
+        "name": "Оттенбрайт Тёрнер"
+      },
+      "assistants": [
+        {
+          "shirt_number": 53,
+          "name": "Котляревский Михаил"
+        },
+        {
+          "shirt_number": 35,
+          "name": "Мифтахов Амир"
+        }
+      ]
+    },
+    {
+      "time": 1845,
+      "score": "3:1",
+      "period": 2,
+      "status": "В большинстве",
+      "status_abbr": "бол",
+      "author": {
+        "team_id": 315,
+        "shirt_number": 17,
+        "name": "Соловьёв Егор С."
+      },
+      "assistants": [
+        {
+          "shirt_number": 27,
+          "name": "Менелл Бреннан"
+        },
+        {
+          "shirt_number": 11,
+          "name": "Кузнецов Владимир В."
+        }
+      ]
+    },
+    {
+      "time": 1814,
+      "score": "3:0",
+      "period": 2,
+      "status": "В меньшинстве",
+      "status_abbr": "мен",
+      "author": {
+        "team_id": 36,
+        "shirt_number": 17,
+        "name": "Надворный Матвей"
+      },
+      "assistants": [
+        {
+          "shirt_number": 11,
+          "name": "Николишин Иван"
+        }
+      ]
+    },
+    {
+      "time": 1007,
+      "score": "2:0",
+      "period": 1,
+      "status": "В большинстве",
+      "status_abbr": "бол",
+      "author": {
+        "team_id": 36,
+        "shirt_number": 97,
+        "name": "Тянулин Артур"
+      },
+      "assistants": [
+        {
+          "shirt_number": 65,
+          "name": "Федотов Максим С."
+        },
+        {
+          "shirt_number": 10,
+          "name": "Бикмуллин Рафаэль"
+        }
+      ]
+    },
+    {
+      "time": 338,
+      "score": "1:0",
+      "period": 1,
+      "status": "В равенстве",
+      "status_abbr": "рав",
+      "author": {
+        "team_id": 36,
+        "shirt_number": 61,
+        "name": "Хоружев Никита"
+      },
+      "assistants": [
+        {
+          "shirt_number": 33,
+          "name": "Точилкин Герман"
+        },
+        {
+          "shirt_number": 44,
+          "name": "Андрейченко Виктор"
+        }
+      ]
+    }
+  ],
+  "violations": [
+    {
+      "time": 3389,
+      "period": 3,
+      "penalty_time": 2,
+      "penalty_reason": "Выброс шайбы",
+      "violator": {
+        "team_id": 315,
+        "shirt_number": 53,
+        "name": "Котляревский Михаил"
+      },
+      "quote": {
+        "description": "Удаление. Котляревский Михаил (Драконы). 2 мин. Выброс шайбы."
+      }
+    },
+    {
+      "time": 3259,
+      "period": 3,
+      "penalty_time": 2,
+      "penalty_reason": "Подножка",
+      "violator": {
+        "team_id": 36,
+        "shirt_number": 44,
+        "name": "Андрейченко Виктор"
+      },
+      "quote": {
+        "description": "Удаление. Андрейченко Виктор (Нефтехимик). 2 мин. Подножка."
+      }
+    },
+    {
+      "time": 3116,
+      "period": 3,
+      "penalty_time": 2,
+      "penalty_reason": "Удар клюшкой",
+      "violator": {
+        "team_id": 36,
+        "shirt_number": 65,
+        "name": "Федотов Максим С."
+      },
+      "quote": {
+        "description": "Удаление. Федотов Максим С. (Нефтехимик). 2 мин. Удар клюшкой."
+      }
+    },
+    {
+      "time": 3116,
+      "period": 3,
+      "penalty_time": 10,
+      "penalty_reason": "Дисциплинарный штраф",
+      "violator": {
+        "team_id": 36,
+        "shirt_number": 71,
+        "name": "Белозёров Андрей Ал."
+      },
+      "quote": {
+        "description": "Удаление. Белозёров Андрей Ал. (Нефтехимик). 10 мин. Неспортивное поведение."
+      }
+    },
+    {
+      "time": 3077,
+      "period": 3,
+      "penalty_time": 2,
+      "penalty_reason": "Грубость",
+      "violator": {
+        "team_id": 36,
+        "shirt_number": 55,
+        "name": "Пастухов Илья"
+      },
+      "quote": {
+        "description": "Удаление. Пастухов Илья (Нефтехимик) и Котляревский Михаил (Драконы). 2 мин. Грубость."
+      }
+    },
+    {
+      "time": 3077,
+      "period": 3,
+      "penalty_time": 2,
+      "penalty_reason": "Грубость",
+      "violator": {
+        "team_id": 315,
+        "shirt_number": 53,
+        "name": "Котляревский Михаил"
+      },
+      "quote": {
+        "description": "Удаление. Пастухов Илья (Нефтехимик) и Котляревский Михаил (Драконы). 2 мин. Грубость."
+      }
+    },
+    {
+      "time": 2954,
+      "period": 3,
+      "penalty_time": 2,
+      "penalty_reason": "Подножка",
+      "violator": {
+        "team_id": 315,
+        "shirt_number": 4,
+        "name": "Чичек Ник"
+      },
+      "quote": {
+        "description": "Удаление. Чичек Ник (Драконы). 2 мин. Подножка."
+      }
+    },
+    {
+      "time": 2913,
+      "period": 3,
+      "penalty_time": 2,
+      "penalty_reason": "Сдвиг ворот",
+      "violator": {
+        "team_id": 315,
+        "shirt_number": 35,
+        "name": "Мифтахов Амир"
+      },
+      "quote": {
+        "description": "Удаление. Мифтахов Амир (Драконы). 2 мин. Сдвиг ворот."
+      }
+    },
+    {
+      "time": 2500,
+      "period": 3,
+      "penalty_time": 2,
+      "penalty_reason": "Подножка",
+      "violator": {
+        "team_id": 36,
+        "shirt_number": 7,
+        "name": "Хлыстов Никита"
+      },
+      "quote": {
+        "description": "Удаление. Хлыстов Никита (Нефтехимик). 2 мин. Подножка."
+      }
+    },
+    {
+      "time": 1767,
+      "period": 2,
+      "penalty_time": 2,
+      "penalty_reason": "Выброс шайбы",
+      "violator": {
+        "team_id": 36,
+        "shirt_number": 61,
+        "name": "Хоружев Никита"
+      },
+      "quote": {
+        "description": "Удаление. Хоружев Никита (Нефтехимик). 2 мин. Выброс шайбы."
+      }
+    },
+    {
+      "time": 1469,
+      "period": 2,
+      "penalty_time": 2,
+      "penalty_reason": "Игра высоко поднятой клюшкой",
+      "violator": {
+        "team_id": 315,
+        "shirt_number": 53,
+        "name": "Котляревский Михаил"
+      },
+      "quote": {
+        "description": "Удаление. Котляревский Михаил (Драконы). 2 мин. Игра высоко поднятой клюшкой."
+      }
+    },
+    {
+      "time": 1038,
+      "period": 1,
+      "penalty_time": 2,
+      "penalty_reason": "Толчок клюшкой",
+      "violator": {
+        "team_id": 315,
+        "shirt_number": 23,
+        "name": "Яшкин Дмитрий"
+      },
+      "quote": {
+        "description": "Удаление. Яшкин Дмитрий (Драконы). 2 мин. Толчок клюшкой."
+      }
+    },
+    {
+      "time": 906,
+      "period": 1,
+      "penalty_time": 2,
+      "penalty_reason": "Задержка соперника клюшкой",
+      "violator": {
+        "team_id": 315,
+        "shirt_number": 23,
+        "name": "Яшкин Дмитрий"
+      },
+      "quote": {
+        "description": "Удаление. Яшкин Дмитрий (Драконы). 2 мин. Задержка соперника клюшкой."
+      }
+    }
+  ],
+  "text_events": [
+    {
+      "type": "info",
+      "text": "Статистика матча: Броски: 75-61 ; Броски в створ: 48-37 ; Голы: 4-5 ; Вбрасывания: 33-32 ; Блокированные броски: 14-13 ; Силовые приемы: 19-18 ; Отборы: 4-3 ; Потери: 8-17 ; Перехваты: 2-1 ; Время в атаке: 14:16-11:50 ; Штраф: 20-14",
+      "period": null,
+      "seconds": 3692,
+      "time_s": "- мин",
+      "score": "4:5"
+    },
+    {
+      "type": "info",
+      "text": "Статистика овертайма: Броски: 0-4 ; Броски в створ: 0-2 ; Голы: 0-1 ; Вбрасывания: 1-0 ; Блокированные броски: 1-0 ; Силовые приемы: 0-0 ; Отборы: 0-0 ; Потери: 0-0 ; Перехваты: 0-0 ; Время в атаке: 00:03-00:58 ; Штраф: 0-0",
+      "period": null,
+      "seconds": 3691,
+      "time_s": "- мин",
+      "score": "4:5"
+    },
+    {
+      "type": "info",
+      "text": "Статистика 3-го периода: Броски: 36-12 ; Броски в створ: 21-9 ; Голы: 1-2 ; Вбрасывания: 13-8 ; Блокированные броски: 3-9 ; Силовые приемы: 4-5 ; Отборы: 2-0 ; Потери: 2-5 ; Перехваты: 0-0 ; Время в атаке: 05:20-02:43 ; Штраф: 18-8",
+      "period": null,
+      "seconds": 3392,
+      "time_s": "- мин",
+      "score": "4:4"
+    },
+    {
+      "type": "info",
+      "text": "Статистика 3-го периода: Броски: 18-7 ; Броски в створ: 12-6 ; Голы: 1-1 ; Вбрасывания: 9-4 ; Блокированные броски: 1-6 ; Силовые приемы: 3-3 ; Отборы: 1-0 ; Потери: 1-4 ; Перехваты: 0-0 ; Время в атаке: 03:02-01:17 ; Штраф: 2-4",
+      "period": 3,
+      "seconds": 2980,
+      "time_s": "51 мин",
+      "score": "4:3"
+    },
+    {
+      "type": "info",
+      "text": "Статистика 3-го периода: Броски: 3-4 ; Броски в створ: 3-4 ; Голы: 0-0 ; Вбрасывания: 2-3 ; Блокированные броски: 0-0 ; Силовые приемы: 3-3 ; Отборы: 1-0 ; Потери: 1-3 ; Перехваты: 0-0 ; Время в атаке: 00:45-01:10 ; Штраф: 2-0",
+      "period": 3,
+      "seconds": 2502,
+      "time_s": "46 мин",
+      "score": "3:2"
+    },
+    {
+      "type": "info",
+      "text": "Статистика матча: Броски: 39-45 ; Броски в створ: 27-26 ; Голы: 3-2 ; Вбрасывания: 19-24 ; Блокированные броски: 10-4 ; Силовые приемы: 15-13 ; Отборы: 2-3 ; Потери: 6-12 ; Перехваты: 2-1 ; Время в атаке: 08:53-08:09 ; Штраф: 2-6",
+      "period": null,
+      "seconds": 2401,
+      "time_s": "- мин",
+      "score": "3:2"
+    },
+    {
+      "type": "info",
+      "text": "Статистика 2-го периода: Броски: 18-22 ; Броски в створ: 14-12 ; Голы: 1-2 ; Вбрасывания: 13-12 ; Блокированные броски: 5-3 ; Силовые приемы: 7-7 ; Отборы: 2-2 ; Потери: 4-6 ; Перехваты: 1-1 ; Время в атаке: 03:36-03:58 ; Штраф: 2-2",
+      "period": null,
+      "seconds": 2400,
+      "time_s": "- мин",
+      "score": "3:2"
+    },
+    {
+      "type": "info",
+      "text": "Статистика 2-го периода: Броски: 10-11 ; Броски в створ: 8-7 ; Голы: 1-1 ; Вбрасывания: 7-5 ; Блокированные броски: 2-1 ; Силовые приемы: 3-4 ; Отборы: 2-1 ; Потери: 2-4 ; Перехваты: 0-0 ; Время в атаке: 02:21-02:25 ; Штраф: 2-2",
+      "period": 2,
+      "seconds": 1847,
+      "time_s": "32 мин",
+      "score": "3:1"
+    },
+    {
+      "type": "info",
+      "text": "Статистика 2-го периода: Броски: 8-5 ; Броски в створ: 7-2 ; Голы: 0-0 ; Вбрасывания: 4-2 ; Блокированные броски: 1-0 ; Силовые приемы: 3-3 ; Отборы: 0-1 ; Потери: 2-1 ; Перехваты: 0-0 ; Время в атаке: 01:39-00:54 ; Штраф: 0-2",
+      "period": 2,
+      "seconds": 1471,
+      "time_s": "27 мин",
+      "score": "2:0"
+    },
+    {
+      "type": "info",
+      "text": "Статистика 1-го периода: Броски: 21-23 ; Броски в створ: 13-14 ; Голы: 2-0 ; Вбрасывания: 5-13 ; Блокированные броски: 5-1 ; Силовые приемы: 8-6 ; Отборы: 0-1 ; Потери: 2-6 ; Перехваты: 1-0 ; Время в атаке: 05:17-04:11 ; Штраф: 0-4",
+      "period": null,
+      "seconds": 1041,
+      "time_s": "- мин",
+      "score": "2:0"
+    },
+    {
+      "type": "info",
+      "text": "Статистика 1-го периода: Броски: 15-12 ; Броски в створ: 8-8 ; Голы: 1-0 ; Вбрасывания: 2-6 ; Блокированные броски: 3-1 ; Силовые приемы: 6-4 ; Отборы: 0-1 ; Потери: 1-4 ; Перехваты: 1-0 ; Время в атаке: 02:56-02:36 ; Штраф: 0-0",
+      "period": 1,
+      "seconds": 340,
+      "time_s": "11 мин",
+      "score": "1:0"
+    },
+    {
+      "type": "info",
+      "text": "Статистика 1-го периода: Броски: 5-4 ; Броски в створ: 4-2 ; Голы: 1-0 ; Вбрасывания: 1-2 ; Блокированные броски: 2-0 ; Силовые приемы: 4-2 ; Отборы: 0-0 ; Потери: 0-3 ; Перехваты: 1-0 ; Время в атаке: 00:41-01:44 ; Штраф: 0-0",
+      "period": 1,
+      "seconds": 339,
+      "time_s": "06 мин",
+      "score": "1:0"
+    }
+  ],
+  "team_a": {
+    "id": 36,
+    "khl_id": 71,
+    "name": "Нефтехимик",
+    "location": "Нижнекамск",
+    "shots": 48,
+    "vbr": 33,
+    "players": [
+      {
+        "id": 50204,
+        "khl_id": 39787,
+        "shirt_number": 44,
+        "name": "Андрейченко Виктор",
+        "role_key": "forward"
+      },
+      {
+        "id": 47683,
+        "khl_id": 40847,
+        "shirt_number": 84,
+        "name": "Артемьев Сергей",
+        "role_key": "forward"
+      },
+      {
+        "id": 25833,
+        "khl_id": 20700,
+        "shirt_number": 71,
+        "name": "Белозёров Андрей Ал.",
+        "role_key": "forward"
+      },
+      {
+        "id": 16403,
+        "khl_id": 22424,
+        "shirt_number": 10,
+        "name": "Бикмуллин Рафаэль",
+        "role_key": "forward"
+      },
+      {
+        "id": 40947,
+        "khl_id": 23431,
+        "shirt_number": 53,
+        "name": "Долганов Филипп",
+        "role_key": "goaltender"
+      },
+      {
+        "id": 754,
+        "khl_id": 17591,
+        "shirt_number": 88,
+        "name": "Жафяров Дамир",
+        "role_key": "forward"
+      },
+      {
+        "id": 5061,
+        "khl_id": 21309,
+        "shirt_number": 52,
+        "name": "Митякин Евгений",
+        "role_key": "forward"
+      },
+      {
+        "id": 47275,
+        "khl_id": 35038,
+        "shirt_number": 17,
+        "name": "Надворный Матвей",
+        "role_key": "forward"
+      },
+      {
+        "id": 25453,
+        "khl_id": 19216,
+        "shirt_number": 11,
+        "name": "Николишин Иван",
+        "role_key": "forward"
+      },
+      {
+        "id": 28317,
+        "khl_id": 27072,
+        "shirt_number": 31,
+        "name": "Озолин Ярослав",
+        "role_key": "goaltender"
+      },
+      {
+        "id": 28277,
+        "khl_id": 31247,
+        "shirt_number": 55,
+        "name": "Пастухов Илья",
+        "role_key": "defensemen"
+      },
+      {
+        "id": 28749,
+        "khl_id": 21392,
+        "shirt_number": 57,
+        "name": "Ручкин Семён",
+        "role_key": "defensemen"
+      },
+      {
+        "id": 41643,
+        "khl_id": 35141,
+        "shirt_number": 21,
+        "name": "Селезнёв Григорий",
+        "role_key": "forward"
+      },
+      {
+        "id": 30281,
+        "khl_id": 27216,
+        "shirt_number": 24,
+        "name": "Сериков Артём",
+        "role_key": "defensemen"
+      },
+      {
+        "id": 47303,
+        "khl_id": 42742,
+        "shirt_number": 87,
+        "name": "Соколов Севастьян",
+        "role_key": "forward"
+      },
+      {
+        "id": 38103,
+        "khl_id": 39868,
+        "shirt_number": 33,
+        "name": "Точилкин Герман",
+        "role_key": "forward"
+      },
+      {
+        "id": 33481,
+        "khl_id": 21928,
+        "shirt_number": 97,
+        "name": "Тянулин Артур",
+        "role_key": "forward"
+      },
+      {
+        "id": 31925,
+        "khl_id": 35032,
+        "shirt_number": 65,
+        "name": "Федотов Максим С.",
+        "role_key": "defensemen"
+      },
+      {
+        "id": 36767,
+        "khl_id": 27904,
+        "shirt_number": 29,
+        "name": "Хайруллин Тимур",
+        "role_key": "defensemen"
+      },
+      {
+        "id": 3713,
+        "khl_id": 17881,
+        "shirt_number": 7,
+        "name": "Хлыстов Никита",
+        "role_key": "defensemen"
+      },
+      {
+        "id": 41167,
+        "khl_id": 40421,
+        "shirt_number": 61,
+        "name": "Хоружев Никита",
+        "role_key": "forward"
+      }
+    ]
+  },
+  "team_b": {
+    "id": 315,
+    "khl_id": 568,
+    "name": "Драконы",
+    "location": "Шанхай",
+    "shots": 37,
+    "vbr": 32,
+    "players": [
+      {
+        "id": 49956,
+        "khl_id": 39994,
+        "shirt_number": 59,
+        "name": "Александров Никита И.",
+        "role_key": "forward"
+      },
+      {
+        "id": 35649,
+        "khl_id": 20803,
+        "shirt_number": 22,
+        "name": "Барулин Владислав Ю.",
+        "role_key": "forward"
+      },
+      {
+        "id": 34581,
+        "khl_id": 34394,
+        "shirt_number": 31,
+        "name": "Бутеец Вячеслав",
+        "role_key": "goaltender"
+      },
+      {
+        "id": 3377,
+        "khl_id": 17330,
+        "shirt_number": 77,
+        "name": "Коледов Павел",
+        "role_key": "defensemen"
+      },
+      {
+        "id": 10043,
+        "khl_id": 22864,
+        "shirt_number": 53,
+        "name": "Котляревский Михаил",
+        "role_key": "forward"
+      },
+      {
+        "id": 21497,
+        "khl_id": 20995,
+        "shirt_number": 11,
+        "name": "Кузнецов Владимир В.",
+        "role_key": "forward"
+      },
+      {
+        "id": 29985,
+        "khl_id": 39679,
+        "shirt_number": 27,
+        "name": "Менелл Бреннан",
+        "role_key": "defensemen"
+      },
+      {
+        "id": 30705,
+        "khl_id": 32174,
+        "shirt_number": 63,
+        "name": "Мингачёв Тахир",
+        "role_key": "forward"
+      },
+      {
+        "id": 25737,
+        "khl_id": 25702,
+        "shirt_number": 35,
+        "name": "Мифтахов Амир",
+        "role_key": "goaltender"
+      },
+      {
+        "id": 49624,
+        "khl_id": 46148,
+        "shirt_number": 21,
+        "name": "Мюррэй Бретт",
+        "role_key": "forward"
+      },
+      {
+        "id": 1928,
+        "khl_id": 16400,
+        "shirt_number": 38,
+        "name": "Науменков Михаил",
+        "role_key": "defensemen"
+      },
+      {
+        "id": 40743,
+        "khl_id": 43268,
+        "shirt_number": 2,
+        "name": "Оттенбрайт Тёрнер",
+        "role_key": "defensemen"
+      },
+      {
+        "id": 43575,
+        "khl_id": 44370,
+        "shirt_number": 7,
+        "name": "Петан Николас",
+        "role_key": "forward"
+      },
+      {
+        "id": 49628,
+        "khl_id": 46425,
+        "shirt_number": 54,
+        "name": "Смит Дживани",
+        "role_key": "forward"
+      },
+      {
+        "id": 41715,
+        "khl_id": 40830,
+        "shirt_number": 17,
+        "name": "Соловьёв Егор С.",
+        "role_key": "forward"
+      },
+      {
+        "id": 17671,
+        "khl_id": 17592,
+        "shirt_number": 30,
+        "name": "Хомченко Павел",
+        "role_key": "goaltender"
+      },
+      {
+        "id": 5723,
+        "khl_id": 19035,
+        "shirt_number": 32,
+        "name": "Хрипунов Степан",
+        "role_key": "forward"
+      },
+      {
+        "id": 49632,
+        "khl_id": 46326,
+        "shirt_number": 9,
+        "name": "Чен Дэвид",
+        "role_key": "forward"
+      },
+      {
+        "id": 49636,
+        "khl_id": 46481,
+        "shirt_number": 4,
+        "name": "Чичек Ник",
+        "role_key": "defensemen"
+      },
+      {
+        "id": 49640,
+        "khl_id": 46679,
+        "shirt_number": 6,
+        "name": "Эддисон Кейлен",
+        "role_key": "defensemen"
+      },
+      {
+        "id": 27301,
+        "khl_id": 16657,
+        "shirt_number": 23,
+        "name": "Яшкин Дмитрий",
+        "role_key": "forward"
+      }
+    ]
+  }
+}

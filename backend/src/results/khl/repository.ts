@@ -17,7 +17,7 @@ import {
   type NormalizedKhlMatch,
 } from "@backend/sources/results/khl/normalize";
 
-export const KHL_PARSER_VERSION = "khl-mobile-event-v3";
+export const KHL_PARSER_VERSION = "khl-mobile-event-v4";
 export const KHL_RULES_VERSION = "khl-admin-regulation-v1";
 
 const MAX_RAW_BODY_BYTES = 5 * 1024 * 1024;

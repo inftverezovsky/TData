@@ -56,6 +56,8 @@ jobs:
         run: npm run test:tline:coverage
       - name: Enforce normalizer coverage
         run: npm run test:normalizers:coverage
+      - name: Enforce KHL parser coverage
+        run: npm run test:khl:coverage
       - name: Enforce frontend model coverage
         run: npm run test:frontend:coverage
       - name: Enforce Telegram consultant coverage

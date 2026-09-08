@@ -1,4 +1,4 @@
-import { parseKhlPeriodStats, reconcileKhlOvertimeFaceoffs, type PeriodStats } from "./periodStats";
+import { parseKhlPeriodStats, reconcileKhlOvertimeFaceoffs, validateKhlStatsSummaries, type PeriodStats } from "./periodStats";
 
 export type KhlTeamSide = "home" | "away";
 export type KhlMatchStatus = "scheduled" | "live" | "finished" | "cancelled" | "unknown";
@@ -144,16 +144,27 @@ export function normalizeKhlEventDetail(
 
   const goals = parseGoals(raw.goals, teams, playerIndex, issues);
   const penalties = parsePenalties(raw.violations, teams, playerIndex, issues);
+  const hasClockConflict = [...goals, ...penalties].some((event) => event.period !== null
+    && event.period >= 1 && event.period <= 3 && event.elapsedSeconds > 3600);
+  if (hasClockConflict) issues.push("KHL event regulation period conflicts with its overtime clock.");
   applyPlayerPoints(players, goals);
 
   const evidence = parseKhlPeriodStats(asArray(raw.text_events, "KHL text events")
     .map((event) => asObject(event, "KHL text event")));
   const metricSegments = collectMetricSegments(evidence.periods, goals, penalties);
   const { periods: periodStats, warnings } = reconcileKhlOvertimeFaceoffs(
-    evidence, metricSegments, header.status === "finished", { home: homeRaw.vbr, away: awayRaw.vbr }
+    evidence, metricSegments, header.status === "finished" && !hasClockConflict, { home: homeRaw.vbr, away: awayRaw.vbr }
   );
   for (const segment of evidence.conflicts.filter((key) => /^(P|OT)/.test(key))) {
     issues.push(`KHL ${segment} statistics are conflicting or malformed.`);
+  }
+  for (const summary of evidence.conflicts.filter((key) => key.startsWith("summary"))) {
+    // Generic match summaries may include intermission totals. Without team totals
+    // they cannot provide an unambiguous replacement cross-check.
+    if (summary !== "summaryFull" || [homeRaw.shots, awayRaw.shots, homeRaw.vbr, awayRaw.vbr]
+      .some((value) => value == null)) {
+      issues.push(`KHL ${summary} statistics are ambiguous and cannot verify period totals.`);
+    }
   }
 
   const shotsOnGoal = buildPeriodMetric(periodStats, metricSegments, "shotsOnGoal");
@@ -187,6 +198,7 @@ export function normalizeKhlEventDetail(
   if (options.validate !== false) {
     validateRequiredRegulationSegments(periodStats, issues);
     validateSourceTotals(homeRaw, awayRaw, teamStats, issues);
+    validateKhlStatsSummaries(evidence, teamStats, issues);
     validateRegulationGoals(players, regulation, issues);
   }
 
@@ -607,7 +619,11 @@ function compareOptionalTotal(
 ) {
   if (rawValue === null || rawValue === undefined) return;
   const source = Number(rawValue);
-  if (Number.isFinite(source) && source !== calculated) {
+  if ((typeof rawValue !== "number" && typeof rawValue !== "string")
+    || (typeof rawValue === "string" && !/^\d+$/.test(rawValue.trim()))
+    || !Number.isSafeInteger(source) || source < 0) {
+    issues.push(`KHL ${label} source aggregate is not a non-negative safe integer.`);
+  } else if (source !== calculated) {
     issues.push(
       `KHL ${label} source aggregate mismatch: source=${source}, segments=${calculated}. `
         + "Period segments were retained; validation remains fail-closed."
@@ -634,7 +650,7 @@ function validateRegulationGoals(
 
 function segmentFromEvent(period: number, elapsedSeconds: number): KhlSegment {
   if (period >= 1 && period <= 3) return `P${period}` as KhlSegment;
-  const overtimeNumber = Math.max(1, Math.ceil((elapsedSeconds - 3600) / 1200));
+  const overtimeNumber = Math.max(1, period - 3, Math.ceil((elapsedSeconds - 3600) / 1200));
   return `OT${overtimeNumber}`;
 }
 

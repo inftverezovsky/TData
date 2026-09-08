@@ -6,7 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { PrismaClient } from "@prisma/client";
-import { ingestKhlEventDetail } from "../../backend/src/results/khl/repository";
+import { ingestKhlEventDetail, KHL_PARSER_VERSION } from "../../backend/src/results/khl/repository";
 import { acquireKhlDatabaseSuiteLock } from "../helpers/khlDatabaseSuiteLock";
 
 const databaseUrl = requireTestDatabaseUrl(process.env.TEST_DATABASE_URL);
@@ -167,6 +167,10 @@ test("new validated source facts create and atomically activate a revision", asy
     (event: { text?: string }) => event.text?.startsWith("Статистика 3-го периода:")
   );
   period.text = period.text.replace("Броски в створ: 14-7", "Броски в створ: 15-7");
+  const finalSummary = raw.text_events.find(
+    (event: { text?: string }) => event.text?.startsWith("Статистика матча:")
+  );
+  finalSummary.text = finalSummary.text.replace("Броски в створ: 28-24", "Броски в створ: 29-24");
   raw.team_a.shots = 29;
 
   const result = await ingestKhlEventDetail(prisma, {
@@ -302,7 +306,7 @@ test("901986 reuses historical raw evidence and preserves a rejected revision wh
   assert.equal(repaired.snapshot.id, seeded.snapshot.id);
   assert.deepEqual(repaired.snapshot.rawBody, Buffer.from(rawBody));
   assert.equal(repaired.revision.state, "VALIDATED");
-  assert.equal(repaired.revision.parserVersion, "khl-mobile-event-v3");
+  assert.equal(repaired.revision.parserVersion, KHL_PARSER_VERSION);
   assert.equal(repaired.revision.revisionNumber, 2);
   assert.equal(repaired.match.activeRevisionId, repaired.revision.id);
   assert.equal(repaired.normalized.validation.warnings?.length, 1);

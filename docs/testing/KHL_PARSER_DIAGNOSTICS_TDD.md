@@ -73,3 +73,40 @@ isolated local database; the modified historical-revision test also passes after
 its evidence-hash check was added. The production-build Playwright test
 `tests/e2e/khl-protocol-correction.spec.ts` verifies the displayed warning and
 statistics tab. Typecheck, lint, production build and dependency audit pass.
+
+## Follow-up hardening and live cohort audit, 2026-09-08
+
+Parser v4 closes additional validation bypasses: missing or malformed team
+aggregates cannot conceal a contradictory unambiguous timeline summary; repeated
+metric labels are rejected; explicit overtime numbers and contradictory event
+clocks cannot be hidden by a different segment label. Ambiguous generic match
+summaries cannot replace missing team aggregates. Explicit cumulative-summary
+conflicts remain blocking.
+
+The public fixture `intermediate-stats-901983.json` demonstrates timed live
+updates carrying the same period-statistics title as a final row. A completed
+row with `period: null` takes precedence over a matching numbered live update
+only when neither metric decreases. Conflicting final rows, unknown metadata,
+and larger intermediate values remain blocking. Selection is independent of
+array order and does not modify raw evidence.
+
+Read-only production audit and local replay of the latest sanitized public
+protocol fields: 27 finished matches since the cutoff; all 24 previously valid
+matches remain valid, including 901986. Three source issues remain correctly
+blocked: missing player IDs in 901981; away faceoffs aggregate 26 versus period
+sum 25 in 901956; faceoffs aggregate 33:32 versus final-period sum 32:33 in
+901983. Selecting the final rows fixes 901983's shots to 48:37, but does not
+invent a distribution for its inconsistent faceoffs.
+
+The existing worker passes `refreshExistingAfterMs: 0` for general collection,
+so each scheduled pass rechecks recent protocols. The existing integration
+scenario verifies both automatic and manual collection detect source changes.
+Older matches outside its lookback still require an explicit refresh.
+
+Verification: full `npm run check` passes 1131 tests; all 41 KHL database
+integration tests pass, as do production build and the KHL browser scenario.
+`npm run test:khl:coverage` enforces 80% lines, branches and functions for
+`normalize.ts` and `periodStats.ts`, and is now required by CI. Observed combined
+coverage: 98.80% lines, 92.51% branches, 99.04% functions. Dependency audit reports
+zero vulnerabilities. These checks prevent publishing a regression in the
+covered behavior; they cannot guarantee that the external feed is correct.

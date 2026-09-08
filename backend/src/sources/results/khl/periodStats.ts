@@ -1,4 +1,4 @@
-import type { KhlScore, KhlSegment } from "./normalize";
+import type { KhlScore, KhlSegment, NormalizedKhlMatch } from "./normalize";
 
 type Stats = { shotsOnGoal: KhlScore; faceoffsWon: KhlScore };
 export type PeriodStats = Record<string, Stats>;
@@ -9,15 +9,20 @@ type StatsEvidence = {
 };
 
 export function parseKhlPeriodStats(events: Record<string, unknown>[]): StatsEvidence {
+  const selectedEvents = selectCompletedPeriodRows(events);
   const rows: Record<string, Stats> = {};
   const conflicts = new Set<string>();
-  for (const event of events) {
+  for (const event of selectedEvents) {
     if (event.type !== "info" || typeof event.text !== "string") continue;
     const key = statsKey(event.text);
     if (!key) continue;
     const shotsOnGoal = metricPair(event.text, "Броски в створ");
     const faceoffsWon = metricPair(event.text, "Вбрасывания");
-    if (!shotsOnGoal || !faceoffsWon) {
+    const declaredPeriod = event.period;
+    const expectedPeriod = key.startsWith("P") ? Number(key.slice(1))
+      : key.startsWith("OT") ? Number(key.slice(2)) + 3 : null;
+    if (!shotsOnGoal || !faceoffsWon || (expectedPeriod !== null
+      && declaredPeriod != null && declaredPeriod !== expectedPeriod)) {
       conflicts.add(key);
       continue;
     }
@@ -34,6 +39,30 @@ export function parseKhlPeriodStats(events: Record<string, unknown>[]): StatsEvi
   };
 }
 
+/** Timed in-period updates share the final row's title in the mobile feed. */
+function selectCompletedPeriodRows(events: Record<string, unknown>[]) {
+  const finalKeys = new Set(events.flatMap((event) => {
+    if (event.type !== "info" || typeof event.text !== "string" || event.period !== null) return [];
+    const key = statsKey(event.text);
+    return key && /^(P|OT)/.test(key) ? [key] : [];
+  }));
+  return events.filter((event) => {
+    if (event.type !== "info" || typeof event.text !== "string") return true;
+    const key = statsKey(event.text);
+    if (!key || !finalKeys.has(key) || event.period == null) return true;
+    const expectedPeriod = key.startsWith("P") ? Number(key.slice(1)) : Number(key.slice(2)) + 3;
+    // Unknown or contradictory metadata remains visible to the conflict check.
+    if (event.period !== expectedPeriod) return true;
+    const finalRows = events.filter((row) => row.type === "info" && row.period === null
+      && typeof row.text === "string" && statsKey(row.text) === key);
+    return !finalRows.every((row) => ["Броски в створ", "Вбрасывания"].every((label) => {
+      const partial = metricPair(event.text as string, label);
+      const final = metricPair(row.text as string, label);
+      return partial && final && partial.home <= final.home && partial.away <= final.away;
+    }));
+  });
+}
+
 function statsKey(text: string): string | null {
   const period = text.match(/^Статистика\s+([123])-го периода:/i);
   if (period) return `P${period[1]}`;
@@ -47,10 +76,31 @@ function statsKey(text: string): string | null {
 }
 
 function metricPair(text: string, label: string): KhlScore | null {
+  if ([...text.matchAll(new RegExp(`${label}:`, "gi"))].length !== 1) return null;
   const match = text.match(new RegExp(`${label}:\\s*(\\d+)\\s*-\\s*(\\d+)(?=\\s*(?:;|$))`, "i"));
   if (!match) return null;
   const pair = { home: Number(match[1]), away: Number(match[2]) };
   return validPair(pair) ? pair : null;
+}
+
+export function validateKhlStatsSummaries(
+  evidence: StatsEvidence,
+  teamStats: NormalizedKhlMatch["teamStats"],
+  issues: string[]
+) {
+  for (const [key, summary] of Object.entries(evidence.summaries)) {
+    for (const side of ["home", "away"] as const) {
+      for (const metric of ["shotsOnGoal", "faceoffsWon"] as const) {
+        const stats = teamStats[side][metric];
+        const total = key === "summaryFull" ? stats.fullMatchTotal
+          : key === "summaryRegulation" ? stats.regulationTotal
+            : (stats.segments.P1 || 0) + (stats.segments.P2 || 0);
+        if (summary[metric][side] !== total) {
+          issues.push(`KHL ${side} ${metric} ${key} mismatch: summary=${summary[metric][side]}, segments=${total}.`);
+        }
+      }
+    }
+  }
 }
 
 function validPair(pair: KhlScore): boolean {
