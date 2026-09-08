@@ -97,6 +97,7 @@ export type NormalizedKhlMatch = {
   players: NormalizedKhlPlayer[];
   goals: NormalizedKhlGoal[];
   penalties: NormalizedKhlPenalty[];
+  penaltyEvidence?: { complete: boolean };
   validation: {
     ok: boolean;
     issues: string[];
@@ -217,6 +218,7 @@ export function normalizeKhlEventDetail(
     players,
     goals,
     penalties,
+    penaltyEvidence: { complete: hasCompletePenaltyEvidence(raw.violations, penalties, homeRaw.pim, awayRaw.pim) },
     validation: {
       ok: issues.length === 0,
       issues,
@@ -401,6 +403,26 @@ function parsePenalties(
         : null,
       qualifiesForAdmin: durationMinutes === 2 || durationMinutes === 4,
     };
+  });
+}
+
+function hasCompletePenaltyEvidence(
+  input: unknown,
+  penalties: NormalizedKhlPenalty[],
+  homeTotal: unknown,
+  awayTotal: unknown
+) {
+  if (!Array.isArray(input)) return false;
+  // Official PIM counts every assessed minute, including major/misconduct and OT;
+  // the separate Admin metric deliberately includes only 2/4-minute penalties.
+  return ([ ["home", homeTotal], ["away", awayTotal] ] as const).every(([side, rawTotal]) => {
+    if (rawTotal === null || rawTotal === undefined) return true;
+    if (typeof rawTotal !== "number" && !(typeof rawTotal === "string" && /^\d+$/.test(rawTotal.trim()))) return false;
+    const sourceTotal = Number(rawTotal);
+    if (!Number.isSafeInteger(sourceTotal) || sourceTotal < 0) return false;
+    const eventTotal = penalties.filter((penalty) => penalty.teamSide === side)
+      .reduce((total, penalty) => total + penalty.durationMinutes, 0);
+    return sourceTotal === eventTotal;
   });
 }
 

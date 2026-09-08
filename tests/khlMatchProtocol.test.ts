@@ -49,6 +49,9 @@ test("builds an operator protocol with team and every listed player stat before 
   assert.ok(protocol.penalties.length > 0);
   assert.equal(protocol.playerExtras.version, "khl-player-extras-v1");
   assert.equal(protocol.playerExtras.available, true);
+  assert.equal(protocol.penaltyExtras?.version, "khl-penalty-extras-v1");
+  assert.equal(protocol.penaltyExtras?.extras.length, 7);
+  assert.equal(protocol.penaltyExtras?.available, true);
   assert.equal(protocol.players.every((candidate) => candidate.extras.length === 9), true);
 });
 

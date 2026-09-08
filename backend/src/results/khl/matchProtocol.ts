@@ -10,6 +10,7 @@ import {
   projectKhlPlayerExtras,
   type KhlPlayerExtraValue,
 } from "@backend/results/khl/playerExtras";
+import { projectKhlPenaltyExtras, type KhlPenaltyExtrasProjection } from "./penaltyExtras";
 
 const METRIC_DEFINITIONS = [
   { source: "shotsOnGoal", code: "shots_on_goal", label: "Броски в створ" },
@@ -62,6 +63,7 @@ export type KhlMatchProtocolView = {
     available: boolean;
     issues: string[];
   };
+  penaltyExtras?: KhlPenaltyExtrasProjection;
   goals: Array<{
     elapsedSeconds: number;
     segment: string;
@@ -131,6 +133,7 @@ export function buildKhlMatchProtocolView(
       available: playerExtras.available,
       issues: [...playerExtras.issues],
     },
+    penaltyExtras: projectKhlPenaltyExtras(match),
     goals: match.goals.map((goal) => ({
       elapsedSeconds: goal.elapsedSeconds,
       segment: goal.segment,

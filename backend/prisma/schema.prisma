@@ -1282,3 +1282,13 @@ model TLineScheduleState {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 }
+
+model KhlPenaltyExtraBinding {
+  extraCode          String           @id
+  adminExtraId       String           @unique
+  adminBindingStatus KhlBindingStatus @default(CONFIRMED)
+  adminConfirmedAt   DateTime         @default(now())
+  adminConfirmedBy   String
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+}

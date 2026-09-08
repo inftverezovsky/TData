@@ -1,4 +1,5 @@
 import type { KhlMatchProtocolView } from "@backend/results/khl/matchProtocol";
+import { KhlPenaltyExtras } from "./KhlPenaltyExtras";
 import { getKhlProtocolReadiness, khlMissingIdentityLabels } from "./khlProtocolReadiness";
 
 type Props = {
@@ -368,6 +369,7 @@ function EventTables({ protocol }: { protocol: KhlMatchProtocolView }) {
         <summary className="cursor-pointer text-xs font-black text-slate-900">
           Штрафы · {protocol.penalties.length}
         </summary>
+        <KhlPenaltyExtras projection={protocol.penaltyExtras} homeTeamName={protocol.teams.home.name} awayTeamName={protocol.teams.away.name} />
         <div className="mt-2 max-h-80 overflow-auto">
           <table className="min-w-full text-left text-xs">
             <tbody className="divide-y divide-slate-100">

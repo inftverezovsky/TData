@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { KhlPenaltyExtraSettings } from "./KhlPenaltyExtraSettings";
 
 import {
   KhlAdminDirectoryPicker,
@@ -16,7 +17,6 @@ import {
   groupKhlSettingsPlayersByTeam,
 } from "@/components/results/khl/khlSettingsViewModel";
 import {
-  KHL_EXTRA_MAPPING_DRAFTS,
   KHL_SETTINGS_TABS,
   type KhlSettingsTab,
 } from "@/components/results/khl/khlNavigation";
@@ -726,24 +726,7 @@ function ManualSchedule({
 }
 
 function ExtrasSettings() {
-  return (
-    <SettingsPanel
-      title="Дополнительные привязки"
-      description="Раздел уже отделён от матчей и статистики. Поля ID появятся после согласования точного списка событий и их Admin-контракта."
-    >
-      <div className="grid gap-3 sm:grid-cols-2">
-        {KHL_EXTRA_MAPPING_DRAFTS.map((item) => (
-          <div key={item.id} className="rounded-2xl border border-dashed border-amber-300 bg-amber-50 p-4">
-            <div className="font-black text-amber-950">{item.label}</div>
-            <div className="mt-2 text-xs font-bold text-amber-700">Будет настроено на следующем этапе</div>
-          </div>
-        ))}
-      </div>
-      <p className="mt-4 text-xs text-slate-500">
-        Сюда можно будет добавить другие дополнительные показатели без изменения разделов команд, матчей и основной статистики.
-      </p>
-    </SettingsPanel>
-  );
+  return <KhlPenaltyExtraSettings />;
 }
 
 function DeliveryControls({
